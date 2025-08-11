@@ -85,10 +85,23 @@ cargo install --path .
 
 ## Configuration
 
-The daemon uses TOML configuration files compatible with Pyprland:
+Rustrland supports dual configuration formats for maximum compatibility:
+
+### Configuration Formats
+- **Pyprland Format**: `[pyprland]` - Full compatibility with existing Pyprland configs
+- **Rustrland Format**: `[rustrland]` - Native format with enhanced features  
+- **Dual Format**: Both sections in one file - Rustrland merges them intelligently
+
+### Configuration Files
 - Default location: `~/.config/hypr/rustrland.toml`
-- Example configuration: `examples/rustrland.toml`
-- Supports variable substitution and plugin-specific sections
+- Example configurations: `examples/pyprland-compatible.toml`, `examples/rustrland-native.toml`, `examples/dual-config.toml`
+- Supports variable substitution with `[variable_name]` syntax in both formats
+
+### Configuration Merging Rules
+- Both `[pyprland]` and `[rustrland]` sections are processed
+- Plugin lists are merged (duplicates removed)
+- Variables from `[rustrland.variables]` override `[pyprland.variables]`
+- Existing Pyprland configurations work without modification
 
 ## Keyboard Integration
 

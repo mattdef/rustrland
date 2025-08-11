@@ -20,9 +20,10 @@ impl PluginManager {
     }
     
     pub async fn load_plugins(&mut self, config: &Config, hyprland_client: Arc<HyprlandClient>) -> Result<()> {
-        info!("🔌 Loading {} plugins", config.pyprland.plugins.len());
+        let plugins = config.get_plugins();
+        info!("🔌 Loading {} plugins", plugins.len());
         
-        for plugin_name in &config.pyprland.plugins {
+        for plugin_name in &plugins {
             if let Err(e) = self.load_single_plugin(plugin_name, config, Arc::clone(&hyprland_client)).await {
                 error!("❌ Failed to load plugin '{}': {}", plugin_name, e);
             }
@@ -67,8 +68,9 @@ impl PluginManager {
                 }
             }
             
-            // Add variables section
-            let variables_value = toml::Value::try_from(&config.pyprland.variables)
+            // Add variables section (merged from both pyprland and rustrland)
+            let merged_variables = config.get_variables();
+            let variables_value = toml::Value::try_from(&merged_variables)
                 .unwrap_or(toml::Value::Table(toml::map::Map::new()));
             combined_config.insert("variables".to_string(), variables_value);
             

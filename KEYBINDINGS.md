@@ -111,9 +111,12 @@ Use the provided installation script for automated setup:
    - Press `Super + B` to toggle browser  
    - Press `Super + F` to toggle file manager
 
-## Recommended Configuration
+## Configuration Formats
 
-For the best experience, use this configuration in your `~/.config/hypr/rustrland.toml`:
+Rustrland supports both legacy Pyprland format and native Rustrland format:
+
+### Option 1: Pyprland-Compatible Format
+Perfect for migrating from Pyprland with no changes needed:
 
 ```toml
 [pyprland]
@@ -128,25 +131,53 @@ command = "[term_classed] main-dropterm"
 class = "main-dropterm"
 size = "75% 60%"
 max_size = "1920px 100%"
-
-[scratchpads.browser]
-animation = "fromTop"
-command = "firefox"
-class = "firefox"
-size = "80% 70%"
-
-[scratchpads.filemanager]
-animation = "fromRight"
-command = "thunar"
-class = "thunar"
-size = "50% 80%"
-
-[scratchpads.music]
-animation = "fromBottom"
-command = "spotify"
-class = "Spotify"
-size = "90% 85%"
 ```
+
+### Option 2: Native Rustrland Format  
+New format designed specifically for Rustrland:
+
+```toml
+[rustrland]
+plugins = ["scratchpads"]
+
+[rustrland.variables]
+term_classed = "foot --app-id"
+editor = "code"
+
+[scratchpads.term]
+animation = "fromTop"
+command = "[term_classed] main-dropterm"
+class = "main-dropterm"
+size = "75% 60%"
+
+[scratchpads.editor]
+animation = "fromLeft"
+command = "[editor]"
+class = "code"
+size = "90% 80%"
+```
+
+### Option 3: Dual Configuration
+You can use both formats in the same file - Rustrland merges them intelligently:
+
+```toml
+# Legacy Pyprland settings
+[pyprland]
+plugins = ["scratchpads"]
+
+[pyprland.variables]
+browser_cmd = "firefox"
+
+# New Rustrland settings (takes precedence)
+[rustrland]
+plugins = ["scratchpads"]  # Merged with pyprland (no duplicates)
+
+[rustrland.variables]
+term_classed = "foot --app-id"  # Overrides pyprland variables
+file_manager = "thunar"         # Additional rustrland-only variable
+```
+
+See `examples/` directory for complete configuration examples.
 
 ## Key Advantages
 

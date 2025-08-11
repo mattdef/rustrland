@@ -1,0 +1,48 @@
+# Example configuration using native Rustrland format
+# This is the new format specifically for Rustrland
+
+[rustrland]
+plugins = [
+    "scratchpads",
+    # "magnify",
+    # "expose", 
+    # "workspaces_follow_focus",
+]
+
+[rustrland.variables]
+term_classed = "foot --app-id"
+browser_cmd = "firefox"
+file_manager = "thunar"
+editor = "code"
+
+# Scratchpads configuration
+[scratchpads.term]
+animation = "fromTop"
+command = "[term_classed] main-dropterm"
+class = "main-dropterm"
+size = "75% 60%"
+max_size = "1920px 100%"
+
+[scratchpads.browser]
+animation = "fromTop"
+command = "[browser_cmd]"
+class = "firefox"
+size = "80% 70%"
+
+[scratchpads.filemanager]
+animation = "fromRight"
+command = "[file_manager]"
+class = "thunar"
+size = "50% 80%"
+
+[scratchpads.editor]
+animation = "fromLeft"
+command = "[editor]"
+class = "code"
+size = "90% 80%"
+
+[scratchpads.music]
+animation = "fromBottom"
+command = "spotify"
+class = "Spotify"
+size = "90% 85%"

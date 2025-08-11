@@ -20,18 +20,41 @@ cargo install --path .
 
 ### Configuration
 
-Create `~/.config/hypr/rustrland.toml`:
+Rustrland supports both legacy Pyprland format and native Rustrland format.
 
+Create `~/.config/hypr/rustrland.toml` using either format:
+
+**Pyprland-Compatible:**
 ```toml
 [pyprland]
 plugins = ["scratchpads"]
 
+[pyprland.variables]
+term_classed = "foot --app-id"
+
 [scratchpads.term]
-command = "kitty --class dropterm"
+command = "[term_classed] dropterm"
 class = "dropterm"
 size = "75% 60%"
 animation = "fromTop"
 ```
+
+**Native Rustrland:**
+```toml
+[rustrland]
+plugins = ["scratchpads"]
+
+[rustrland.variables]
+term_classed = "foot --app-id"
+
+[scratchpads.term]
+command = "[term_classed] dropterm"
+class = "dropterm"
+size = "75% 60%"
+animation = "fromTop"
+```
+
+See `examples/` for more configuration options.
 
 ### Usage
 
