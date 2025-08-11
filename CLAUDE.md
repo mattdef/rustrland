@@ -12,13 +12,17 @@ The codebase follows a modular architecture with clear separation of concerns:
 
 - **Daemon (`src/main.rs`)**: Main daemon process that runs continuously, manages Hyprland connections and coordinates plugins
 - **Client (`src/client.rs`)**: Command-line client (`rustr`) for sending commands to the running daemon via IPC
+- **Library (`src/lib.rs`)**: Shared library with common types and IPC protocol
 - **Core System (`src/core/`)**: 
   - `daemon.rs`: Core daemon lifecycle and event loop management
-  - `plugin_manager.rs`: Loads and manages plugins dynamically
+  - `plugin_manager.rs`: Loads and manages plugins dynamically with Hyprland client injection
   - `event_handler.rs`: Processes Hyprland window manager events
 - **Configuration (`src/config/`)**: TOML-based configuration system compatible with Pyprland syntax
-- **IPC (`src/ipc/`)**: Hyprland IPC client for window manager communication
-- **Plugins (`src/plugins/`)**: Modular plugin system (currently implements scratchpads)
+- **IPC (`src/ipc/`)**: 
+  - `mod.rs`: Hyprland IPC client with window management functions
+  - `protocol.rs`: Client-daemon IPC message definitions
+  - `server.rs`: Unix socket server for client-daemon communication
+- **Plugins (`src/plugins/`)**: Modular plugin system with fully functional scratchpads plugin
 
 ## Common Commands
 
@@ -36,8 +40,11 @@ cargo run --bin rustrland -- --config examples/rustrland.toml --debug --foregrou
 make dev
 
 # Run client commands
-cargo run --bin rustr -- toggle term
-cargo run --bin rustr -- status
+cargo run --bin rustr -- toggle term        # Toggle terminal scratchpad
+cargo run --bin rustr -- toggle browser     # Toggle browser scratchpad  
+cargo run --bin rustr -- toggle filemanager # Toggle file manager scratchpad
+cargo run --bin rustr -- list               # List all available scratchpads
+cargo run --bin rustr -- status             # Show daemon status and uptime
 ```
 
 ### Build and Test
@@ -83,6 +90,22 @@ The daemon uses TOML configuration files compatible with Pyprland:
 - Example configuration: `examples/rustrland.toml`
 - Supports variable substitution and plugin-specific sections
 
+## Keyboard Integration
+
+For seamless usage, add these keybindings to your `~/.config/hypr/hyprland.conf`:
+
+```bash
+# Rustrland Scratchpad Keybindings
+bind = SUPER, grave, exec, rustr toggle term        # Super + ` (backtick)
+bind = SUPER, B, exec, rustr toggle browser         # Super + B
+bind = SUPER, F, exec, rustr toggle filemanager     # Super + F  
+bind = SUPER, M, exec, rustr toggle music           # Super + M
+bind = SUPER, L, exec, rustr list                   # Super + L (list all)
+bind = SUPER_SHIFT, S, exec, rustr status           # Super + Shift + S
+```
+
+See `KEYBINDINGS.md` for complete setup guide and alternative key schemes.
+
 ## Key Dependencies
 
 - **hyprland**: Hyprland IPC client (beta version)
@@ -92,10 +115,37 @@ The daemon uses TOML configuration files compatible with Pyprland:
 - **tracing**: Structured logging
 - **anyhow/thiserror**: Error handling
 
+## Current Status (v0.2.0)
+
+### ✅ Fully Implemented
+- **Scratchpad System**: Complete scratchpad functionality with toggle, spawn, and positioning
+- **Multi-Application Support**: Works with terminals (foot), browsers (Firefox), file managers (Thunar)
+- **Variable Expansion**: Configuration variable substitution (e.g., `[term_classed]` → `foot --app-id`)
+- **Window Management**: Window detection, positioning, and special workspace integration
+- **IPC Communication**: Full client-daemon architecture with Unix sockets and JSON protocol
+- **Command Interface**: Complete CLI with toggle, list, status commands
+
+### 🚧 Planned Features
+- **expose**: Window grid layout functionality
+- **magnify**: Window zoom functionality  
+- **workspaces_follow_focus**: Workspace management
+- **Keyboard bindings**: Hyprland keybinding integration
+- **Animation support**: Implement animation configs (fromTop, fromRight, etc.)
+
 ## Development Notes
 
 - The project uses Rust 2021 edition
 - Release builds are optimized with LTO and strip symbols
 - Client-daemon architecture allows for hot-reloading of configuration
-- Plugin system designed for extensibility (scratchpads implemented, magnify/expose planned)
+- Plugin system designed for extensibility with async trait support
 - Requires `HYPRLAND_INSTANCE_SIGNATURE` environment variable to be set
+- Version 0.2.0 marks the completion of core scratchpad functionality
+
+## Testing
+
+Scratchpad functionality has been thoroughly tested with:
+- **Terminal scratchpads**: foot terminal with proper app-id handling
+- **Browser scratchpads**: Firefox with show/hide toggle functionality  
+- **File manager scratchpads**: Thunar with window spawning and positioning
+- **State management**: Proper window detection and visibility tracking
+- **Configuration**: Variable expansion and multi-scratchpad support

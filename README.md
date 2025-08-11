@@ -39,11 +39,24 @@ animation = "fromTop"
 # Start daemon
 rustrland --config ~/.config/hypr/rustrland.toml
 
-# Use client
-rustr toggle term      # Toggle terminal scratchpad
-rustr expose          # Show all windows
-rustr status          # Check daemon status
+# Use client commands
+rustr toggle term        # Toggle terminal scratchpad
+rustr toggle browser     # Toggle browser scratchpad
+rustr list              # List available scratchpads
+rustr status            # Check daemon status
 ```
+
+### Keyboard Integration
+
+Add to your `~/.config/hypr/hyprland.conf` for keyboard access:
+
+```bash
+bind = SUPER, grave, exec, rustr toggle term     # Super + ` 
+bind = SUPER, B, exec, rustr toggle browser      # Super + B
+bind = SUPER, F, exec, rustr toggle filemanager  # Super + F
+```
+
+See [KEYBINDINGS.md](KEYBINDINGS.md) for complete setup guide.
 
 ## Development
 
