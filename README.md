@@ -42,7 +42,7 @@ animation = "fromTop"
 **Native Rustrland:**
 ```toml
 [rustrland]
-plugins = ["scratchpads", "expose"]
+plugins = ["scratchpads", "expose", "workspaces_follow_focus"]
 
 [rustrland.variables]
 term_classed = "foot --app-id"
@@ -57,6 +57,10 @@ animation = "fromTop"
 padding = 20
 scale = 0.2
 show_titles = true
+
+[workspaces_follow_focus]
+follow_window_focus = true
+allow_cross_monitor_switch = true
 ```
 
 See `examples/` for more configuration options.
@@ -73,6 +77,9 @@ rustr toggle browser     # Toggle browser scratchpad
 rustr expose             # Show window overview (Mission Control style)
 rustr expose next        # Navigate to next window in expose
 rustr expose exit        # Exit expose mode
+rustr workspace switch 2 # Switch to workspace 2 (moves to focused monitor)
+rustr workspace change +1 # Switch to next workspace
+rustr workspace list     # List all workspaces and monitors
 rustr list              # List available scratchpads
 rustr status            # Check daemon status
 ```
@@ -110,8 +117,8 @@ cargo clippy
 
 - ✅ **scratchpads**: Dropdown terminals and applications
 - ✅ **expose**: Window overview and navigation (macOS Mission Control style)
+- ✅ **workspaces_follow_focus**: Multi-monitor workspace management and switching
 - 🚧 **magnify**: Viewport zooming (planned)
-- 🚧 **workspaces_follow_focus**: Multi-monitor improvements (planned)
 
 ## License
 

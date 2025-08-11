@@ -9,6 +9,8 @@ pub enum ClientMessage {
     Expose,
     /// Expose with action
     ExposeAction { action: String },
+    /// Workspace management action
+    WorkspaceAction { action: String, arg: Option<String> },
     /// Reload configuration
     Reload,
     /// Get daemon status
@@ -54,6 +56,16 @@ impl ClientMessage {
                     Ok(ClientMessage::ExposeAction { 
                         action: args.first().unwrap().clone()
                     })
+                }
+            }
+            "workspace" => {
+                if let Some(action) = args.first() {
+                    Ok(ClientMessage::WorkspaceAction { 
+                        action: action.clone(),
+                        arg: args.get(1).cloned(),
+                    })
+                } else {
+                    Err("Workspace command requires action".to_string())
                 }
             }
             "reload" => Ok(ClientMessage::Reload),

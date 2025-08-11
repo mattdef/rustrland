@@ -46,6 +46,9 @@ cargo run --bin rustr -- toggle filemanager # Toggle file manager scratchpad
 cargo run --bin rustr -- expose             # Show window overview (Mission Control)
 cargo run --bin rustr -- expose next        # Navigate to next window
 cargo run --bin rustr -- expose exit        # Exit expose mode
+cargo run --bin rustr -- workspace switch 2 # Switch to workspace 2 (cross-monitor)
+cargo run --bin rustr -- workspace change +1 # Next workspace
+cargo run --bin rustr -- workspace list     # List workspaces and monitors
 cargo run --bin rustr -- list               # List all available scratchpads
 cargo run --bin rustr -- status             # Show daemon status and uptime
 ```
@@ -117,6 +120,10 @@ bind = SUPER, B, exec, rustr toggle browser         # Super + B
 bind = SUPER, F, exec, rustr toggle filemanager     # Super + F  
 bind = SUPER, M, exec, rustr toggle music           # Super + M
 bind = SUPER, TAB, exec, rustr expose               # Super + Tab (expose)
+bind = SUPER, 1, exec, rustr workspace switch 1     # Super + 1 (workspace 1)
+bind = SUPER, 2, exec, rustr workspace switch 2     # Super + 2 (workspace 2)
+bind = SUPER, Right, exec, rustr workspace change +1 # Super + Right (next workspace)
+bind = SUPER, Left, exec, rustr workspace change -- -1 # Super + Left (prev workspace)
 bind = SUPER, L, exec, rustr list                   # Super + L (list all)
 bind = SUPER_SHIFT, S, exec, rustr status           # Super + Shift + S
 ```
@@ -132,21 +139,21 @@ See `KEYBINDINGS.md` for complete setup guide and alternative key schemes.
 - **tracing**: Structured logging
 - **anyhow/thiserror**: Error handling
 
-## Current Status (v0.2.1)
+## Current Status (v0.2.2)
 
 ### ✅ Fully Implemented
 - **Scratchpad System**: Complete scratchpad functionality with toggle, spawn, and positioning
 - **Expose Plugin**: Mission Control-style window overview with grid layout, navigation, and selection
+- **Workspaces Follow Focus**: Multi-monitor workspace management with cross-monitor switching
 - **Multi-Application Support**: Works with terminals (foot), browsers (Firefox), file managers (Thunar)  
 - **Variable Expansion**: Configuration variable substitution (e.g., `[term_classed]` → `foot --app-id`)
 - **Window Management**: Window detection, positioning, and special workspace integration
 - **IPC Communication**: Full client-daemon architecture with Unix sockets and JSON protocol
-- **Command Interface**: Complete CLI with toggle, list, status, expose commands
+- **Command Interface**: Complete CLI with toggle, list, status, expose, workspace commands
 - **Keyboard Integration**: Full keybinding support with installation scripts
 
 ### 🚧 Planned Features
 - **magnify**: Window zoom functionality  
-- **workspaces_follow_focus**: Workspace management
 - **Animation support**: Implement animation configs (fromTop, fromRight, etc.)
 
 ## Development Notes

@@ -122,6 +122,17 @@ impl IpcServer {
                 }
             }
             
+            ClientMessage::WorkspaceAction { action, arg } => {
+                debug!("🏢 Processing workspace action: {} {:?}", action, arg);
+                let mut pm = plugin_manager.lock().await;
+                
+                let args: Vec<&str> = arg.as_ref().map(|s| vec![s.as_str()]).unwrap_or_default();
+                match pm.handle_command("workspaces_follow_focus", &action, &args).await {
+                    Ok(result) => DaemonResponse::Success { message: result },
+                    Err(e) => DaemonResponse::Error { message: e.to_string() },
+                }
+            }
+            
             ClientMessage::Reload => {
                 debug!("⚡ Processing reload command");
                 // TODO: Implement config reload

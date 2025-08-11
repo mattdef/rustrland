@@ -6,6 +6,7 @@ use tracing::{info, warn, error};
 use crate::plugins::{Plugin, PluginBox};
 use crate::plugins::scratchpads::ScratchpadsPlugin;
 use crate::plugins::expose::ExposePlugin;
+use crate::plugins::workspaces_follow_focus::WorkspacesFollowFocusPlugin;
 use crate::config::Config;
 use crate::ipc::{HyprlandEvent, HyprlandClient};
 
@@ -45,6 +46,9 @@ impl PluginManager {
             }
             "expose" => {
                 Box::new(ExposePlugin::new())
+            }
+            "workspaces_follow_focus" => {
+                Box::new(WorkspacesFollowFocusPlugin::new())
             }
             // "magnify" => Box::new(MagnifyPlugin::new()),
             // Add more plugins here as they're implemented

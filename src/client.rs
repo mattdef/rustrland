@@ -34,6 +34,15 @@ enum Commands {
     Status,
     /// List available scratchpads
     List,
+    /// Workspace management
+    Workspace {
+        /// Workspace command (switch, change, list, status)
+        #[arg()]
+        action: String,
+        /// Optional argument (workspace ID, offset, etc.)
+        #[arg()]
+        arg: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -46,6 +55,7 @@ async fn main() -> Result<()> {
         Commands::Reload => ClientMessage::Reload,
         Commands::Status => ClientMessage::Status,
         Commands::List => ClientMessage::List,
+        Commands::Workspace { action, arg } => ClientMessage::WorkspaceAction { action, arg },
     };
     
     match send_command(message).await {

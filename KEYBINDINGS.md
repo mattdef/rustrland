@@ -25,6 +25,16 @@ bind = SUPER, M, exec, rustr toggle music
 # Window overview (Expose/Mission Control) - Super + Tab
 bind = SUPER, TAB, exec, rustr expose
 
+# Workspace management - Super + number keys
+bind = SUPER, 1, exec, rustr workspace switch 1
+bind = SUPER, 2, exec, rustr workspace switch 2
+bind = SUPER, 3, exec, rustr workspace switch 3
+bind = SUPER, 4, exec, rustr workspace switch 4
+
+# Workspace navigation - Super + Arrow keys
+bind = SUPER, Right, exec, rustr workspace change +1
+bind = SUPER, Left, exec, rustr workspace change -- -1
+
 # List all scratchpads - Super + L
 bind = SUPER, L, exec, rustr list
 
@@ -79,6 +89,39 @@ bind = SUPER, Return, exec, rustr expose exit
 bind = SUPER, F3, exec, rustr expose           # F3 like macOS
 bind = CTRL_ALT, Up, exec, rustr expose        # GNOME-style
 ```
+
+## Workspaces Follow Focus Keybindings
+
+The workspaces_follow_focus plugin provides improved multi-monitor workspace management:
+
+```bash
+# Direct workspace switching (Super + number)
+bind = SUPER, 1, exec, rustr workspace switch 1
+bind = SUPER, 2, exec, rustr workspace switch 2
+bind = SUPER, 3, exec, rustr workspace switch 3
+bind = SUPER, 4, exec, rustr workspace switch 4
+bind = SUPER, 5, exec, rustr workspace switch 5
+
+# Relative workspace navigation
+bind = SUPER, Right, exec, rustr workspace change +1    # Next workspace
+bind = SUPER, Left, exec, rustr workspace change -- -1  # Previous workspace
+
+# Workspace management
+bind = SUPER_SHIFT, W, exec, rustr workspace list       # List all workspaces
+bind = SUPER_SHIFT, Right, exec, rustr workspace change +2  # Skip workspace
+bind = SUPER_SHIFT, Left, exec, rustr workspace change -- -2 # Skip backward
+
+# Alternative workspace switching (Function keys)
+bind = SUPER, F1, exec, rustr workspace switch 1
+bind = SUPER, F2, exec, rustr workspace switch 2
+bind = SUPER, F3, exec, rustr workspace switch 3
+bind = SUPER, F4, exec, rustr workspace switch 4
+```
+
+**Key Features:**
+- **Cross-Monitor Switch**: Automatically moves workspaces to focused monitor
+- **Multi-Monitor Aware**: Tracks workspace locations across monitors
+- **Seamless Navigation**: Switch between workspaces on different monitors effortlessly
 
 ## Quick Installation
 
