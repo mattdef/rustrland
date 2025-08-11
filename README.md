@@ -42,7 +42,7 @@ animation = "fromTop"
 **Native Rustrland:**
 ```toml
 [rustrland]
-plugins = ["scratchpads"]
+plugins = ["scratchpads", "expose"]
 
 [rustrland.variables]
 term_classed = "foot --app-id"
@@ -52,6 +52,11 @@ command = "[term_classed] dropterm"
 class = "dropterm"
 size = "75% 60%"
 animation = "fromTop"
+
+[expose]
+padding = 20
+scale = 0.2
+show_titles = true
 ```
 
 See `examples/` for more configuration options.
@@ -65,6 +70,9 @@ rustrland --config ~/.config/hypr/rustrland.toml
 # Use client commands
 rustr toggle term        # Toggle terminal scratchpad
 rustr toggle browser     # Toggle browser scratchpad
+rustr expose             # Show window overview (Mission Control style)
+rustr expose next        # Navigate to next window in expose
+rustr expose exit        # Exit expose mode
 rustr list              # List available scratchpads
 rustr status            # Check daemon status
 ```
@@ -77,6 +85,7 @@ Add to your `~/.config/hypr/hyprland.conf` for keyboard access:
 bind = SUPER, grave, exec, rustr toggle term     # Super + ` 
 bind = SUPER, B, exec, rustr toggle browser      # Super + B
 bind = SUPER, F, exec, rustr toggle filemanager  # Super + F
+bind = SUPER, TAB, exec, rustr expose             # Super + Tab (Mission Control)
 ```
 
 See [KEYBINDINGS.md](KEYBINDINGS.md) for complete setup guide.
@@ -100,8 +109,8 @@ cargo clippy
 ## Supported Plugins
 
 - ✅ **scratchpads**: Dropdown terminals and applications
+- ✅ **expose**: Window overview and navigation (macOS Mission Control style)
 - 🚧 **magnify**: Viewport zooming (planned)
-- 🚧 **expose**: Window overview (planned)
 - 🚧 **workspaces_follow_focus**: Multi-monitor improvements (planned)
 
 ## License

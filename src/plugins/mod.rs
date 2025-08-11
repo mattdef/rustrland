@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use crate::ipc::HyprlandEvent;
 
 pub mod scratchpads;
+pub mod expose;
 
 #[async_trait]
 pub trait Plugin: Send + Sync {

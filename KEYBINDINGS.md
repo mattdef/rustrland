@@ -22,6 +22,9 @@ bind = SUPER, F, exec, rustr toggle filemanager
 # Music/Spotify scratchpad - Super + M
 bind = SUPER, M, exec, rustr toggle music
 
+# Window overview (Expose/Mission Control) - Super + Tab
+bind = SUPER, TAB, exec, rustr expose
+
 # List all scratchpads - Super + L
 bind = SUPER, L, exec, rustr list
 
@@ -56,6 +59,25 @@ bind = ALT, grave, exec, rustr toggle term
 bind = ALT, B, exec, rustr toggle browser
 bind = ALT, F, exec, rustr toggle filemanager
 bind = ALT, M, exec, rustr toggle music
+bind = ALT, TAB, exec, rustr expose
+```
+
+## Expose (Window Overview) Keybindings
+
+The expose plugin provides Mission Control-style window overview functionality:
+
+```bash
+# Basic expose (toggle)
+bind = SUPER, TAB, exec, rustr expose
+
+# Expose with navigation (while expose is active)
+bind = SUPER, Right, exec, rustr expose next
+bind = SUPER, Left, exec, rustr expose prev
+bind = SUPER, Return, exec, rustr expose exit
+
+# Alternative expose keybindings
+bind = SUPER, F3, exec, rustr expose           # F3 like macOS
+bind = CTRL_ALT, Up, exec, rustr expose        # GNOME-style
 ```
 
 ## Quick Installation

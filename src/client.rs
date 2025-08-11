@@ -23,7 +23,11 @@ enum Commands {
         name: String,
     },
     /// Show all windows (expose)
-    Expose,
+    Expose {
+        /// Expose sub-command (toggle, next, prev, exit, status)
+        #[arg(default_value = "toggle")]
+        action: String,
+    },
     /// Reload configuration
     Reload,
     /// Show daemon status
@@ -38,7 +42,7 @@ async fn main() -> Result<()> {
     
     let message = match cli.command {
         Commands::Toggle { name } => ClientMessage::Toggle { scratchpad: name },
-        Commands::Expose => ClientMessage::Expose,
+        Commands::Expose { action } => ClientMessage::ExposeAction { action },
         Commands::Reload => ClientMessage::Reload,
         Commands::Status => ClientMessage::Status,
         Commands::List => ClientMessage::List,

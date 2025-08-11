@@ -43,6 +43,9 @@ make dev
 cargo run --bin rustr -- toggle term        # Toggle terminal scratchpad
 cargo run --bin rustr -- toggle browser     # Toggle browser scratchpad  
 cargo run --bin rustr -- toggle filemanager # Toggle file manager scratchpad
+cargo run --bin rustr -- expose             # Show window overview (Mission Control)
+cargo run --bin rustr -- expose next        # Navigate to next window
+cargo run --bin rustr -- expose exit        # Exit expose mode
 cargo run --bin rustr -- list               # List all available scratchpads
 cargo run --bin rustr -- status             # Show daemon status and uptime
 ```
@@ -113,6 +116,7 @@ bind = SUPER, grave, exec, rustr toggle term        # Super + ` (backtick)
 bind = SUPER, B, exec, rustr toggle browser         # Super + B
 bind = SUPER, F, exec, rustr toggle filemanager     # Super + F  
 bind = SUPER, M, exec, rustr toggle music           # Super + M
+bind = SUPER, TAB, exec, rustr expose               # Super + Tab (expose)
 bind = SUPER, L, exec, rustr list                   # Super + L (list all)
 bind = SUPER_SHIFT, S, exec, rustr status           # Super + Shift + S
 ```
@@ -128,21 +132,21 @@ See `KEYBINDINGS.md` for complete setup guide and alternative key schemes.
 - **tracing**: Structured logging
 - **anyhow/thiserror**: Error handling
 
-## Current Status (v0.2.0)
+## Current Status (v0.2.1)
 
 ### ✅ Fully Implemented
 - **Scratchpad System**: Complete scratchpad functionality with toggle, spawn, and positioning
-- **Multi-Application Support**: Works with terminals (foot), browsers (Firefox), file managers (Thunar)
+- **Expose Plugin**: Mission Control-style window overview with grid layout, navigation, and selection
+- **Multi-Application Support**: Works with terminals (foot), browsers (Firefox), file managers (Thunar)  
 - **Variable Expansion**: Configuration variable substitution (e.g., `[term_classed]` → `foot --app-id`)
 - **Window Management**: Window detection, positioning, and special workspace integration
 - **IPC Communication**: Full client-daemon architecture with Unix sockets and JSON protocol
-- **Command Interface**: Complete CLI with toggle, list, status commands
+- **Command Interface**: Complete CLI with toggle, list, status, expose commands
+- **Keyboard Integration**: Full keybinding support with installation scripts
 
 ### 🚧 Planned Features
-- **expose**: Window grid layout functionality
 - **magnify**: Window zoom functionality  
 - **workspaces_follow_focus**: Workspace management
-- **Keyboard bindings**: Hyprland keybinding integration
 - **Animation support**: Implement animation configs (fromTop, fromRight, etc.)
 
 ## Development Notes

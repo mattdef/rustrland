@@ -104,9 +104,21 @@ impl IpcServer {
             
             ClientMessage::Expose => {
                 debug!("🪟 Processing expose command");
-                // TODO: Implement expose functionality
-                DaemonResponse::Error { 
-                    message: "Expose functionality not yet implemented".to_string() 
+                let mut pm = plugin_manager.lock().await;
+                
+                match pm.handle_command("expose", "toggle", &[]).await {
+                    Ok(result) => DaemonResponse::Success { message: result },
+                    Err(e) => DaemonResponse::Error { message: e.to_string() },
+                }
+            }
+            
+            ClientMessage::ExposeAction { action } => {
+                debug!("🪟 Processing expose action: {}", action);
+                let mut pm = plugin_manager.lock().await;
+                
+                match pm.handle_command("expose", &action, &[]).await {
+                    Ok(result) => DaemonResponse::Success { message: result },
+                    Err(e) => DaemonResponse::Error { message: e.to_string() },
                 }
             }
             

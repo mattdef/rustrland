@@ -7,6 +7,8 @@ pub enum ClientMessage {
     Toggle { scratchpad: String },
     /// Show all windows (expose)
     Expose,
+    /// Expose with action
+    ExposeAction { action: String },
     /// Reload configuration
     Reload,
     /// Get daemon status
@@ -45,7 +47,15 @@ impl ClientMessage {
                     Err("Toggle command requires scratchpad name".to_string())
                 }
             }
-            "expose" => Ok(ClientMessage::Expose),
+            "expose" => {
+                if args.is_empty() {
+                    Ok(ClientMessage::Expose)
+                } else {
+                    Ok(ClientMessage::ExposeAction { 
+                        action: args.first().unwrap().clone()
+                    })
+                }
+            }
             "reload" => Ok(ClientMessage::Reload),
             "status" => Ok(ClientMessage::Status),
             "list" => Ok(ClientMessage::List),

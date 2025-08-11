@@ -5,6 +5,7 @@ use tracing::{info, warn, error};
 
 use crate::plugins::{Plugin, PluginBox};
 use crate::plugins::scratchpads::ScratchpadsPlugin;
+use crate::plugins::expose::ExposePlugin;
 use crate::config::Config;
 use crate::ipc::{HyprlandEvent, HyprlandClient};
 
@@ -42,8 +43,10 @@ impl PluginManager {
                 scratchpads_plugin.set_hyprland_client(Arc::clone(&hyprland_client)).await;
                 Box::new(scratchpads_plugin)
             }
+            "expose" => {
+                Box::new(ExposePlugin::new())
+            }
             // "magnify" => Box::new(MagnifyPlugin::new()),
-            // "expose" => Box::new(ExposePlugin::new()),
             // Add more plugins here as they're implemented
             _ => {
                 warn!("⚠️  Unknown plugin: {}", plugin_name);
