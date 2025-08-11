@@ -1,11 +1,12 @@
 use anyhow::Result;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tracing::{info, warn, error};
 
 use crate::plugins::{Plugin, PluginBox};
 use crate::plugins::scratchpads::ScratchpadsPlugin;
 use crate::config::Config;
-use crate::ipc::HyprlandEvent;
+use crate::ipc::{HyprlandEvent, HyprlandClient};
 
 pub struct PluginManager {
     plugins: HashMap<String, PluginBox>,
@@ -18,11 +19,11 @@ impl PluginManager {
         }
     }
     
-    pub async fn load_plugins(&mut self, config: &Config) -> Result<()> {
+    pub async fn load_plugins(&mut self, config: &Config, hyprland_client: Arc<HyprlandClient>) -> Result<()> {
         info!("🔌 Loading {} plugins", config.pyprland.plugins.len());
         
         for plugin_name in &config.pyprland.plugins {
-            if let Err(e) = self.load_single_plugin(plugin_name, config).await {
+            if let Err(e) = self.load_single_plugin(plugin_name, config, Arc::clone(&hyprland_client)).await {
                 error!("❌ Failed to load plugin '{}': {}", plugin_name, e);
             }
         }
@@ -31,11 +32,15 @@ impl PluginManager {
         Ok(())
     }
     
-    async fn load_single_plugin(&mut self, plugin_name: &str, config: &Config) -> Result<()> {
+    async fn load_single_plugin(&mut self, plugin_name: &str, config: &Config, hyprland_client: Arc<HyprlandClient>) -> Result<()> {
         info!("📦 Loading plugin: {}", plugin_name);
         
         let mut plugin: PluginBox = match plugin_name {
-            "scratchpads" => Box::new(ScratchpadsPlugin::new()),
+            "scratchpads" => {
+                let scratchpads_plugin = ScratchpadsPlugin::new();
+                scratchpads_plugin.set_hyprland_client(Arc::clone(&hyprland_client)).await;
+                Box::new(scratchpads_plugin)
+            }
             // "magnify" => Box::new(MagnifyPlugin::new()),
             // "expose" => Box::new(ExposePlugin::new()),
             // Add more plugins here as they're implemented
@@ -50,8 +55,29 @@ impl PluginManager {
             .cloned()
             .unwrap_or(toml::Value::Table(toml::map::Map::new()));
         
-        // Initialize plugin
-        plugin.init(&plugin_config).await?;
+        // For scratchpads, we need to pass both the plugin config and global variables
+        if plugin_name == "scratchpads" {
+            // Create a combined config with both scratchpad settings and variables
+            let mut combined_config = toml::map::Map::new();
+            
+            // Add plugin-specific config
+            if let toml::Value::Table(plugin_table) = plugin_config {
+                for (key, value) in plugin_table {
+                    combined_config.insert(key, value);
+                }
+            }
+            
+            // Add variables section
+            let variables_value = toml::Value::try_from(&config.pyprland.variables)
+                .unwrap_or(toml::Value::Table(toml::map::Map::new()));
+            combined_config.insert("variables".to_string(), variables_value);
+            
+            let combined = toml::Value::Table(combined_config);
+            plugin.init(&combined).await?;
+        } else {
+            // Initialize plugin normally
+            plugin.init(&plugin_config).await?;
+        }
         self.plugins.insert(plugin_name.to_string(), plugin);
         
         info!("✅ Plugin '{}' loaded successfully", plugin_name);
@@ -73,5 +99,9 @@ impl PluginManager {
         } else {
             Err(anyhow::anyhow!("Plugin '{}' not found", plugin_name))
         }
+    }
+    
+    pub fn get_plugin_count(&self) -> usize {
+        self.plugins.len()
     }
 }

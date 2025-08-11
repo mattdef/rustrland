@@ -1,13 +1,17 @@
 [package]
 name = "rustrland"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Rustrland Contributors"]
 license = "MIT"
 description = "A Rust implementation of Pyprland for Hyprland - Fast, reliable plugin system"
-repository = "https://github.com/rustrland/rustrland"
+repository = "https://github.com/mattdef/rustrland"
 keywords = ["hyprland", "wayland", "plugins", "window-manager"]
 categories = ["command-line-utilities", "os::unix-apis"]
+
+[lib]
+name = "rustrland"
+path = "src/lib.rs"
 
 [[bin]]
 name = "rustrland"
