@@ -1,0 +1,56 @@
+# Example configuration with expose plugin
+[rustrland]
+plugins = ["scratchpads", "expose"]
+
+[rustrland.variables]
+term_classed = "foot --app-id"
+editor = "code"
+
+# Scratchpads configuration
+[scratchpads.term]
+animation = "fromTop"
+command = "[term_classed] main-dropterm"
+class = "main-dropterm"
+size = "75% 60%"
+
+[scratchpads.browser]
+animation = "fromTop"
+command = "firefox"
+class = "firefox"
+size = "90% 80%"
+
+[scratchpads.filemanager]
+animation = "fromLeft"
+command = "thunar"
+class = "thunar"
+size = "60% 70%"
+
+# Expose configuration
+[expose]
+# Grid layout - auto-calculated if not specified
+columns = 4
+rows = 2
+
+# Padding between windows in pixels (default: 20)
+padding = 30
+
+# Include floating windows (default: true)
+include_floating = true
+
+# Include minimized windows (default: false)
+include_minimized = false
+
+# Only show windows from current workspace (default: false)
+current_workspace_only = false
+
+# Scale factor for window previews (default: 0.2)
+scale = 0.25
+
+# Show window titles (default: true)
+show_titles = true
+
+# Background color during expose (default: "#000000AA")
+background_color = "#1e1e2eaa"
+
+# Highlight color for focused window (default: "#FF6600")
+highlight_color = "#74c7ec"

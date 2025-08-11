@@ -1,0 +1,33 @@
+# Rustrland Configuration Example
+# Compatible with Pyprland syntax
+
+[pyprland]
+plugins = [
+    "scratchpads",
+    # "magnify",
+    # "expose", 
+    # "workspaces_follow_focus",
+]
+
+[pyprland.variables]
+term_classed = "kitty --class"
+
+# Scratchpads configuration
+[scratchpads.term]
+animation = "fromTop"
+command = "[term_classed] main-dropterm"
+class = "main-dropterm"
+size = "75% 60%"
+max_size = "1920px 100%"
+
+[scratchpads.filemanager]
+animation = "fromRight"
+command = "thunar"
+class = "thunar"
+size = "50% 80%"
+
+[scratchpads.music]
+animation = "fromBottom"
+command = "spotify"
+class = "Spotify"
+size = "90% 85%"

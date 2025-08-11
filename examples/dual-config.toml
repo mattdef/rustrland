@@ -1,0 +1,42 @@
+# Example configuration showing both formats coexisting
+# Rustrland will merge both sections, with rustrland taking precedence
+
+[pyprland]
+plugins = ["scratchpads"]
+
+[pyprland.variables]
+term_classed = "kitty --class"  # This will be overridden by rustrland.variables
+browser_cmd = "firefox"
+
+[rustrland]
+plugins = ["scratchpads"]  # Merged with pyprland.plugins (no duplicates)
+
+[rustrland.variables]
+term_classed = "foot --app-id"  # This overrides pyprland.variables.term_classed
+file_manager = "thunar"         # Additional variable only in rustrland
+
+# Scratchpads configuration
+[scratchpads.term]
+animation = "fromTop"
+command = "[term_classed] main-dropterm"  # Uses foot --app-id (from rustrland)
+class = "main-dropterm"
+size = "75% 60%"
+
+[scratchpads.browser]
+animation = "fromTop"
+command = "[browser_cmd]"  # Uses firefox (from pyprland, not overridden)
+class = "firefox"
+size = "80% 70%"
+
+[scratchpads.filemanager]
+animation = "fromRight"
+command = "[file_manager]"  # Uses thunar (from rustrland)
+class = "thunar"
+size = "50% 80%"
+
+# Result of this config:
+# - Plugins: ["scratchpads"] (merged, no duplicates)
+# - Variables: 
+#   - term_classed = "foot --app-id" (rustrland overrides pyprland)
+#   - browser_cmd = "firefox" (from pyprland)
+#   - file_manager = "thunar" (from rustrland only)

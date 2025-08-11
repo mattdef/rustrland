@@ -1,0 +1,40 @@
+# Example configuration with workspaces_follow_focus plugin
+[rustrland]
+plugins = ["scratchpads", "expose", "workspaces_follow_focus"]
+
+[rustrland.variables]
+term_classed = "foot --app-id"
+editor = "code"
+
+# Scratchpads configuration
+[scratchpads.term]
+animation = "fromTop"
+command = "[term_classed] main-dropterm"
+class = "main-dropterm"
+size = "75% 60%"
+
+[scratchpads.browser]
+animation = "fromTop"
+command = "firefox"
+class = "firefox"
+size = "90% 80%"
+
+# Expose configuration
+[expose]
+padding = 20
+scale = 0.2
+show_titles = true
+
+# Workspaces Follow Focus configuration
+[workspaces_follow_focus]
+# Auto-switch workspace when focusing a window on different monitor (default: true)
+follow_window_focus = true
+
+# Auto-move workspaces to focused monitor (default: true)  
+follow_workspace_request = true
+
+# Allow switching to workspaces on other monitors (default: true)
+allow_cross_monitor_switch = true
+
+# Log workspace switching events for debugging (default: false)
+debug_logging = false

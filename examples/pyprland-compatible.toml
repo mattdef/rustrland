@@ -1,0 +1,41 @@
+# Example configuration using legacy Pyprland format
+# This maintains full compatibility with existing Pyprland configurations
+
+[pyprland]
+plugins = [
+    "scratchpads",
+    # "magnify",
+    # "expose", 
+    # "workspaces_follow_focus",
+]
+
+[pyprland.variables]
+term_classed = "foot --app-id"
+browser_cmd = "firefox"
+file_manager = "thunar"
+
+# Scratchpads configuration (same as Pyprland)
+[scratchpads.term]
+animation = "fromTop"
+command = "[term_classed] main-dropterm"
+class = "main-dropterm"
+size = "75% 60%"
+max_size = "1920px 100%"
+
+[scratchpads.browser]
+animation = "fromTop"
+command = "[browser_cmd]"
+class = "firefox"
+size = "80% 70%"
+
+[scratchpads.filemanager]
+animation = "fromRight"
+command = "[file_manager]"
+class = "thunar"
+size = "50% 80%"
+
+[scratchpads.music]
+animation = "fromBottom"
+command = "spotify"
+class = "Spotify"
+size = "90% 85%"
