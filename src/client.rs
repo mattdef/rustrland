@@ -43,6 +43,15 @@ enum Commands {
         #[arg()]
         arg: Option<String>,
     },
+    /// Magnify/zoom controls
+    Magnify {
+        /// Magnify command (toggle, set, in, out, reset, status)
+        #[arg()]
+        action: String,
+        /// Optional argument (zoom level, delta, etc.)
+        #[arg()]
+        arg: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -56,6 +65,7 @@ async fn main() -> Result<()> {
         Commands::Status => ClientMessage::Status,
         Commands::List => ClientMessage::List,
         Commands::Workspace { action, arg } => ClientMessage::WorkspaceAction { action, arg },
+        Commands::Magnify { action, arg } => ClientMessage::MagnifyAction { action, arg },
     };
     
     match send_command(message).await {

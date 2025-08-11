@@ -11,6 +11,8 @@ pub enum ClientMessage {
     ExposeAction { action: String },
     /// Workspace management action
     WorkspaceAction { action: String, arg: Option<String> },
+    /// Magnify/zoom action
+    MagnifyAction { action: String, arg: Option<String> },
     /// Reload configuration
     Reload,
     /// Get daemon status
@@ -66,6 +68,16 @@ impl ClientMessage {
                     })
                 } else {
                     Err("Workspace command requires action".to_string())
+                }
+            }
+            "magnify" => {
+                if let Some(action) = args.first() {
+                    Ok(ClientMessage::MagnifyAction { 
+                        action: action.clone(),
+                        arg: args.get(1).cloned(),
+                    })
+                } else {
+                    Err("Magnify command requires action".to_string())
                 }
             }
             "reload" => Ok(ClientMessage::Reload),

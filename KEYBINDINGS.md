@@ -35,6 +35,12 @@ bind = SUPER, 4, exec, rustr workspace switch 4
 bind = SUPER, Right, exec, rustr workspace change +1
 bind = SUPER, Left, exec, rustr workspace change -- -1
 
+# Magnify/zoom controls - Super + Plus/Minus
+bind = SUPER, equal, exec, rustr magnify toggle    # Super + = (toggle zoom)
+bind = SUPER, plus, exec, rustr magnify in         # Super + + (zoom in)
+bind = SUPER, minus, exec, rustr magnify out       # Super + - (zoom out)
+bind = SUPER, 0, exec, rustr magnify reset         # Super + 0 (reset zoom)
+
 # List all scratchpads - Super + L
 bind = SUPER, L, exec, rustr list
 
@@ -122,6 +128,38 @@ bind = SUPER, F4, exec, rustr workspace switch 4
 - **Cross-Monitor Switch**: Automatically moves workspaces to focused monitor
 - **Multi-Monitor Aware**: Tracks workspace locations across monitors
 - **Seamless Navigation**: Switch between workspaces on different monitors effortlessly
+
+## Magnify (Zoom) Keybindings
+
+The magnify plugin provides smooth viewport zooming functionality:
+
+```bash
+# Basic zoom controls (recommended)
+bind = SUPER, equal, exec, rustr magnify toggle    # Super + = (toggle zoom)
+bind = SUPER, plus, exec, rustr magnify in         # Super + + (zoom in)
+bind = SUPER, minus, exec, rustr magnify out       # Super + - (zoom out)
+bind = SUPER, 0, exec, rustr magnify reset         # Super + 0 (reset to 1.0x)
+
+# Advanced zoom controls
+bind = SUPER_SHIFT, equal, exec, rustr magnify set 2.5   # Set specific zoom
+bind = SUPER_SHIFT, plus, exec, rustr magnify change +1.0  # Large zoom in
+bind = SUPER_SHIFT, minus, exec, rustr magnify change -1.0 # Large zoom out
+
+# Alternative zoom keybindings (scroll-like)
+bind = SUPER_CTRL, Up, exec, rustr magnify in       # Ctrl+Super+Up (zoom in)
+bind = SUPER_CTRL, Down, exec, rustr magnify out    # Ctrl+Super+Down (zoom out)
+bind = SUPER_CTRL, Home, exec, rustr magnify reset  # Ctrl+Super+Home (reset)
+
+# Mouse wheel zoom (if using hyprctl bind)
+bind = SUPER, mouse_up, exec, rustr magnify in     # Super + Scroll up
+bind = SUPER, mouse_down, exec, rustr magnify out  # Super + Scroll down
+```
+
+**Key Features:**
+- **Smooth Animation**: Configurable animation duration and easing
+- **External Tool Support**: Automatically detects hypr-zoom tool
+- **Boundary Protection**: Prevents zoom beyond configured min/max range
+- **Multiple Zoom Modes**: Toggle, absolute, and relative zoom controls
 
 ## Quick Installation
 

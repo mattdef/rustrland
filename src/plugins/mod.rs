@@ -6,6 +6,7 @@ use crate::ipc::HyprlandEvent;
 pub mod scratchpads;
 pub mod expose;
 pub mod workspaces_follow_focus;
+pub mod magnify;
 
 #[async_trait]
 pub trait Plugin: Send + Sync {

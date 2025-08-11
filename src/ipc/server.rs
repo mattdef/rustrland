@@ -133,6 +133,17 @@ impl IpcServer {
                 }
             }
             
+            ClientMessage::MagnifyAction { action, arg } => {
+                debug!("🔍 Processing magnify action: {} {:?}", action, arg);
+                let mut pm = plugin_manager.lock().await;
+                
+                let args: Vec<&str> = arg.as_ref().map(|s| vec![s.as_str()]).unwrap_or_default();
+                match pm.handle_command("magnify", &action, &args).await {
+                    Ok(result) => DaemonResponse::Success { message: result },
+                    Err(e) => DaemonResponse::Error { message: e.to_string() },
+                }
+            }
+            
             ClientMessage::Reload => {
                 debug!("⚡ Processing reload command");
                 // TODO: Implement config reload

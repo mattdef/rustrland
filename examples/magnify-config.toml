@@ -1,0 +1,61 @@
+# Example configuration with magnify plugin
+[rustrland]
+plugins = ["scratchpads", "expose", "workspaces_follow_focus", "magnify"]
+
+[rustrland.variables]
+term_classed = "foot --app-id"
+editor = "code"
+
+# Scratchpads configuration
+[scratchpads.term]
+animation = "fromTop"
+command = "[term_classed] main-dropterm"
+class = "main-dropterm"
+size = "75% 60%"
+
+[scratchpads.browser]
+animation = "fromTop"
+command = "firefox"
+class = "firefox"
+size = "90% 80%"
+
+# Expose configuration
+[expose]
+padding = 20
+scale = 0.2
+show_titles = true
+
+# Workspaces Follow Focus configuration
+[workspaces_follow_focus]
+follow_window_focus = true
+allow_cross_monitor_switch = true
+debug_logging = false
+
+# Magnify configuration
+[magnify]
+# Default zoom factor when toggling (default: 2.0)
+factor = 2.0
+
+# Animation duration in milliseconds (default: 300)
+duration = 400
+
+# Number of animation steps (default: 30)
+steps = 40
+
+# Enable smooth animations (default: true)
+smooth_animation = true
+
+# Use external hypr-zoom tool if available (default: true)
+use_external_tool = true
+
+# Minimum zoom level (default: 1.0)
+min_zoom = 1.0
+
+# Maximum zoom level (default: 5.0)
+max_zoom = 4.0
+
+# Zoom increment for relative changes (default: 0.5)
+increment = 0.3
+
+# Easing function for animations: linear, ease-in, ease-out, ease-in-out (default: ease-in-out)
+easing = "ease-out"

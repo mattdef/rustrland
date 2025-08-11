@@ -145,15 +145,15 @@ See `KEYBINDINGS.md` for complete setup guide and alternative key schemes.
 - **Scratchpad System**: Complete scratchpad functionality with toggle, spawn, and positioning
 - **Expose Plugin**: Mission Control-style window overview with grid layout, navigation, and selection
 - **Workspaces Follow Focus**: Multi-monitor workspace management with cross-monitor switching
+- **Magnify Plugin**: Viewport zooming with smooth animations and external tool support
 - **Multi-Application Support**: Works with terminals (foot), browsers (Firefox), file managers (Thunar)  
 - **Variable Expansion**: Configuration variable substitution (e.g., `[term_classed]` → `foot --app-id`)
 - **Window Management**: Window detection, positioning, and special workspace integration
 - **IPC Communication**: Full client-daemon architecture with Unix sockets and JSON protocol
-- **Command Interface**: Complete CLI with toggle, list, status, expose, workspace commands
+- **Command Interface**: Complete CLI with toggle, list, status, expose, workspace, magnify commands
 - **Keyboard Integration**: Full keybinding support with installation scripts
 
 ### 🚧 Planned Features
-- **magnify**: Window zoom functionality  
 - **Animation support**: Implement animation configs (fromTop, fromRight, etc.)
 
 ## Development Notes
