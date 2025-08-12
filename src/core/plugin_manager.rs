@@ -10,15 +10,18 @@ use crate::plugins::workspaces_follow_focus::WorkspacesFollowFocusPlugin;
 use crate::plugins::magnify::MagnifyPlugin;
 use crate::config::Config;
 use crate::ipc::{HyprlandEvent, HyprlandClient};
+use crate::core::global_cache::GlobalStateCache;
 
 pub struct PluginManager {
     plugins: HashMap<String, PluginBox>,
+    global_cache: Arc<GlobalStateCache>,
 }
 
 impl PluginManager {
     pub fn new() -> Self {
         Self {
             plugins: HashMap::new(),
+            global_cache: Arc::new(GlobalStateCache::new()),
         }
     }
     
@@ -61,10 +64,14 @@ impl PluginManager {
             }
         };
         
-        // Get plugin-specific config
+        // Get plugin-specific config and wrap in Arc
         let plugin_config = config.plugins.get(plugin_name)
             .cloned()
             .unwrap_or(toml::Value::Table(toml::map::Map::new()));
+        let plugin_config_arc = Arc::new(plugin_config.clone());
+        
+        // Store config in global cache for sharing
+        self.global_cache.store_config(plugin_name.to_string(), plugin_config_arc.clone()).await;
         
         // For scratchpads, we need to pass both the plugin config and global variables
         if plugin_name == "scratchpads" {
@@ -84,7 +91,14 @@ impl PluginManager {
                 .unwrap_or(toml::Value::Table(toml::map::Map::new()));
             combined_config.insert("variables".to_string(), variables_value);
             
+            // Store variables in global cache
+            self.global_cache.store_variables(merged_variables).await;
+            
             let combined = toml::Value::Table(combined_config);
+            let combined_arc = Arc::new(combined.clone());
+            
+            // Store combined config in cache and initialize
+            self.global_cache.store_config(format!("{}_combined", plugin_name), combined_arc.clone()).await;
             plugin.init(&combined).await?;
         } else {
             // Initialize plugin normally
@@ -115,6 +129,10 @@ impl PluginManager {
     
     pub fn get_plugin_count(&self) -> usize {
         self.plugins.len()
+    }
+    
+    pub fn get_global_cache(&self) -> Arc<GlobalStateCache> {
+        Arc::clone(&self.global_cache)
     }
 }
 

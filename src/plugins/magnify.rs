@@ -9,7 +9,10 @@ use std::process::Command;
 use crate::plugins::Plugin;
 use crate::ipc::{HyprlandEvent, HyprlandClient};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+// Arc-optimized configuration type
+pub type MagnifyConfigRef = Arc<MagnifyConfig>;
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct MagnifyConfig {
     /// Default zoom factor when toggling (default: 2.0)
     #[serde(default = "default_factor")]

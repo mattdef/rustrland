@@ -1,0 +1,54 @@
+# Enhanced Workspaces Follow Focus Configuration
+# This showcases all the new features added to the workspaces_follow_focus plugin
+
+[rustrland]
+plugins = ["workspaces_follow_focus"]
+
+# Enhanced Workspaces Follow Focus Plugin
+[workspaces_follow_focus]
+# Basic functionality (from original implementation)
+follow_window_focus = true
+follow_workspace_request = true
+allow_cross_monitor_switch = true
+
+# NEW FEATURE 1: Urgent workspace support
+# Automatically switch to workspaces when windows become urgent
+follow_urgent_windows = true
+
+# NEW FEATURE 2: Workspace to fixed monitor rules
+# Lock specific workspaces to specific monitors
+[workspaces_follow_focus.workspace_rules]
+"1" = "DP-1"      # Workspace 1 always on DP-1 monitor
+"2" = "HDMI-1"    # Workspace 2 always on HDMI-1 monitor
+"3" = "DP-2"      # Workspace 3 always on DP-2 monitor
+"9" = "DP-1"      # Workspace 9 back to DP-1
+"10" = "HDMI-1"   # Workspace 10 on HDMI-1
+
+# NEW FEATURE 3: Transition animations
+# Enable smooth animations when switching workspaces
+enable_animations = true
+animation_duration = 250  # milliseconds
+animation_easing = "ease-out"  # Animation curve
+
+# Performance tuning
+workspace_switching_delay = 100  # ms debouncing to prevent rapid switching
+
+# Debugging (useful for troubleshooting)
+debug_logging = false
+
+# Example multi-monitor setup comments:
+# This configuration is ideal for a 3-monitor setup:
+# - DP-1: Primary monitor (workspaces 1, 9)
+# - HDMI-1: Secondary monitor (workspaces 2, 10) 
+# - DP-2: Tertiary monitor (workspace 3)
+# 
+# With urgent window support:
+# - If a window on any workspace becomes urgent, you'll automatically switch to it
+# 
+# With animations enabled:
+# - Smooth transitions between workspaces instead of instant switching
+# - Customizable duration and easing
+# 
+# With workspace rules:
+# - Workspace 1 will ALWAYS be on DP-1, even if you try to move it
+# - Same for other configured workspaces
