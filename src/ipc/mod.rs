@@ -1,7 +1,7 @@
 use anyhow::Result;
 use hyprland::event_listener::EventListener;
 use hyprland::shared::HyprData;
-use hyprland::data::{Client, Clients};
+use hyprland::data::{Client, Clients, Monitor, Monitors};
 use hyprland::dispatch::{Dispatch, DispatchType};
 use tracing::{info, debug, warn};
 use std::sync::Arc;
@@ -19,6 +19,8 @@ pub enum HyprlandEvent {
     WindowOpened { window: String },
     WindowClosed { window: String },
     WindowMoved { window: String },
+    WindowFocusChanged { window: String },
+    MonitorChanged { monitor: String },
     Other(String),
 }
 
@@ -248,6 +250,103 @@ impl HyprlandClient {
         
         Err(anyhow::anyhow!("Window not found: {}", address))
     }
+    
+    /// Get monitors information
+    pub async fn get_monitors(&self) -> Result<Vec<Monitor>> {
+        debug!("🖥️ Getting monitors information");
+        
+        let monitors = tokio::task::spawn_blocking(move || {
+            Monitors::get()
+        }).await??;
+        
+        use hyprland::shared::HyprDataVec;
+        Ok(monitors.to_vec())
+    }
+    
+    /// Find windows by class name
+    pub async fn find_windows_by_class(&self, class: &str) -> Result<Vec<Client>> {
+        debug!("🔍 Finding windows with class: {}", class);
+        
+        let target_class = class.to_string();
+        let clients = tokio::task::spawn_blocking(move || {
+            Clients::get()
+        }).await??;
+        
+        let matching_windows: Vec<Client> = clients.into_iter()
+            .filter(|client| client.class == target_class)
+            .collect();
+        
+        debug!("Found {} windows with class '{}'", matching_windows.len(), class);
+        Ok(matching_windows)
+    }
+    
+    /// Get window information by address
+    pub async fn get_window_info(&self, address: &str) -> Result<Client> {
+        debug!("🔍 Getting window info for: {}", address);
+        
+        let target_address = address.to_string();
+        let clients = tokio::task::spawn_blocking(move || {
+            Clients::get()
+        }).await??;
+        
+        for client in clients {
+            if client.address.to_string() == target_address {
+                return Ok(client);
+            }
+        }
+        
+        Err(anyhow::anyhow!("Window not found: {}", address))
+    }
+    
+    /// Show a window
+    pub async fn show_window(&self, address: &str) -> Result<()> {
+        debug!("👁️ Showing window: {}", address);
+        
+        let address = address.to_string();
+        tokio::task::spawn_blocking(move || {
+            std::process::Command::new("hyprctl")
+                .arg("dispatch")
+                .arg("movetoworkspace")
+                .arg("e+0")
+                .arg(format!("address:{}", address))
+                .output()
+        }).await??;
+        
+        Ok(())
+    }
+    
+    /// Hide a window
+    pub async fn hide_window(&self, address: &str) -> Result<()> {
+        debug!("🙈 Hiding window: {}", address);
+        
+        let address = address.to_string();
+        tokio::task::spawn_blocking(move || {
+            std::process::Command::new("hyprctl")
+                .arg("dispatch")
+                .arg("movetoworkspace")
+                .arg("special:hidden")
+                .arg(format!("address:{}", address))
+                .output()
+        }).await??;
+        
+        Ok(())
+    }
+    
+    /// Close a window
+    pub async fn close_window(&self, address: &str) -> Result<()> {
+        debug!("❌ Closing window: {}", address);
+        
+        let address = address.to_string();
+        tokio::task::spawn_blocking(move || {
+            std::process::Command::new("hyprctl")
+                .arg("dispatch")
+                .arg("closewindow")
+                .arg(format!("address:{}", address))
+                .output()
+        }).await??;
+        
+        Ok(())
+    }
 }
 
 /// Window properties for animations
@@ -258,4 +357,16 @@ pub struct WindowProperties {
     pub width: i32,
     pub height: i32,
     pub workspace: String,
+}
+
+/// Monitor information for multi-monitor support
+#[derive(Debug, Clone)]
+pub struct MonitorInfo {
+    pub name: String,
+    pub width: i32,
+    pub height: i32,
+    pub x: i32,
+    pub y: i32,
+    pub scale: f32,
+    pub is_focused: bool,
 }

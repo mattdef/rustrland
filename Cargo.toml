@@ -57,6 +57,12 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.8"
+criterion = { version = "0.5", features = ["html_reports"] }
+futures = "0.3"
+
+[[bench]]
+name = "scratchpads_bench"
+harness = false
 
 [profile.release]
 lto = true
