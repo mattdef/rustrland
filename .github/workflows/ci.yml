@@ -1,0 +1,245 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Run cargo check
+        run: cargo check --all-targets --all-features
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+          - beta
+          - 1.70.0  # MSRV (Minimum Supported Rust Version)
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install ${{ matrix.rust }} toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          key: ${{ matrix.rust }}
+
+      - name: Run cargo test
+        run: cargo test --all-features --workspace
+        env:
+          RUST_BACKTRACE: 1
+
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Run cargo clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  build:
+    name: Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [stable]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install ${{ matrix.rust }} toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          key: ${{ matrix.os }}-${{ matrix.rust }}
+
+      - name: Build
+        run: cargo build --release --all-features
+
+      - name: Build binaries
+        run: |
+          cargo build --release --bin rustrland
+          cargo build --release --bin rustr
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Run cargo audit
+        run: cargo audit
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Generate code coverage
+        run: cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: cobertura.xml
+          fail_ci_if_error: false
+
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Check documentation
+        run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  performance:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Run benchmarks
+        run: cargo bench --no-run  # Just compile benchmarks for now
+
+  release-check:
+    name: Release Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [check, test, fmt, clippy, build, security, documentation]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Verify release build
+        run: |
+          cargo build --release
+          cargo test --release
+
+      - name: Check if this is a release commit
+        id: check_release
+        run: |
+          if git log -1 --pretty=format:"%s" | grep -q "^feat: Release v"; then
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create release artifacts
+        if: steps.check_release.outputs.is_release == 'true'
+        run: |
+          mkdir -p artifacts
+          cargo build --release
+          cp target/release/rustrland artifacts/
+          cp target/release/rustr artifacts/
+          tar -czf artifacts/rustrland-linux-x86_64.tar.gz -C artifacts rustrland rustr
