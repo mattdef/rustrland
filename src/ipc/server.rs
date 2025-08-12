@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::ipc::protocol::{ClientMessage, DaemonResponse, get_socket_path};
 use crate::core::plugin_manager::PluginManager;
+use crate::core::hot_reload::HotReloadable;
 
 pub struct IpcServer {
     plugin_manager: Arc<Mutex<PluginManager>>,
@@ -146,9 +147,11 @@ impl IpcServer {
             
             ClientMessage::Reload => {
                 debug!("⚡ Processing reload command");
-                // TODO: Implement config reload
-                DaemonResponse::Error { 
-                    message: "Reload functionality not yet implemented".to_string() 
+                let mut pm = plugin_manager.lock().await;
+                
+                match Self::handle_manual_reload(&mut pm).await {
+                    Ok(message) => DaemonResponse::Success { message },
+                    Err(e) => DaemonResponse::Error { message: e.to_string() },
                 }
             }
             
@@ -187,6 +190,86 @@ impl IpcServer {
                     Err(e) => DaemonResponse::Error { message: e.to_string() },
                 }
             }
+        }
+    }
+    
+    /// Handle manual reload request
+    async fn handle_manual_reload(
+        plugin_manager: &mut PluginManager,
+    ) -> Result<String> {
+        info!("🔄 Manual reload requested");
+        
+        // Find config file path (simplified - in real implementation would use the daemon's config path)
+        let config_path = std::env::var("HOME")
+            .map(|home| format!("{}/.config/hypr/rustrland.toml", home))
+            .unwrap_or_else(|_| "rustrland.toml".to_string());
+            
+        // Read and parse new configuration
+        let config_content = tokio::fs::read_to_string(&config_path).await
+            .map_err(|e| anyhow::anyhow!("Failed to read config file '{}': {}", config_path, e))?;
+            
+        let config_value: toml::Value = toml::from_str(&config_content)
+            .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
+            
+        let new_config = crate::config::Config::from_toml_value(config_value)
+            .map_err(|e| anyhow::anyhow!("Invalid configuration: {}", e))?;
+        
+        // Get current plugins for comparison
+        let current_plugins = plugin_manager.get_loaded_plugins();
+        let new_plugins = new_config.get_plugins();
+        
+        info!("🔍 Comparing configurations:");
+        info!("   Current plugins: {:?}", current_plugins);
+        info!("   New plugins: {:?}", new_plugins);
+        
+        // Perform smart reload
+        let mut reloaded = Vec::new();
+        let mut added = Vec::new();
+        let mut removed = Vec::new();
+        
+        // Find removed plugins
+        for plugin in &current_plugins {
+            if !new_plugins.contains(plugin) {
+                        plugin_manager.unload_plugin(plugin).await?;
+                removed.push(plugin.clone());
+            }
+        }
+        
+        // Find added plugins
+        for plugin in &new_plugins {
+            if !current_plugins.contains(plugin) {
+                plugin_manager.load_plugin(plugin, &new_config).await?;
+                added.push(plugin.clone());
+            }
+        }
+        
+        // Reload existing plugins (simplified - doesn't check if config actually changed)
+        for plugin in &new_plugins {
+            if current_plugins.contains(plugin) {
+                plugin_manager.reload_plugin(plugin, &new_config).await?;
+                reloaded.push(plugin.clone());
+            }
+        }
+        
+        // Build result message
+        let mut messages = Vec::new();
+        
+        if !removed.is_empty() {
+            messages.push(format!("🗑️ Removed: {}", removed.join(", ")));
+        }
+        
+        if !added.is_empty() {
+            messages.push(format!("➕ Added: {}", added.join(", ")));
+        }
+        
+        if !reloaded.is_empty() {
+            messages.push(format!("🔄 Reloaded: {}", reloaded.join(", ")));
+        }
+        
+        if messages.is_empty() {
+            Ok("✅ Configuration up-to-date, no changes needed".to_string())
+        } else {
+            Ok(format!("✅ Reload complete: {}", messages.join("; ")))
         }
     }
 }

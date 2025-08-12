@@ -1,7 +1,5 @@
 <div align="center">
 
-# 🦀 Rustrland
-
 <img src="docs/logo/rustrland_logo.png" alt="Rustrland Logo" width="200">
 
 **A fast, reliable Rust implementation of Pyprland for Hyprland**
@@ -15,7 +13,7 @@
 ## Features
 
 - **⚡ Fast**: Written in Rust for maximum performance
-- **🔒 Reliable**: Memory-safe with comprehensive error handling  
+- **🔒 Reliable**: Memory-safe with comprehensive error handling
 - **🧩 Plugin-based**: Modular architecture with hot-reload support
 - **🔄 Compatible**: Drop-in replacement for Pyprland configurations
 - **📦 Easy deployment**: Single binary, no Python dependencies
@@ -37,6 +35,7 @@ Rustrland supports both legacy Pyprland format and native Rustrland format.
 Create `~/.config/hypr/rustrland.toml` using either format:
 
 **Pyprland-Compatible:**
+
 ```toml
 [pyprland]
 plugins = ["scratchpads"]
@@ -52,6 +51,7 @@ animation = "fromTop"
 ```
 
 **Native Rustrland:**
+
 ```toml
 [rustrland]
 plugins = ["scratchpads", "expose", "workspaces_follow_focus", "magnify"]
@@ -113,7 +113,7 @@ rustr status            # Check daemon status
 Add to your `~/.config/hypr/hyprland.conf` for keyboard access:
 
 ```bash
-bind = SUPER, grave, exec, rustr toggle term     # Super + ` 
+bind = SUPER, grave, exec, rustr toggle term     # Super + `
 bind = SUPER, B, exec, rustr toggle browser      # Super + B
 bind = SUPER, F, exec, rustr toggle filemanager  # Super + F
 bind = SUPER, TAB, exec, rustr expose             # Super + Tab (Mission Control)

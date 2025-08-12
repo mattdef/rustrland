@@ -1,0 +1,222 @@
+# Advanced Animation Configuration for Rustrland
+# This demonstrates the superior animation system compared to Pyprland
+
+[rustrland]
+plugins = ["scratchpads", "expose", "workspaces_follow_focus", "magnify"]
+
+[rustrland.variables]
+term_classed = "foot --app-id"
+browser_cmd = "firefox"
+editor_cmd = "code"
+
+# ========================================
+# BASIC DIRECTIONAL ANIMATIONS (like Pyprland but better)
+# ========================================
+
+[scratchpads.term]
+command = "[term_classed] main-dropterm"
+class = "main-dropterm"
+size = "75% 60%"
+animation = "fromTop"
+animation_config = { duration = 250, easing = "ease-out", offset = "20px" }
+
+[scratchpads.browser]
+command = "[browser_cmd]"
+class = "firefox"
+size = "90% 80%"
+animation = "fromBottom"
+animation_config = { duration = 300, easing = "ease-in-out", offset = "100%" }
+
+[scratchpads.filemanager]
+command = "thunar"
+class = "Thunar"
+size = "80% 70%"
+animation = "fromLeft"
+animation_config = { duration = 350, easing = "ease-out-back", offset = "50%" }
+
+[scratchpads.editor]
+command = "[editor_cmd]"
+class = "code"
+size = "95% 85%"
+animation = "fromRight"
+animation_config = { duration = 280, easing = "ease-in-out-cubic", offset = "75%" }
+
+# ========================================
+# ADVANCED PHYSICS-BASED ANIMATIONS
+# ========================================
+
+[scratchpads.calculator]
+command = "gnome-calculator"
+class = "gnome-calculator"
+size = "30% 40%"
+animation = "spring"
+animation_config = { 
+    duration = 400, 
+    easing = "spring",
+    spring = { stiffness = 400.0, damping = 25.0, mass = 1.0 },
+    offset = "100%"
+}
+
+[scratchpads.notes]
+command = "obsidian"
+class = "obsidian"
+size = "70% 80%"
+animation = "bounce"
+animation_config = { 
+    duration = 500,
+    easing = "ease-out-bounce",
+    offset = "150%",
+    target_fps = 60
+}
+
+[scratchpads.music]
+command = "spotify"
+class = "Spotify"
+size = "60% 50%"
+animation = "elastic"
+animation_config = { 
+    duration = 600,
+    easing = "ease-out-elastic",
+    offset = "200px",
+    hardware_accelerated = true
+}
+
+# ========================================
+# MULTI-PROPERTY ANIMATIONS
+# ========================================
+
+[scratchpads.chat]
+command = "discord"
+class = "discord"
+size = "50% 70%"
+animation = "complex"
+animation_config = { 
+    duration = 350,
+    properties = [
+        { property = "x", from = "100%", to = "25%", easing = "ease-out" },
+        { property = "y", from = "-100%", to = "15%", easing = "ease-in-out" },
+        { property = "opacity", from = "0.0", to = "1.0", easing = "ease-in" },
+        { property = "scale", from = "0.8", to = "1.0", easing = "ease-out-back" }
+    ]
+}
+
+[scratchpads.terminal_advanced]
+command = "kitty --class kitty-advanced"
+class = "kitty-advanced"
+size = "80% 60%"
+animation = "sequence"
+animation_config = {
+    sequence = [
+        { animation_type = "fade", duration = 100, opacity_from = 0.0, delay = 0 },
+        { animation_type = "fromTop", duration = 200, easing = "ease-out", offset = "50px", delay = 50 },
+        { animation_type = "scale", duration = 150, scale_from = 0.95, easing = "ease-out-back", delay = 150 }
+    ]
+}
+
+# ========================================
+# CUSTOM CUBIC BEZIER ANIMATIONS
+# ========================================
+
+[scratchpads.designer]
+command = "gimp"
+class = "Gimp"
+size = "85% 90%"
+animation = "custom"
+animation_config = { 
+    duration = 320,
+    easing = "cubic-bezier(0.68, -0.55, 0.265, 1.55)",  # Custom curve with overshoot
+    animation_type = "fromLeft",
+    offset = "100%"
+}
+
+[scratchpads.video]
+command = "vlc"
+class = "vlc"
+size = "70% 60%"
+animation = "custom"
+animation_config = {
+    duration = 280,
+    easing = "cubic-bezier(0.25, 0.46, 0.45, 0.94)",  # Professional ease curve
+    animation_type = "fromBottom",
+    offset = "80%",
+    target_fps = 120  # Smooth for video apps
+}
+
+# ========================================
+# PERFORMANCE-OPTIMIZED ANIMATIONS
+# ========================================
+
+[scratchpads.heavy_app]
+command = "blender"
+class = "Blender"
+size = "95% 95%"
+animation = "optimized"
+animation_config = {
+    duration = 200,  # Shorter for heavy apps
+    easing = "ease-out",
+    animation_type = "fade",
+    opacity_from = 0.0,
+    target_fps = 30,  # Lower FPS for heavy apps
+    hardware_accelerated = true
+}
+
+# ========================================
+# DIRECTIONAL VARIANTS
+# ========================================
+
+[scratchpads.corner_tl]
+command = "htop"
+class = "htop"
+size = "40% 30%"
+animation = "fromTopLeft"
+animation_config = { duration = 250, easing = "ease-out", offset = "50px" }
+
+[scratchpads.corner_br]
+command = "nvtop"  
+class = "nvtop"
+size = "40% 30%"
+animation = "fromBottomRight"
+animation_config = { duration = 250, easing = "ease-out", offset = "50px" }
+
+# ========================================
+# CONDITIONAL/ADAPTIVE ANIMATIONS
+# ========================================
+
+[scratchpads.adaptive]
+command = "firefox --new-instance --class firefox-popup"
+class = "firefox-popup"
+size = "60% 50%"
+animation = "adaptive"
+animation_config = {
+    duration = 300,
+    # Animation adapts based on system performance
+    easing = "ease-out",
+    animation_type = "fromTop",
+    offset = "100px",
+    target_fps = 60,
+    # Fallback to simpler animation if performance is poor
+    fallback = { animation_type = "fade", duration = 150 }
+}
+
+# ========================================
+# GLOBAL ANIMATION SETTINGS
+# ========================================
+
+[animation_settings]
+# Global performance monitoring
+enable_performance_monitoring = true
+adaptive_quality = true
+max_concurrent_animations = 5
+frame_time_budget_ms = 16  # 60fps target
+
+# Global fallbacks for low performance
+performance_fallback = {
+    duration_multiplier = 0.5,  # Make animations 50% faster if lagging
+    disable_complex_easing = true,
+    max_fps = 30
+}
+
+# Debug options
+debug_animations = false
+show_animation_bounds = false
+log_performance_stats = false

@@ -110,6 +110,12 @@ impl Config {
     pub fn uses_pyprland_config(&self) -> bool {
         self.pyprland.is_some()
     }
+    
+    /// Create config from TOML value (for hot reload)
+    pub fn from_toml_value(value: toml::Value) -> Result<Self> {
+        let config: Config = value.try_into()?;
+        Ok(config)
+    }
 }
 
 impl Default for Config {
@@ -122,5 +128,41 @@ impl Default for Config {
             rustrland: None,
             plugins: HashMap::new(),
         }
+    }
+}
+
+// Implementation of ConfigExt trait for Config
+impl super::core::hot_reload::ConfigExt for Config {
+    fn get_plugin_names(&self) -> Vec<String> {
+        let mut plugin_names = Vec::new();
+        
+        // Get plugins from pyprland config
+        if let Some(pyprland) = &self.pyprland {
+            plugin_names.extend_from_slice(&pyprland.plugins);
+        }
+        
+        // Get plugins from rustrland config (takes precedence)
+        if let Some(rustrland) = &self.rustrland {
+            for plugin in &rustrland.plugins {
+                if !plugin_names.contains(plugin) {
+                    plugin_names.push(plugin.clone());
+                }
+            }
+        }
+        
+        plugin_names
+    }
+    
+    fn get_plugin_config(&self, plugin_name: &str) -> Result<toml::Value> {
+        if let Some(config) = self.plugins.get(plugin_name) {
+            Ok(config.clone())
+        } else {
+            Ok(toml::Value::Table(toml::Table::new()))
+        }
+    }
+    
+    fn from_toml_value(value: toml::Value) -> Result<Self> {
+        let config: Config = value.try_into()?;
+        Ok(config)
     }
 }

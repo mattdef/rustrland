@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::plugins::Plugin;
 use crate::ipc::{HyprlandEvent, HyprlandClient};
+use crate::animation::{AnimationConfig, window_animator::WindowAnimator};
 
 #[derive(Debug, Clone)]
 pub struct ScratchpadConfig {
@@ -14,6 +15,10 @@ pub struct ScratchpadConfig {
     pub class: String,
     pub size: String,
     pub animation: Option<String>,
+    pub animation_config: Option<AnimationConfig>,
+    pub margin: Option<i32>,
+    pub offset: Option<String>,
+    pub hide_delay: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +43,7 @@ pub struct ScratchpadsPlugin {
     states: HashMap<String, ScratchpadState>,
     hyprland_client: Arc<Mutex<Option<Arc<HyprlandClient>>>>,
     variables: HashMap<String, String>,
+    window_animator: Arc<Mutex<WindowAnimator>>,
 }
 
 impl ScratchpadsPlugin {
@@ -47,6 +53,7 @@ impl ScratchpadsPlugin {
             states: HashMap::new(),
             hyprland_client: Arc::new(Mutex::new(None)),
             variables: HashMap::new(),
+            window_animator: Arc::new(Mutex::new(WindowAnimator::new())),
         }
     }
     
@@ -232,6 +239,10 @@ impl Plugin for ScratchpadsPlugin {
                         class,
                         size,
                         animation,
+                        animation_config: None,
+                        margin: None,
+                        offset: None,
+                        hide_delay: None,
                     };
                     
                     self.scratchpads.insert(name.clone(), config);

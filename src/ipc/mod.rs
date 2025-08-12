@@ -168,4 +168,94 @@ impl HyprlandClient {
         
         Ok(())
     }
+    
+    /// Move window to specific position (for animations)
+    pub async fn move_window(&self, address: &str, x: i32, y: i32) -> Result<()> {
+        debug!("📍 Moving window {} to position ({}, {})", address, x, y);
+        
+        // Use hyprctl to move window  
+        let address = address.to_string();
+        
+        tokio::task::spawn_blocking(move || {
+            std::process::Command::new("hyprctl")
+                .arg("dispatch")
+                .arg("movewindow")
+                .arg(format!("address:{}", address))
+                .arg(format!("{} {}", x, y))
+                .output()
+        }).await??;
+        
+        Ok(())
+    }
+    
+    /// Resize window to specific size (for animations)
+    pub async fn resize_window(&self, address: &str, width: i32, height: i32) -> Result<()> {
+        debug!("📏 Resizing window {} to size ({}x{})", address, width, height);
+        
+        let address = address.to_string();
+        
+        tokio::task::spawn_blocking(move || {
+            std::process::Command::new("hyprctl")
+                .arg("dispatch")
+                .arg("resizewindow")
+                .arg(format!("address:{}", address))
+                .arg(format!("{} {}", width, height))
+                .output()
+        }).await??;
+        
+        Ok(())
+    }
+    
+    /// Set window opacity (for fade animations)
+    pub async fn set_window_opacity(&self, address: &str, opacity: f32) -> Result<()> {
+        debug!("🌟 Setting window {} opacity to {}", address, opacity);
+        
+        let address = address.to_string();
+        let opacity_value = (opacity * 255.0) as u8;
+        
+        tokio::task::spawn_blocking(move || {
+            std::process::Command::new("hyprctl")
+                .arg("dispatch")
+                .arg("setprop")
+                .arg(format!("address:{}", address))
+                .arg("alpha")
+                .arg(format!("{}", opacity_value))
+                .output()
+        }).await??;
+        
+        Ok(())
+    }
+    
+    /// Get window properties for animation calculations
+    pub async fn get_window_properties(&self, address: &str) -> Result<WindowProperties> {
+        debug!("🔍 Getting properties for window {}", address);
+        
+        let clients = tokio::task::spawn_blocking(move || {
+            Clients::get()
+        }).await??;
+        
+        for client in clients.iter() {
+            if client.address.to_string() == address {
+                return Ok(WindowProperties {
+                    x: client.at.0 as i32,
+                    y: client.at.1 as i32,
+                    width: client.size.0 as i32,
+                    height: client.size.1 as i32,
+                    workspace: client.workspace.id.to_string(),
+                });
+            }
+        }
+        
+        Err(anyhow::anyhow!("Window not found: {}", address))
+    }
+}
+
+/// Window properties for animations
+#[derive(Debug, Clone)]
+pub struct WindowProperties {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub workspace: String,
 }
