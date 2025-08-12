@@ -3,19 +3,19 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{info, debug, warn, error};
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::ipc::protocol::{ClientMessage, DaemonResponse, get_socket_path};
 use crate::core::plugin_manager::PluginManager;
 use crate::core::hot_reload::HotReloadable;
 
 pub struct IpcServer {
-    plugin_manager: Arc<Mutex<PluginManager>>,
+    plugin_manager: Arc<RwLock<PluginManager>>,
     start_time: std::time::Instant,
 }
 
 impl IpcServer {
-    pub fn new(plugin_manager: Arc<Mutex<PluginManager>>) -> Self {
+    pub fn new(plugin_manager: Arc<RwLock<PluginManager>>) -> Self {
         Self {
             plugin_manager,
             start_time: std::time::Instant::now(),
@@ -54,19 +54,30 @@ impl IpcServer {
     
     async fn handle_client(
         mut stream: UnixStream,
-        plugin_manager: Arc<Mutex<PluginManager>>,
+        plugin_manager: Arc<RwLock<PluginManager>>,
         start_time: std::time::Instant,
     ) -> Result<()> {
+        use tokio::time::{timeout, Duration};
+        
+        const CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
+        
         debug!("📞 New client connection");
         
-        // Read message length first (4 bytes)
+        // Read message length first (4 bytes) with timeout
         let mut len_buf = [0u8; 4];
-        stream.read_exact(&mut len_buf).await?;
+        timeout(CLIENT_TIMEOUT, stream.read_exact(&mut len_buf)).await
+            .map_err(|_| anyhow::anyhow!("Client read timeout after {:?} while waiting for message length", CLIENT_TIMEOUT))??;
         let msg_len = u32::from_le_bytes(len_buf) as usize;
         
-        // Read the actual message
+        // Validate message length to prevent DoS
+        if msg_len > 1024 * 1024 {  // 1MB limit
+            return Err(anyhow::anyhow!("Message too large: {} bytes", msg_len));
+        }
+        
+        // Read the actual message with timeout
         let mut msg_buf = vec![0u8; msg_len];
-        stream.read_exact(&mut msg_buf).await?;
+        timeout(CLIENT_TIMEOUT, stream.read_exact(&mut msg_buf)).await
+            .map_err(|_| anyhow::anyhow!("Client read timeout after {:?} while waiting for message data", CLIENT_TIMEOUT))??;
         
         // Deserialize the message
         let message: ClientMessage = serde_json::from_slice(&msg_buf)?;
@@ -89,13 +100,13 @@ impl IpcServer {
     
     async fn process_message(
         message: ClientMessage,
-        plugin_manager: Arc<Mutex<PluginManager>>,
+        plugin_manager: Arc<RwLock<PluginManager>>,
         start_time: std::time::Instant,
     ) -> DaemonResponse {
         match message {
             ClientMessage::Toggle { scratchpad } => {
                 debug!("🔄 Processing toggle for scratchpad: {}", scratchpad);
-                let mut pm = plugin_manager.lock().await;
+                let mut pm = plugin_manager.write().await;
                 
                 match pm.handle_command("scratchpads", "toggle", &[&scratchpad]).await {
                     Ok(result) => DaemonResponse::Success { message: result },
@@ -105,7 +116,7 @@ impl IpcServer {
             
             ClientMessage::Expose => {
                 debug!("🪟 Processing expose command");
-                let mut pm = plugin_manager.lock().await;
+                let mut pm = plugin_manager.write().await;
                 
                 match pm.handle_command("expose", "toggle", &[]).await {
                     Ok(result) => DaemonResponse::Success { message: result },
@@ -115,7 +126,7 @@ impl IpcServer {
             
             ClientMessage::ExposeAction { action } => {
                 debug!("🪟 Processing expose action: {}", action);
-                let mut pm = plugin_manager.lock().await;
+                let mut pm = plugin_manager.write().await;
                 
                 match pm.handle_command("expose", &action, &[]).await {
                     Ok(result) => DaemonResponse::Success { message: result },
@@ -125,7 +136,7 @@ impl IpcServer {
             
             ClientMessage::WorkspaceAction { action, arg } => {
                 debug!("🏢 Processing workspace action: {} {:?}", action, arg);
-                let mut pm = plugin_manager.lock().await;
+                let mut pm = plugin_manager.write().await;
                 
                 let args: Vec<&str> = arg.as_ref().map(|s| vec![s.as_str()]).unwrap_or_default();
                 match pm.handle_command("workspaces_follow_focus", &action, &args).await {
@@ -136,7 +147,7 @@ impl IpcServer {
             
             ClientMessage::MagnifyAction { action, arg } => {
                 debug!("🔍 Processing magnify action: {} {:?}", action, arg);
-                let mut pm = plugin_manager.lock().await;
+                let mut pm = plugin_manager.write().await;
                 
                 let args: Vec<&str> = arg.as_ref().map(|s| vec![s.as_str()]).unwrap_or_default();
                 match pm.handle_command("magnify", &action, &args).await {
@@ -147,7 +158,7 @@ impl IpcServer {
             
             ClientMessage::Reload => {
                 debug!("⚡ Processing reload command");
-                let mut pm = plugin_manager.lock().await;
+                let mut pm = plugin_manager.write().await;
                 
                 match Self::handle_manual_reload(&mut pm).await {
                     Ok(message) => DaemonResponse::Success { message },
@@ -159,7 +170,7 @@ impl IpcServer {
                 debug!("📊 Processing status command");
                 let uptime = start_time.elapsed().as_secs();
                 let plugins_loaded = {
-                    let pm = plugin_manager.lock().await;
+                    let pm = plugin_manager.read().await;
                     pm.get_plugin_count()
                 };
                 
@@ -172,7 +183,7 @@ impl IpcServer {
             
             ClientMessage::List => {
                 debug!("📋 Processing list command");
-                let mut pm = plugin_manager.lock().await;
+                let mut pm = plugin_manager.write().await;
                 
                 match pm.handle_command("scratchpads", "list", &[]).await {
                     Ok(result) => {

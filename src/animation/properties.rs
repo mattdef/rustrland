@@ -119,7 +119,7 @@ impl PropertyValue {
     }
     
     /// Create from string value with unit parsing
-    pub fn from_string(value: &str) -> Result<PropertyValue, String> {
+    pub fn from_string(value: &str) -> anyhow::Result<PropertyValue> {
         let value = value.trim();
         
         // Parse pixels
@@ -142,21 +142,21 @@ impl PropertyValue {
         if value.starts_with("rgb(") && value.ends_with(')') {
             return Color::from_rgb_string(value)
                 .map(PropertyValue::Color)
-                .map_err(|e| format!("Invalid RGB color: {}", e));
+                .map_err(|e| anyhow::anyhow!("Invalid RGB color: {}", e));
         }
         
         // Parse RGBA color
         if value.starts_with("rgba(") && value.ends_with(')') {
             return Color::from_rgba_string(value)
                 .map(PropertyValue::Color)
-                .map_err(|e| format!("Invalid RGBA color: {}", e));
+                .map_err(|e| anyhow::anyhow!("Invalid RGBA color: {}", e));
         }
         
         // Parse hex color
         if value.starts_with('#') {
             return Color::from_hex_string(value)
                 .map(PropertyValue::Color)
-                .map_err(|e| format!("Invalid hex color: {}", e));
+                .map_err(|e| anyhow::anyhow!("Invalid hex color: {}", e));
         }
         
         // Parse float
@@ -164,7 +164,7 @@ impl PropertyValue {
             return Ok(PropertyValue::Float(float_val));
         }
         
-        Err(format!("Cannot parse property value: {}", value))
+        Err(anyhow::anyhow!("Cannot parse property value: {}", value))
     }
 }
 
@@ -189,17 +189,17 @@ impl Color {
     }
     
     /// Parse RGB color from string like "rgb(255, 128, 0)"
-    pub fn from_rgb_string(rgb_str: &str) -> Result<Color, String> {
+    pub fn from_rgb_string(rgb_str: &str) -> anyhow::Result<Color> {
         let inner = rgb_str.trim_start_matches("rgb(").trim_end_matches(')');
         let parts: Vec<&str> = inner.split(',').map(|s| s.trim()).collect();
         
         if parts.len() != 3 {
-            return Err("RGB color must have 3 components".to_string());
+            return Err(anyhow::anyhow!("RGB color must have 3 components"));
         }
         
-        let r = parts[0].parse::<u8>().map_err(|_| "Invalid red component")?;
-        let g = parts[1].parse::<u8>().map_err(|_| "Invalid green component")?;
-        let b = parts[2].parse::<u8>().map_err(|_| "Invalid blue component")?;
+        let r = parts[0].parse::<u8>().map_err(|_| anyhow::anyhow!("Invalid red component"))?;
+        let g = parts[1].parse::<u8>().map_err(|_| anyhow::anyhow!("Invalid green component"))?;
+        let b = parts[2].parse::<u8>().map_err(|_| anyhow::anyhow!("Invalid blue component"))?;
         
         Ok(Color::new(
             r as f32 / 255.0,
@@ -210,18 +210,18 @@ impl Color {
     }
     
     /// Parse RGBA color from string like "rgba(255, 128, 0, 0.5)"
-    pub fn from_rgba_string(rgba_str: &str) -> Result<Color, String> {
+    pub fn from_rgba_string(rgba_str: &str) -> anyhow::Result<Color> {
         let inner = rgba_str.trim_start_matches("rgba(").trim_end_matches(')');
         let parts: Vec<&str> = inner.split(',').map(|s| s.trim()).collect();
         
         if parts.len() != 4 {
-            return Err("RGBA color must have 4 components".to_string());
+            return Err(anyhow::anyhow!("RGBA color must have 4 components"));
         }
         
-        let r = parts[0].parse::<u8>().map_err(|_| "Invalid red component")?;
-        let g = parts[1].parse::<u8>().map_err(|_| "Invalid green component")?;
-        let b = parts[2].parse::<u8>().map_err(|_| "Invalid blue component")?;
-        let a = parts[3].parse::<f32>().map_err(|_| "Invalid alpha component")?;
+        let r = parts[0].parse::<u8>().map_err(|_| anyhow::anyhow!("Invalid red component"))?;
+        let g = parts[1].parse::<u8>().map_err(|_| anyhow::anyhow!("Invalid green component"))?;
+        let b = parts[2].parse::<u8>().map_err(|_| anyhow::anyhow!("Invalid blue component"))?;
+        let a = parts[3].parse::<f32>().map_err(|_| anyhow::anyhow!("Invalid alpha component"))?;
         
         Ok(Color::new(
             r as f32 / 255.0,
@@ -232,14 +232,14 @@ impl Color {
     }
     
     /// Parse hex color from string like "#FF8000" or "#FF8000AA"
-    pub fn from_hex_string(hex_str: &str) -> Result<Color, String> {
+    pub fn from_hex_string(hex_str: &str) -> anyhow::Result<Color> {
         let hex = hex_str.trim_start_matches('#');
         
         match hex.len() {
             6 => {
-                let r = u8::from_str_radix(&hex[0..2], 16).map_err(|_| "Invalid hex color")?;
-                let g = u8::from_str_radix(&hex[2..4], 16).map_err(|_| "Invalid hex color")?;
-                let b = u8::from_str_radix(&hex[4..6], 16).map_err(|_| "Invalid hex color")?;
+                let r = u8::from_str_radix(&hex[0..2], 16).map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
+                let g = u8::from_str_radix(&hex[2..4], 16).map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
+                let b = u8::from_str_radix(&hex[4..6], 16).map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
                 
                 Ok(Color::new(
                     r as f32 / 255.0,
@@ -249,10 +249,10 @@ impl Color {
                 ))
             }
             8 => {
-                let r = u8::from_str_radix(&hex[0..2], 16).map_err(|_| "Invalid hex color")?;
-                let g = u8::from_str_radix(&hex[2..4], 16).map_err(|_| "Invalid hex color")?;
-                let b = u8::from_str_radix(&hex[4..6], 16).map_err(|_| "Invalid hex color")?;
-                let a = u8::from_str_radix(&hex[6..8], 16).map_err(|_| "Invalid hex color")?;
+                let r = u8::from_str_radix(&hex[0..2], 16).map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
+                let g = u8::from_str_radix(&hex[2..4], 16).map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
+                let b = u8::from_str_radix(&hex[4..6], 16).map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
+                let a = u8::from_str_radix(&hex[6..8], 16).map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
                 
                 Ok(Color::new(
                     r as f32 / 255.0,
@@ -261,7 +261,7 @@ impl Color {
                     a as f32 / 255.0,
                 ))
             }
-            _ => Err("Hex color must be 6 or 8 characters".to_string()),
+            _ => Err(anyhow::anyhow!("Hex color must be 6 or 8 characters")),
         }
     }
     

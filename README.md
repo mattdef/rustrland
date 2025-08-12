@@ -568,6 +568,22 @@ rustrland/
 | hot_reload              | 🔧 Available           | v0.3.0+ | Framework  | File watching, state preservation, hot plugin reload                                                         |
 | animation               | 🔧 Available           | v0.3.0+ | 16 tests   | Timeline system, 16+ easing functions, property interpolation                                                |
 
+## What's New in v0.3.1 🔧
+
+### 🚀 **Performance & Reliability Improvements**
+
+- **Eliminated Critical `.unwrap()` Calls**: Replaced dangerous `.unwrap()` usage with proper error handling to prevent daemon crashes
+- **Added Comprehensive IPC Timeouts**: All socket operations now have timeouts to prevent indefinite blocking when Hyprland becomes unresponsive
+- **Optimized Concurrent Access**: Replaced `Mutex` with `RwLock` for shared plugin state, enabling concurrent read operations
+- **Enhanced Error Handling**: Standardized error handling using `anyhow::Result` throughout the codebase
+- **Improved Connection Recovery**: Added retry logic with exponential backoff for IPC operations
+
+### 🛡️ **Reliability Features**
+- **Timeout Protection**: 10s client timeouts, 5s Hyprland API timeouts, 30s server client handling
+- **DoS Protection**: Message size validation (1MB limit) to prevent memory exhaustion
+- **Graceful Degradation**: Descriptive error messages instead of crashes
+- **Better Concurrency**: Multiple status queries can now run in parallel
+
 ## What's New in v0.3.0 🎉
 
 ### 🎯 **Enhanced Expose Plugin - Complete Rewrite**

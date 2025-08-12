@@ -3,7 +3,7 @@ use tracing::{info, error, warn};
 use tokio::signal;
 use std::time::Duration;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::config::Config;
 use crate::ipc::{HyprlandClient, server::IpcServer};
@@ -13,7 +13,7 @@ use crate::core::event_handler::EventHandler;
 pub struct Daemon {
     config: Config,
     hyprland_client: HyprlandClient,
-    plugin_manager: Arc<Mutex<PluginManager>>,
+    plugin_manager: Arc<RwLock<PluginManager>>,
     event_handler: EventHandler,
 }
 
@@ -28,7 +28,7 @@ impl Daemon {
         info!("🔧 Initializing plugin manager");
         let mut plugin_manager = PluginManager::new();
         plugin_manager.load_plugins(&config, Arc::new(hyprland_client.clone())).await?;
-        let plugin_manager = Arc::new(Mutex::new(plugin_manager));
+        let plugin_manager = Arc::new(RwLock::new(plugin_manager));
         
         info!("📡 Setting up event handler");
         let event_handler = EventHandler::new();
@@ -72,7 +72,7 @@ impl Daemon {
                 event_result = self.hyprland_client.get_next_event() => {
                     match event_result {
                         Ok(event) => {
-                            let mut pm = self.plugin_manager.lock().await;
+                            let mut pm = self.plugin_manager.write().await;
                             if let Err(e) = self.event_handler.handle_event(&event, &mut pm).await {
                                 warn!("⚠️  Error handling event: {}", e);
                             }

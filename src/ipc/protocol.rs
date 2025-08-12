@@ -40,7 +40,7 @@ pub enum DaemonResponse {
 
 impl ClientMessage {
     /// Parse command line arguments into a ClientMessage
-    pub fn from_args(command: &str, args: &[String]) -> Result<Self, String> {
+    pub fn from_args(command: &str, args: &[String]) -> anyhow::Result<Self> {
         match command {
             "toggle" => {
                 if let Some(scratchpad) = args.first() {
@@ -48,7 +48,7 @@ impl ClientMessage {
                         scratchpad: scratchpad.clone() 
                     })
                 } else {
-                    Err("Toggle command requires scratchpad name".to_string())
+                    Err(anyhow::anyhow!("Toggle command requires scratchpad name"))
                 }
             }
             "expose" => {
@@ -56,7 +56,9 @@ impl ClientMessage {
                     Ok(ClientMessage::Expose)
                 } else {
                     Ok(ClientMessage::ExposeAction { 
-                        action: args.first().unwrap().clone()
+                        action: args.first()
+                            .ok_or_else(|| anyhow::anyhow!("Missing expose action"))?
+                            .clone()
                     })
                 }
             }
@@ -67,7 +69,7 @@ impl ClientMessage {
                         arg: args.get(1).cloned(),
                     })
                 } else {
-                    Err("Workspace command requires action".to_string())
+                    Err(anyhow::anyhow!("Workspace command requires action"))
                 }
             }
             "magnify" => {
@@ -77,13 +79,13 @@ impl ClientMessage {
                         arg: args.get(1).cloned(),
                     })
                 } else {
-                    Err("Magnify command requires action".to_string())
+                    Err(anyhow::anyhow!("Magnify command requires action"))
                 }
             }
             "reload" => Ok(ClientMessage::Reload),
             "status" => Ok(ClientMessage::Status),
             "list" => Ok(ClientMessage::List),
-            _ => Err(format!("Unknown command: {}", command))
+            _ => Err(anyhow::anyhow!("Unknown command: {}", command))
         }
     }
 }

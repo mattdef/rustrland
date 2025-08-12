@@ -6,6 +6,7 @@ use hyprland::dispatch::{Dispatch, DispatchType};
 use tracing::{info, debug, warn};
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc};
+use tokio::time::{timeout, Duration};
 
 pub mod protocol;
 pub mod server;
@@ -13,6 +14,24 @@ pub mod enhanced_client;
 
 pub use protocol::{ClientMessage, DaemonResponse};
 pub use enhanced_client::{EnhancedHyprlandClient, WindowGeometry, ConnectionStats};
+
+/// Timeout duration for Hyprland API calls
+const HYPRLAND_API_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Execute a blocking Hyprland API call with timeout
+async fn with_hyprland_timeout<T, F>(operation: F) -> Result<T>
+where
+    F: FnOnce() -> Result<T, hyprland::shared::HyprError> + Send + 'static,
+    T: Send + 'static,
+{
+    timeout(
+        HYPRLAND_API_TIMEOUT,
+        tokio::task::spawn_blocking(operation)
+    ).await
+        .map_err(|_| anyhow::anyhow!("Hyprland API call timeout after {:?}", HYPRLAND_API_TIMEOUT))?
+        .map_err(|e| anyhow::anyhow!("Failed to spawn Hyprland task: {}", e))?
+        .map_err(|e| anyhow::anyhow!("Hyprland API error: {}", e))
+}
 
 // Define a basic event type for now
 #[derive(Debug, Clone)]
@@ -42,9 +61,8 @@ impl HyprlandClient {
     pub async fn test_connection(&self) -> Result<()> {
         debug!("🧪 Testing Hyprland connection");
         
-        // Test basic connectivity
-        let _monitors = hyprland::data::Monitors::get()
-            .map_err(|e| anyhow::anyhow!("Failed to connect to Hyprland: {}", e))?;
+        // Test basic connectivity with timeout
+        let _monitors = with_hyprland_timeout(|| hyprland::data::Monitors::get()).await?;
         
         info!("✅ Hyprland connection test successful");
         Ok(())
@@ -98,9 +116,7 @@ impl HyprlandClient {
     pub async fn find_window_by_class(&self, class: &str) -> Result<Option<Client>> {
         debug!("🔍 Looking for window with class: {}", class);
         
-        let clients = tokio::task::spawn_blocking(move || {
-            Clients::get()
-        }).await??;
+        let clients = with_hyprland_timeout(|| Clients::get()).await?;
         
         for client in clients.iter() {
             if client.class == class {
@@ -234,9 +250,7 @@ impl HyprlandClient {
     pub async fn get_window_properties(&self, address: &str) -> Result<WindowProperties> {
         debug!("🔍 Getting properties for window {}", address);
         
-        let clients = tokio::task::spawn_blocking(move || {
-            Clients::get()
-        }).await??;
+        let clients = with_hyprland_timeout(|| Clients::get()).await?;
         
         for client in clients.iter() {
             if client.address.to_string() == address {
@@ -257,9 +271,7 @@ impl HyprlandClient {
     pub async fn get_monitors(&self) -> Result<Vec<Monitor>> {
         debug!("🖥️ Getting monitors information");
         
-        let monitors = tokio::task::spawn_blocking(move || {
-            Monitors::get()
-        }).await??;
+        let monitors = with_hyprland_timeout(|| Monitors::get()).await?;
         
         use hyprland::shared::HyprDataVec;
         Ok(monitors.to_vec())
@@ -270,9 +282,7 @@ impl HyprlandClient {
         debug!("🔍 Finding windows with class: {}", class);
         
         let target_class = class.to_string();
-        let clients = tokio::task::spawn_blocking(move || {
-            Clients::get()
-        }).await??;
+        let clients = with_hyprland_timeout(|| Clients::get()).await?;
         
         let matching_windows: Vec<Client> = clients.into_iter()
             .filter(|client| client.class == target_class)

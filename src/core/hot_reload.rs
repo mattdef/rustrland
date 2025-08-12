@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{broadcast, RwLock};
 use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 use tracing::{debug, info, warn, error};
 
@@ -57,14 +57,14 @@ pub struct HotReloadManager {
     watcher: Option<RecommendedWatcher>,
     event_sender: broadcast::Sender<ReloadEvent>,
     event_receiver: broadcast::Receiver<ReloadEvent>,
-    plugin_manager: Arc<Mutex<PluginManager>>,
+    plugin_manager: Arc<RwLock<PluginManager>>,
     last_reload: Option<Instant>,
     backup_configs: HashMap<PathBuf, String>,
     plugin_states: HashMap<String, serde_json::Value>,
 }
 
 impl HotReloadManager {
-    pub fn new(plugin_manager: Arc<Mutex<PluginManager>>) -> Self {
+    pub fn new(plugin_manager: Arc<RwLock<PluginManager>>) -> Self {
         let (sender, receiver) = broadcast::channel(100);
         
         Self {
@@ -207,7 +207,7 @@ impl HotReloadManager {
 
     /// Handle configuration file change
     async fn handle_config_change(
-        plugin_manager: &Arc<Mutex<PluginManager>>,
+        plugin_manager: &Arc<RwLock<PluginManager>>,
         config_path: &Path,
         config: &HotReloadConfig,
         event_sender: &broadcast::Sender<ReloadEvent>,
@@ -235,7 +235,7 @@ impl HotReloadManager {
 
         // Apply new configuration
         {
-            let mut pm = plugin_manager.lock().await;
+            let mut pm = plugin_manager.write().await;
             
             if config.partial_reload {
                 // Compare configs and only reload changed plugins
@@ -258,9 +258,9 @@ impl HotReloadManager {
 
     /// Capture current plugin states for preservation
     async fn capture_plugin_states(
-        plugin_manager: &Arc<Mutex<PluginManager>>,
+        plugin_manager: &Arc<RwLock<PluginManager>>,
     ) -> Result<HashMap<String, serde_json::Value>> {
-        let pm = plugin_manager.lock().await;
+        let pm = plugin_manager.read().await;
         let mut states = HashMap::new();
         
         // Get state from each plugin

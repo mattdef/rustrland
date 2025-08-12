@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use tokio::net::UnixStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::{warn, error};
 
 // Import the IPC protocol from the library
 use rustrland::ipc::{ClientMessage, DaemonResponse, protocol::get_socket_path};
@@ -81,25 +82,68 @@ async fn main() -> Result<()> {
 }
 
 async fn send_command(message: ClientMessage) -> Result<DaemonResponse> {
+    use tokio::time::{timeout, Duration, sleep};
+    
+    const IPC_TIMEOUT: Duration = Duration::from_secs(10);
+    const MAX_RETRIES: u32 = 3;
+    const RETRY_DELAY: Duration = Duration::from_millis(100);
+    
+    let mut last_error = None;
+    
+    // Retry loop with exponential backoff
+    for attempt in 1..=MAX_RETRIES {
+        match send_command_once(&message, IPC_TIMEOUT).await {
+            Ok(response) => return Ok(response),
+            Err(e) => {
+                last_error = Some(e);
+                
+                // Check if this is a recoverable error
+                if attempt < MAX_RETRIES {
+                    let delay = RETRY_DELAY * attempt;
+                    warn!("Command failed on attempt {}, retrying in {:?}: {}", attempt, delay, last_error.as_ref().unwrap());
+                    sleep(delay).await;
+                } else {
+                    error!("Command failed after {} attempts", MAX_RETRIES);
+                }
+            }
+        }
+    }
+    
+    Err(last_error.unwrap())
+}
+
+async fn send_command_once(message: &ClientMessage, timeout_duration: tokio::time::Duration) -> Result<DaemonResponse> {
+    use tokio::time::timeout;
+    
     let socket_path = get_socket_path();
-    let mut stream = UnixStream::connect(&socket_path).await?;
+    let mut stream = timeout(timeout_duration, UnixStream::connect(&socket_path)).await
+        .map_err(|_| anyhow::anyhow!("Connection timeout after {:?}", timeout_duration))??;
     
     // Serialize the message
     let message_data = serde_json::to_vec(&message)?;
     
-    // Send message length + message
+    // Send message length + message with timeout
     let msg_len = (message_data.len() as u32).to_le_bytes();
-    stream.write_all(&msg_len).await?;
-    stream.write_all(&message_data).await?;
+    timeout(timeout_duration, stream.write_all(&msg_len)).await
+        .map_err(|_| anyhow::anyhow!("Write timeout after {:?}", timeout_duration))??;
+    timeout(timeout_duration, stream.write_all(&message_data)).await
+        .map_err(|_| anyhow::anyhow!("Write timeout after {:?}", timeout_duration))??;
     
-    // Read response length
+    // Read response length with timeout
     let mut len_buf = [0u8; 4];
-    stream.read_exact(&mut len_buf).await?;
+    timeout(timeout_duration, stream.read_exact(&mut len_buf)).await
+        .map_err(|_| anyhow::anyhow!("Read timeout while waiting for response length after {:?}", timeout_duration))??;
     let response_len = u32::from_le_bytes(len_buf) as usize;
     
-    // Read response
+    // Validate response length to prevent DoS
+    if response_len > 1024 * 1024 {  // 1MB limit
+        return Err(anyhow::anyhow!("Response too large: {} bytes", response_len));
+    }
+    
+    // Read response with timeout
     let mut response_buf = vec![0u8; response_len];
-    stream.read_exact(&mut response_buf).await?;
+    timeout(timeout_duration, stream.read_exact(&mut response_buf)).await
+        .map_err(|_| anyhow::anyhow!("Read timeout while waiting for response data after {:?}", timeout_duration))??;
     
     // Deserialize response
     let response: DaemonResponse = serde_json::from_slice(&response_buf)?;

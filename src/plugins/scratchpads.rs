@@ -840,7 +840,9 @@ impl ScratchpadsPlugin {
         let window = if config.multi_window {
             self.get_or_create_window(name, config, windows).await?
         } else {
-            windows.first().unwrap().clone()
+            windows.first()
+                .ok_or_else(|| anyhow::anyhow!("No windows found for scratchpad '{}'", name))?
+                .clone()
         };
         
         // Apply geometry

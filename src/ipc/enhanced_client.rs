@@ -12,6 +12,24 @@ use serde_json::Value;
 
 use super::HyprlandEvent;
 
+/// Timeout duration for Hyprland API calls
+const HYPRLAND_API_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Execute a blocking Hyprland API call with timeout
+async fn with_hyprland_timeout<T, F>(operation: F) -> Result<T>
+where
+    F: FnOnce() -> Result<T, hyprland::shared::HyprError> + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::time::timeout(
+        HYPRLAND_API_TIMEOUT,
+        tokio::task::spawn_blocking(operation)
+    ).await
+        .map_err(|_| anyhow::anyhow!("Hyprland API call timeout after {:?}", HYPRLAND_API_TIMEOUT))?
+        .map_err(|e| anyhow::anyhow!("Failed to spawn Hyprland task: {}", e))?
+        .map_err(|e| anyhow::anyhow!("Hyprland API error: {}", e))
+}
+
 /// Enhanced Hyprland client with robust connection management
 pub struct EnhancedHyprlandClient {
     event_sender: Arc<Mutex<Option<mpsc::Sender<HyprlandEvent>>>>,
@@ -107,9 +125,7 @@ impl EnhancedHyprlandClient {
             .ok_or_else(|| anyhow::anyhow!("HYPRLAND_INSTANCE_SIGNATURE not set"))?;
         
         // Test basic connectivity
-        let _monitors = tokio::task::spawn_blocking(|| {
-            Monitors::get()
-        }).await??;
+        let _monitors = with_hyprland_timeout(|| Monitors::get()).await?;
         
         // Update connection state
         {
@@ -245,9 +261,7 @@ impl EnhancedHyprlandClient {
         debug!("📐 Getting geometry for window: {}", window_address);
         
         let address = window_address.to_string();
-        let clients = tokio::task::spawn_blocking(|| {
-            Clients::get()
-        }).await??;
+        let clients = with_hyprland_timeout(|| Clients::get()).await?;
         
         // Find the specific window
         for client in clients.iter() {
@@ -272,9 +286,7 @@ impl EnhancedHyprlandClient {
         debug!("📐 Getting geometries for {} windows", addresses.len());
         
         let address_set: std::collections::HashSet<String> = addresses.iter().cloned().collect();
-        let clients = tokio::task::spawn_blocking(|| {
-            Clients::get()
-        }).await??;
+        let clients = with_hyprland_timeout(|| Clients::get()).await?;
         
         let mut geometries = HashMap::new();
         

@@ -44,7 +44,9 @@ impl Timeline {
     pub fn with_keyframes(duration: Duration, keyframes: Vec<Keyframe>) -> Self {
         let mut timeline = Self::new(duration);
         timeline.keyframes = keyframes;
-        timeline.keyframes.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
+        timeline.keyframes.sort_by(|a, b| {
+            a.time.partial_cmp(&b.time).unwrap_or(std::cmp::Ordering::Equal)
+        });
         timeline
     }
     
@@ -110,8 +112,10 @@ impl Timeline {
             return self.keyframes[0].value;
         }
         
-        if progress >= self.keyframes.last().unwrap().time {
-            return self.keyframes.last().unwrap().value;
+        if let Some(last_keyframe) = self.keyframes.last() {
+            if progress >= last_keyframe.time {
+                return last_keyframe.value;
+            }
         }
         
         // Find the two keyframes to interpolate between
@@ -148,7 +152,9 @@ impl Timeline {
         };
         
         self.keyframes.push(keyframe);
-        self.keyframes.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
+        self.keyframes.sort_by(|a, b| {
+            a.time.partial_cmp(&b.time).unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
     
     /// Remove keyframe at specific time
