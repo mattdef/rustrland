@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, RwLock};
 use tokio_stream::{wrappers::BroadcastStream, StreamExt};
-use tracing::{debug, info, warn, error};
+use tracing::{debug, error, info, warn};
 
 use crate::config::Config as RustrlandConfig;
 use crate::core::plugin_manager::PluginManager;
@@ -66,7 +66,7 @@ pub struct HotReloadManager {
 impl HotReloadManager {
     pub fn new(plugin_manager: Arc<RwLock<PluginManager>>) -> Self {
         let (sender, receiver) = broadcast::channel(100);
-        
+
         Self {
             config: HotReloadConfig::default(),
             config_paths: Vec::new(),
@@ -81,7 +81,11 @@ impl HotReloadManager {
     }
 
     /// Start hot reload with configuration
-    pub async fn start(&mut self, config_paths: Vec<PathBuf>, config: HotReloadConfig) -> Result<()> {
+    pub async fn start(
+        &mut self,
+        config_paths: Vec<PathBuf>,
+        config: HotReloadConfig,
+    ) -> Result<()> {
         info!("🔥 Starting hot reload manager");
         self.config = config;
         self.config_paths = config_paths.clone();
@@ -93,24 +97,25 @@ impl HotReloadManager {
         // Start event processing loop
         self.start_event_loop().await;
 
-        info!("✅ Hot reload manager started, watching {} paths", config_paths.len());
+        info!(
+            "✅ Hot reload manager started, watching {} paths",
+            config_paths.len()
+        );
         Ok(())
     }
 
     /// Start file system watcher
     async fn start_file_watcher(&mut self) -> Result<()> {
         let (tx, rx) = std::sync::mpsc::channel();
-        
+
         let mut watcher = RecommendedWatcher::new(
-            move |res: Result<Event, notify::Error>| {
-                match res {
-                    Ok(event) => {
-                        if let Err(e) = tx.send(event) {
-                            error!("Failed to send file watch event: {}", e);
-                        }
+            move |res: Result<Event, notify::Error>| match res {
+                Ok(event) => {
+                    if let Err(e) = tx.send(event) {
+                        error!("Failed to send file watch event: {}", e);
                     }
-                    Err(e) => error!("File watch error: {}", e),
                 }
+                Err(e) => error!("File watch error: {}", e),
             },
             Config::default().with_poll_interval(Duration::from_millis(100)),
         )?;
@@ -131,10 +136,10 @@ impl HotReloadManager {
         let event_sender = self.event_sender.clone();
         let debounce_duration = Duration::from_millis(self.config.debounce_ms);
         let config_paths = self.config_paths.clone();
-        
+
         tokio::spawn(async move {
             let mut last_event_time: Option<Instant> = None;
-            
+
             loop {
                 if let Ok(event) = rx.try_recv() {
                     if let EventKind::Modify(_) = event.kind {
@@ -142,24 +147,24 @@ impl HotReloadManager {
                         for path in event.paths {
                             if config_paths.iter().any(|cp| cp == &path) {
                                 let now = Instant::now();
-                                
+
                                 // Debounce rapid file changes
                                 if let Some(last_time) = last_event_time {
                                     if now.duration_since(last_time) < debounce_duration {
                                         continue;
                                     }
                                 }
-                                
+
                                 last_event_time = Some(now);
                                 debug!("📁 Config file changed: {:?}", path);
-                                
+
                                 let _ = event_sender.send(ReloadEvent::ConfigChanged(path.clone()));
                                 break;
                             }
                         }
                     }
                 }
-                
+
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
         });
@@ -173,19 +178,21 @@ impl HotReloadManager {
         let plugin_manager = Arc::clone(&self.plugin_manager);
         let config = self.config.clone();
         let event_sender = self.event_sender.clone();
-        
+
         tokio::spawn(async move {
             while let Ok(event) = receiver.recv().await {
                 match event {
                     ReloadEvent::ConfigChanged(path) => {
                         info!("🔄 Processing config change: {:?}", path);
-                        
+
                         if let Err(e) = Self::handle_config_change(
                             &plugin_manager,
                             &path,
                             &config,
                             &event_sender,
-                        ).await {
+                        )
+                        .await
+                        {
                             error!("Failed to handle config change: {}", e);
                             let _ = event_sender.send(ReloadEvent::ValidationError(e.to_string()));
                         }
@@ -215,7 +222,7 @@ impl HotReloadManager {
         // Read and validate new configuration
         let config_content = std::fs::read_to_string(config_path)?;
         let new_config = Self::validate_config(&config_content).await?;
-        
+
         if config.validate_before_apply {
             info!("✓ Configuration validation passed");
         }
@@ -236,7 +243,7 @@ impl HotReloadManager {
         // Apply new configuration
         {
             let mut pm = plugin_manager.write().await;
-            
+
             if config.partial_reload {
                 // Compare configs and only reload changed plugins
                 Self::apply_partial_reload(&mut pm, &new_config, &preserved_states).await?;
@@ -262,14 +269,14 @@ impl HotReloadManager {
     ) -> Result<HashMap<String, serde_json::Value>> {
         let pm = plugin_manager.read().await;
         let mut states = HashMap::new();
-        
+
         // Get state from each plugin
         for plugin_name in pm.get_loaded_plugins() {
             if let Ok(state) = pm.get_plugin_state(&plugin_name).await {
                 states.insert(plugin_name, state);
             }
         }
-        
+
         debug!("📸 Captured {} plugin states", states.len());
         Ok(states)
     }
@@ -281,21 +288,24 @@ impl HotReloadManager {
         preserved_states: &HashMap<String, serde_json::Value>,
     ) -> Result<()> {
         info!("🔄 Applying partial reload");
-        
+
         // Compare current and new configurations
         let current_plugins = plugin_manager.get_loaded_plugins();
         let new_plugins = new_config.get_plugin_names();
-        
+
         // Find added, removed, and modified plugins
-        let added: Vec<_> = new_plugins.iter()
+        let added: Vec<_> = new_plugins
+            .iter()
             .filter(|p| !current_plugins.contains(p))
             .collect();
-        
-        let removed: Vec<_> = current_plugins.iter()
+
+        let removed: Vec<_> = current_plugins
+            .iter()
             .filter(|p| !new_plugins.contains(p))
             .collect();
-        
-        let potentially_modified: Vec<_> = current_plugins.iter()
+
+        let potentially_modified: Vec<_> = current_plugins
+            .iter()
             .filter(|p| new_plugins.contains(p))
             .collect();
 
@@ -316,15 +326,21 @@ impl HotReloadManager {
             if Self::plugin_config_changed(plugin_manager, plugin_name, new_config).await? {
                 // Preserve state before reload
                 if let Some(state) = preserved_states.get(plugin_name) {
-                    plugin_manager.preserve_plugin_state(plugin_name, state.clone()).await?;
+                    plugin_manager
+                        .preserve_plugin_state(plugin_name, state.clone())
+                        .await?;
                 }
-                
-                plugin_manager.reload_plugin(plugin_name, new_config).await?;
+
+                plugin_manager
+                    .reload_plugin(plugin_name, new_config)
+                    .await?;
                 info!("🔄 Reloaded plugin: {}", plugin_name);
-                
+
                 // Restore state after reload
                 if let Some(state) = preserved_states.get(plugin_name) {
-                    plugin_manager.restore_plugin_state(plugin_name, state.clone()).await?;
+                    plugin_manager
+                        .restore_plugin_state(plugin_name, state.clone())
+                        .await?;
                 }
             }
         }
@@ -339,16 +355,19 @@ impl HotReloadManager {
         preserved_states: &HashMap<String, serde_json::Value>,
     ) -> Result<()> {
         info!("🔄 Applying full reload");
-        
+
         // Unload all plugins
         plugin_manager.unload_all_plugins().await?;
-        
+
         // Reload with new configuration
         plugin_manager.load_from_config(new_config).await?;
-        
+
         // Restore preserved states
         for (plugin_name, state) in preserved_states {
-            if let Err(e) = plugin_manager.restore_plugin_state(plugin_name, state.clone()).await {
+            if let Err(e) = plugin_manager
+                .restore_plugin_state(plugin_name, state.clone())
+                .await
+            {
                 warn!("Failed to restore state for plugin {}: {}", plugin_name, e);
             }
         }
@@ -365,18 +384,19 @@ impl HotReloadManager {
         // Compare plugin configurations
         let current_config = plugin_manager.get_plugin_config(plugin_name)?;
         let new_plugin_config = new_config.get_plugin_config(plugin_name)?;
-        
+
         Ok(current_config != new_plugin_config)
     }
 
     /// Manual reload trigger
     pub async fn reload_now(&self) -> Result<()> {
         info!("🔄 Manual reload triggered");
-        
+
         if let Some(config_path) = self.config_paths.first() {
-            self.event_sender.send(ReloadEvent::ConfigChanged(config_path.clone()))?;
+            self.event_sender
+                .send(ReloadEvent::ConfigChanged(config_path.clone()))?;
         }
-        
+
         Ok(())
     }
 
@@ -417,8 +437,13 @@ pub struct HotReloadStats {
 // Extension trait for PluginManager to support hot reload
 pub trait HotReloadable {
     async fn get_plugin_state(&self, plugin_name: &str) -> Result<serde_json::Value>;
-    async fn preserve_plugin_state(&self, plugin_name: &str, state: serde_json::Value) -> Result<()>;
-    async fn restore_plugin_state(&self, plugin_name: &str, state: serde_json::Value) -> Result<()>;
+    async fn preserve_plugin_state(
+        &self,
+        plugin_name: &str,
+        state: serde_json::Value,
+    ) -> Result<()>;
+    async fn restore_plugin_state(&self, plugin_name: &str, state: serde_json::Value)
+        -> Result<()>;
     async fn reload_plugin(&mut self, plugin_name: &str, config: &RustrlandConfig) -> Result<()>;
     async fn unload_plugin(&mut self, plugin_name: &str) -> Result<()>;
     async fn unload_all_plugins(&mut self) -> Result<()>;
@@ -432,5 +457,7 @@ pub trait HotReloadable {
 pub trait ConfigExt {
     fn get_plugin_names(&self) -> Vec<String>;
     fn get_plugin_config(&self, plugin_name: &str) -> Result<toml::Value>;
-    fn from_toml_value(value: toml::Value) -> Result<Self> where Self: Sized;
+    fn from_toml_value(value: toml::Value) -> Result<Self>
+    where
+        Self: Sized;
 }

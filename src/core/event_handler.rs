@@ -12,19 +12,19 @@ impl EventHandler {
     pub fn new() -> Self {
         Self {}
     }
-    
+
     pub async fn handle_event(
         &self,
         event: &HyprlandEvent,
         plugin_manager: &mut PluginManager,
     ) -> Result<()> {
         trace!("📨 Handling event: {:?}", event);
-        
+
         // Filter or transform events here if needed
-        
+
         // Forward to all plugins
         plugin_manager.handle_event(event).await?;
-        
+
         debug!("✅ Event handled successfully");
         Ok(())
     }

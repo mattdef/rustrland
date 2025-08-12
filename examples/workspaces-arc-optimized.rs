@@ -1,11 +1,11 @@
 // Arc-Optimized Workspaces Follow Focus Plugin
 // This demonstrates practical Arc usage for memory optimization
 
-use std::sync::{Arc, RwLock};
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
 // =====================================================
 // 1. ARC-OPTIMIZED DATA STRUCTURES
@@ -39,7 +39,7 @@ pub struct MonitorInfo {
     pub y: i32,
 }
 
-// Workspace info: Arc<RwLock<T>> for shared mutable state  
+// Workspace info: Arc<RwLock<T>> for shared mutable state
 #[derive(Debug)]
 pub struct WorkspaceInfo {
     pub id: i32,
@@ -83,23 +83,23 @@ impl GlobalStateCache {
     // Batch update for efficiency
     pub fn update_monitors(&self, new_monitors: Vec<MonitorInfo>) -> Result<()> {
         let mut monitors = self.monitors.write().unwrap();
-        
+
         // Clear old monitors
         monitors.clear();
-        
+
         // Add new monitors as Arc<RwLock<T>>
         for monitor in new_monitors {
             let name = monitor.name.clone();
             let monitor_ref = Arc::new(RwLock::new(monitor));
             monitors.insert(name, monitor_ref);
         }
-        
+
         // Update timestamp
         {
             let mut last_update = self.last_update.write().unwrap();
             *last_update = Instant::now();
         }
-        
+
         Ok(())
     }
 
@@ -117,12 +117,12 @@ impl GlobalStateCache {
 // =====================================================
 
 pub struct WorkspacesFollowFocusPlugin {
-    config: ConfigRef,                    // 8 bytes (was ~1000 bytes)
-    monitor_cache: MonitorCache,          // 8 bytes (was ~500 bytes per monitor)  
-    workspace_cache: WorkspaceCache,      // 8 bytes (was ~300 bytes per workspace)
-    focused_monitor: Arc<RwLock<Option<String>>>, // 8 bytes, thread-safe
+    config: ConfigRef,                              // 8 bytes (was ~1000 bytes)
+    monitor_cache: MonitorCache,                    // 8 bytes (was ~500 bytes per monitor)
+    workspace_cache: WorkspaceCache,                // 8 bytes (was ~300 bytes per workspace)
+    focused_monitor: Arc<RwLock<Option<String>>>,   // 8 bytes, thread-safe
     last_switch_time: Arc<RwLock<Option<Instant>>>, // 8 bytes, thread-safe
-    global_cache: Arc<GlobalStateCache>,  // 8 bytes, shared with other plugins
+    global_cache: Arc<GlobalStateCache>,            // 8 bytes, shared with other plugins
 }
 
 impl WorkspacesFollowFocusPlugin {
@@ -139,7 +139,8 @@ impl WorkspacesFollowFocusPlugin {
 
     // Efficient workspace rules check (no cloning)
     pub fn get_locked_monitor_for_workspace(&self, workspace_id: i32) -> Option<String> {
-        self.config.workspace_rules
+        self.config
+            .workspace_rules
             .get(&workspace_id.to_string())
             .cloned() // Only clones the String, not the entire HashMap
     }
@@ -175,7 +176,8 @@ impl WorkspacesFollowFocusPlugin {
         };
 
         // Check workspace rules (no HashMap cloning)
-        let target_monitor = self.get_locked_monitor_for_workspace(workspace_id)
+        let target_monitor = self
+            .get_locked_monitor_for_workspace(workspace_id)
             .unwrap_or(focused_monitor);
 
         // Animation with shared config
@@ -184,7 +186,10 @@ impl WorkspacesFollowFocusPlugin {
         }
 
         // Simulate workspace switch
-        println!("Switching to workspace {} on monitor {}", workspace_id, target_monitor);
+        println!(
+            "Switching to workspace {} on monitor {}",
+            workspace_id, target_monitor
+        );
 
         // Update last switch time
         {
@@ -192,30 +197,32 @@ impl WorkspacesFollowFocusPlugin {
             *last_time = Some(Instant::now());
         }
 
-        Ok(format!("Switched to workspace {} on monitor {}", workspace_id, target_monitor))
+        Ok(format!(
+            "Switched to workspace {} on monitor {}",
+            workspace_id, target_monitor
+        ))
     }
 
     // Animation with shared timeline
     async fn animate_workspace_switch(&self, workspace_id: i32) -> Result<()> {
         let duration = Duration::from_millis(self.config.animation_duration);
-        
-        println!("🎬 Animating workspace transition to {} ({}ms, {})", 
-            workspace_id, 
-            self.config.animation_duration,
-            self.config.animation_easing
+
+        println!(
+            "🎬 Animating workspace transition to {} ({}ms, {})",
+            workspace_id, self.config.animation_duration, self.config.animation_easing
         );
 
         // Simulate animation steps
         let steps = 20;
         let step_duration = duration / steps;
-        
+
         for step in 0..=steps {
             let progress = step as f32 / steps as f32;
-            
+
             if step % 5 == 0 {
                 println!("🎬 Animation progress: {:.1}%", progress * 100.0);
             }
-            
+
             tokio::time::sleep(step_duration).await;
         }
 
@@ -283,10 +290,15 @@ pub fn demonstrate_performance_benefits() {
     }
     let arc_time = start.elapsed();
 
-    println!("Traditional cloning (1000 operations): {:?}", traditional_time);
+    println!(
+        "Traditional cloning (1000 operations): {:?}",
+        traditional_time
+    );
     println!("Arc cloning (1000 operations): {:?}", arc_time);
-    println!("Performance improvement: {:.1}x faster", 
-        traditional_time.as_nanos() as f64 / arc_time.as_nanos() as f64);
+    println!(
+        "Performance improvement: {:.1}x faster",
+        traditional_time.as_nanos() as f64 / arc_time.as_nanos() as f64
+    );
 }
 
 // =====================================================
@@ -346,10 +358,10 @@ async fn main() -> Result<()> {
 
     demonstrate_memory_savings();
     println!();
-    
+
     demonstrate_performance_benefits();
     println!();
-    
+
     implementation_recommendations();
     println!();
 

@@ -59,34 +59,44 @@ impl PropertyValue {
             (PropertyValue::Transform(from), PropertyValue::Transform(to)) => {
                 PropertyValue::Transform(from.interpolate(to, progress))
             }
-            (PropertyValue::Vector2D { x: x1, y: y1 }, PropertyValue::Vector2D { x: x2, y: y2 }) => {
-                PropertyValue::Vector2D {
-                    x: Self::lerp_f32(*x1, *x2, progress),
-                    y: Self::lerp_f32(*y1, *y2, progress),
-                }
-            }
-            (PropertyValue::Vector3D { x: x1, y: y1, z: z1 }, PropertyValue::Vector3D { x: x2, y: y2, z: z2 }) => {
+            (
+                PropertyValue::Vector2D { x: x1, y: y1 },
+                PropertyValue::Vector2D { x: x2, y: y2 },
+            ) => PropertyValue::Vector2D {
+                x: Self::lerp_f32(*x1, *x2, progress),
+                y: Self::lerp_f32(*y1, *y2, progress),
+            },
+            (
                 PropertyValue::Vector3D {
-                    x: Self::lerp_f32(*x1, *x2, progress),
-                    y: Self::lerp_f32(*y1, *y2, progress),
-                    z: Self::lerp_f32(*z1, *z2, progress),
-                }
-            }
+                    x: x1,
+                    y: y1,
+                    z: z1,
+                },
+                PropertyValue::Vector3D {
+                    x: x2,
+                    y: y2,
+                    z: z2,
+                },
+            ) => PropertyValue::Vector3D {
+                x: Self::lerp_f32(*x1, *x2, progress),
+                y: Self::lerp_f32(*y1, *y2, progress),
+                z: Self::lerp_f32(*z1, *z2, progress),
+            },
             // Type mismatches - return current value
             _ => self.clone(),
         }
     }
-    
+
     /// Linear interpolation for f32
     fn lerp_f32(from: f32, to: f32, progress: f32) -> f32 {
         from + (to - from) * progress
     }
-    
+
     /// Linear interpolation for i32
     fn lerp_i32(from: i32, to: i32, progress: f32) -> i32 {
         (from as f32 + (to - from) as f32 * progress) as i32
     }
-    
+
     /// Get value as pixels (for positions/sizes)
     pub fn as_pixels(&self) -> i32 {
         match self {
@@ -96,7 +106,7 @@ impl PropertyValue {
             _ => 0,
         }
     }
-    
+
     /// Get value as float
     pub fn as_float(&self) -> f32 {
         match self {
@@ -106,22 +116,24 @@ impl PropertyValue {
             _ => 0.0,
         }
     }
-    
+
     /// Convert to CSS transform string for Hyprland
     pub fn to_css_transform(&self) -> String {
         match self {
             PropertyValue::Transform(transform) => transform.to_css_string(),
             PropertyValue::Vector2D { x, y } => format!("translate({}px, {}px)", x, y),
-            PropertyValue::Vector3D { x, y, z } => format!("translate3d({}px, {}px, {}px)", x, y, z),
+            PropertyValue::Vector3D { x, y, z } => {
+                format!("translate3d({}px, {}px, {}px)", x, y, z)
+            }
             PropertyValue::Float(scale) => format!("scale({})", scale),
             _ => String::new(),
         }
     }
-    
+
     /// Create from string value with unit parsing
     pub fn from_string(value: &str) -> anyhow::Result<PropertyValue> {
         let value = value.trim();
-        
+
         // Parse pixels
         if value.ends_with("px") {
             let num_str = value.trim_end_matches("px");
@@ -129,7 +141,7 @@ impl PropertyValue {
                 return Ok(PropertyValue::Pixels(pixels));
             }
         }
-        
+
         // Parse percentage
         if value.ends_with('%') {
             let num_str = value.trim_end_matches('%');
@@ -137,33 +149,33 @@ impl PropertyValue {
                 return Ok(PropertyValue::Percentage(percent));
             }
         }
-        
+
         // Parse RGB color
         if value.starts_with("rgb(") && value.ends_with(')') {
             return Color::from_rgb_string(value)
                 .map(PropertyValue::Color)
                 .map_err(|e| anyhow::anyhow!("Invalid RGB color: {}", e));
         }
-        
+
         // Parse RGBA color
         if value.starts_with("rgba(") && value.ends_with(')') {
             return Color::from_rgba_string(value)
                 .map(PropertyValue::Color)
                 .map_err(|e| anyhow::anyhow!("Invalid RGBA color: {}", e));
         }
-        
+
         // Parse hex color
         if value.starts_with('#') {
             return Color::from_hex_string(value)
                 .map(PropertyValue::Color)
                 .map_err(|e| anyhow::anyhow!("Invalid hex color: {}", e));
         }
-        
+
         // Parse float
         if let Ok(float_val) = value.parse::<f32>() {
             return Ok(PropertyValue::Float(float_val));
         }
-        
+
         Err(anyhow::anyhow!("Cannot parse property value: {}", value))
     }
 }
@@ -177,7 +189,7 @@ impl Color {
             a: a.clamp(0.0, 1.0),
         }
     }
-    
+
     /// Interpolate between colors
     pub fn interpolate(&self, target: &Color, progress: f32) -> Color {
         Color {
@@ -187,20 +199,26 @@ impl Color {
             a: self.a + (target.a - self.a) * progress,
         }
     }
-    
+
     /// Parse RGB color from string like "rgb(255, 128, 0)"
     pub fn from_rgb_string(rgb_str: &str) -> anyhow::Result<Color> {
         let inner = rgb_str.trim_start_matches("rgb(").trim_end_matches(')');
         let parts: Vec<&str> = inner.split(',').map(|s| s.trim()).collect();
-        
+
         if parts.len() != 3 {
             return Err(anyhow::anyhow!("RGB color must have 3 components"));
         }
-        
-        let r = parts[0].parse::<u8>().map_err(|_| anyhow::anyhow!("Invalid red component"))?;
-        let g = parts[1].parse::<u8>().map_err(|_| anyhow::anyhow!("Invalid green component"))?;
-        let b = parts[2].parse::<u8>().map_err(|_| anyhow::anyhow!("Invalid blue component"))?;
-        
+
+        let r = parts[0]
+            .parse::<u8>()
+            .map_err(|_| anyhow::anyhow!("Invalid red component"))?;
+        let g = parts[1]
+            .parse::<u8>()
+            .map_err(|_| anyhow::anyhow!("Invalid green component"))?;
+        let b = parts[2]
+            .parse::<u8>()
+            .map_err(|_| anyhow::anyhow!("Invalid blue component"))?;
+
         Ok(Color::new(
             r as f32 / 255.0,
             g as f32 / 255.0,
@@ -208,21 +226,29 @@ impl Color {
             1.0,
         ))
     }
-    
+
     /// Parse RGBA color from string like "rgba(255, 128, 0, 0.5)"
     pub fn from_rgba_string(rgba_str: &str) -> anyhow::Result<Color> {
         let inner = rgba_str.trim_start_matches("rgba(").trim_end_matches(')');
         let parts: Vec<&str> = inner.split(',').map(|s| s.trim()).collect();
-        
+
         if parts.len() != 4 {
             return Err(anyhow::anyhow!("RGBA color must have 4 components"));
         }
-        
-        let r = parts[0].parse::<u8>().map_err(|_| anyhow::anyhow!("Invalid red component"))?;
-        let g = parts[1].parse::<u8>().map_err(|_| anyhow::anyhow!("Invalid green component"))?;
-        let b = parts[2].parse::<u8>().map_err(|_| anyhow::anyhow!("Invalid blue component"))?;
-        let a = parts[3].parse::<f32>().map_err(|_| anyhow::anyhow!("Invalid alpha component"))?;
-        
+
+        let r = parts[0]
+            .parse::<u8>()
+            .map_err(|_| anyhow::anyhow!("Invalid red component"))?;
+        let g = parts[1]
+            .parse::<u8>()
+            .map_err(|_| anyhow::anyhow!("Invalid green component"))?;
+        let b = parts[2]
+            .parse::<u8>()
+            .map_err(|_| anyhow::anyhow!("Invalid blue component"))?;
+        let a = parts[3]
+            .parse::<f32>()
+            .map_err(|_| anyhow::anyhow!("Invalid alpha component"))?;
+
         Ok(Color::new(
             r as f32 / 255.0,
             g as f32 / 255.0,
@@ -230,17 +256,20 @@ impl Color {
             a,
         ))
     }
-    
+
     /// Parse hex color from string like "#FF8000" or "#FF8000AA"
     pub fn from_hex_string(hex_str: &str) -> anyhow::Result<Color> {
         let hex = hex_str.trim_start_matches('#');
-        
+
         match hex.len() {
             6 => {
-                let r = u8::from_str_radix(&hex[0..2], 16).map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
-                let g = u8::from_str_radix(&hex[2..4], 16).map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
-                let b = u8::from_str_radix(&hex[4..6], 16).map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
-                
+                let r = u8::from_str_radix(&hex[0..2], 16)
+                    .map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
+                let g = u8::from_str_radix(&hex[2..4], 16)
+                    .map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
+                let b = u8::from_str_radix(&hex[4..6], 16)
+                    .map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
+
                 Ok(Color::new(
                     r as f32 / 255.0,
                     g as f32 / 255.0,
@@ -249,11 +278,15 @@ impl Color {
                 ))
             }
             8 => {
-                let r = u8::from_str_radix(&hex[0..2], 16).map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
-                let g = u8::from_str_radix(&hex[2..4], 16).map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
-                let b = u8::from_str_radix(&hex[4..6], 16).map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
-                let a = u8::from_str_radix(&hex[6..8], 16).map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
-                
+                let r = u8::from_str_radix(&hex[0..2], 16)
+                    .map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
+                let g = u8::from_str_radix(&hex[2..4], 16)
+                    .map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
+                let b = u8::from_str_radix(&hex[4..6], 16)
+                    .map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
+                let a = u8::from_str_radix(&hex[6..8], 16)
+                    .map_err(|_| anyhow::anyhow!("Invalid hex color"))?;
+
                 Ok(Color::new(
                     r as f32 / 255.0,
                     g as f32 / 255.0,
@@ -264,7 +297,7 @@ impl Color {
             _ => Err(anyhow::anyhow!("Hex color must be 6 or 8 characters")),
         }
     }
-    
+
     /// Convert to hex string
     pub fn to_hex_string(&self) -> String {
         format!(
@@ -289,7 +322,7 @@ impl Transform {
             skew_y: 0.0,
         }
     }
-    
+
     /// Interpolate between transforms
     pub fn interpolate(&self, target: &Transform, progress: f32) -> Transform {
         Transform {
@@ -302,31 +335,34 @@ impl Transform {
             skew_y: self.skew_y + (target.skew_y - self.skew_y) * progress,
         }
     }
-    
+
     /// Convert to CSS transform string
     pub fn to_css_string(&self) -> String {
         let mut transforms = Vec::new();
-        
+
         if self.translate_x != 0.0 || self.translate_y != 0.0 {
-            transforms.push(format!("translate({}px, {}px)", self.translate_x, self.translate_y));
+            transforms.push(format!(
+                "translate({}px, {}px)",
+                self.translate_x, self.translate_y
+            ));
         }
-        
+
         if self.scale_x != 1.0 || self.scale_y != 1.0 {
             transforms.push(format!("scale({}, {})", self.scale_x, self.scale_y));
         }
-        
+
         if self.rotation != 0.0 {
             transforms.push(format!("rotate({}deg)", self.rotation));
         }
-        
+
         if self.skew_x != 0.0 {
             transforms.push(format!("skewX({}deg)", self.skew_x));
         }
-        
+
         if self.skew_y != 0.0 {
             transforms.push(format!("skewY({}deg)", self.skew_y));
         }
-        
+
         transforms.join(" ")
     }
 }
@@ -346,21 +382,19 @@ impl AnimationProperty {
             velocity: 0.0,
         }
     }
-    
+
     /// Update the current value based on progress
     pub fn update(&mut self, progress: f32) {
         self.current_value = self.current_value.interpolate(&self.target_value, progress);
     }
-    
+
     /// Get the difference between current and target values (for physics)
     pub fn get_delta(&self) -> f32 {
         match (&self.current_value, &self.target_value) {
             (PropertyValue::Pixels(current), PropertyValue::Pixels(target)) => {
                 (*target - *current) as f32
             }
-            (PropertyValue::Float(current), PropertyValue::Float(target)) => {
-                *target - *current
-            }
+            (PropertyValue::Float(current), PropertyValue::Float(target)) => *target - *current,
             (PropertyValue::Percentage(current), PropertyValue::Percentage(target)) => {
                 *target - *current
             }
@@ -372,28 +406,28 @@ impl AnimationProperty {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_property_interpolation() {
         let from = PropertyValue::Pixels(100);
         let to = PropertyValue::Pixels(200);
-        
+
         let result = from.interpolate(&to, 0.5);
         assert_eq!(result, PropertyValue::Pixels(150));
     }
-    
+
     #[test]
     fn test_color_interpolation() {
         let red = Color::new(1.0, 0.0, 0.0, 1.0);
         let blue = Color::new(0.0, 0.0, 1.0, 1.0);
-        
+
         let purple = red.interpolate(&blue, 0.5);
         assert_eq!(purple.r, 0.5);
         assert_eq!(purple.g, 0.0);
         assert_eq!(purple.b, 0.5);
         assert_eq!(purple.a, 1.0);
     }
-    
+
     #[test]
     fn test_color_parsing() {
         let color = Color::from_rgb_string("rgb(255, 128, 0)").unwrap();
@@ -402,7 +436,7 @@ mod tests {
         assert_eq!(color.b, 0.0);
         assert_eq!(color.a, 1.0);
     }
-    
+
     #[test]
     fn test_hex_color_parsing() {
         let color = Color::from_hex_string("#FF8000").unwrap();
@@ -411,7 +445,7 @@ mod tests {
         assert_eq!(color.b, 0.0);
         assert_eq!(color.a, 1.0);
     }
-    
+
     #[test]
     fn test_transform_interpolation() {
         let from = Transform {
@@ -423,7 +457,7 @@ mod tests {
             skew_x: 0.0,
             skew_y: 0.0,
         };
-        
+
         let to = Transform {
             translate_x: 100.0,
             translate_y: 200.0,
@@ -433,7 +467,7 @@ mod tests {
             skew_x: 0.0,
             skew_y: 0.0,
         };
-        
+
         let result = from.interpolate(&to, 0.5);
         assert_eq!(result.translate_x, 50.0);
         assert_eq!(result.translate_y, 100.0);
@@ -441,13 +475,22 @@ mod tests {
         assert_eq!(result.scale_y, 1.5);
         assert_eq!(result.rotation, 45.0);
     }
-    
+
     #[test]
     fn test_property_value_parsing() {
-        assert_eq!(PropertyValue::from_string("100px").unwrap(), PropertyValue::Pixels(100));
-        assert_eq!(PropertyValue::from_string("50%").unwrap(), PropertyValue::Percentage(50.0));
-        assert_eq!(PropertyValue::from_string("1.5").unwrap(), PropertyValue::Float(1.5));
-        
+        assert_eq!(
+            PropertyValue::from_string("100px").unwrap(),
+            PropertyValue::Pixels(100)
+        );
+        assert_eq!(
+            PropertyValue::from_string("50%").unwrap(),
+            PropertyValue::Percentage(50.0)
+        );
+        assert_eq!(
+            PropertyValue::from_string("1.5").unwrap(),
+            PropertyValue::Float(1.5)
+        );
+
         let color = match PropertyValue::from_string("#FF0000").unwrap() {
             PropertyValue::Color(c) => c,
             _ => panic!("Expected color"),

@@ -1,10 +1,12 @@
+use crate::ipc::MonitorInfo;
+use crate::plugins::workspaces_follow_focus::{
+    MonitorCache, MonitorInfoRef, WorkspaceCache, WorkspaceInfo, WorkspaceInfoRef,
+};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
-use crate::ipc::MonitorInfo;
-use crate::plugins::workspaces_follow_focus::{WorkspaceInfo, MonitorInfoRef, WorkspaceInfoRef, MonitorCache, WorkspaceCache};
 
 /// Global state cache shared across all plugins for memory optimization
 /// This implements the Arc-based shared state pattern to reduce memory usage
@@ -12,19 +14,19 @@ use crate::plugins::workspaces_follow_focus::{WorkspaceInfo, MonitorInfoRef, Wor
 pub struct GlobalStateCache {
     /// Cached monitor information shared across all plugins
     monitors: MonitorCache,
-    
+
     /// Cached workspace information shared across all plugins  
     workspaces: WorkspaceCache,
-    
+
     /// Last time the cache was updated
     last_update: Arc<RwLock<Instant>>,
-    
+
     /// Configuration cache shared across plugins
     configs: Arc<RwLock<HashMap<String, Arc<toml::Value>>>>,
-    
+
     /// Variables shared across plugins
     variables: Arc<RwLock<HashMap<String, String>>>,
-    
+
     /// Cache validity duration (default: 2 seconds)
     cache_duration: std::time::Duration,
 }
@@ -56,10 +58,10 @@ impl GlobalStateCache {
     /// Update monitor information efficiently
     pub async fn update_monitors(&self, new_monitors: Vec<crate::ipc::MonitorInfo>) -> Result<()> {
         let mut monitors = self.monitors.write().await;
-        
+
         // Clear old monitors
         monitors.clear();
-        
+
         // Convert and add new monitors as Arc<RwLock<T>>
         for monitor in new_monitors {
             let _workspace_info = WorkspaceInfo {
@@ -84,13 +86,13 @@ impl GlobalStateCache {
             let monitor_ref = Arc::new(RwLock::new(monitor_info));
             monitors.insert(monitor.name, monitor_ref);
         }
-        
+
         // Update timestamp
         {
             let mut last_update = self.last_update.write().await;
             *last_update = Instant::now();
         }
-        
+
         Ok(())
     }
 
@@ -139,7 +141,7 @@ impl GlobalStateCache {
         let workspaces = self.workspaces.read().await;
         let configs = self.configs.read().await;
         let vars = self.variables.read().await;
-        
+
         MemoryStats {
             monitor_count: monitors.len(),
             workspace_count: workspaces.len(),

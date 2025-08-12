@@ -1,102 +1,120 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use tracing::{info, debug, warn, error};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock};
-use serde::{Deserialize, Serialize};
+use tracing::{debug, error, info, warn};
 
-use crate::plugins::Plugin;
-use crate::ipc::{HyprlandEvent, HyprlandClient};
 use crate::core::GlobalStateCache;
+use crate::ipc::{HyprlandClient, HyprlandEvent};
+use crate::plugins::Plugin;
 
 // Arc-optimized configuration type
 pub type ExposeConfigRef = Arc<ExposeConfig>;
-use hyprland::data::{Client, Clients, Workspaces, Monitors, Monitor};
+use hyprland::data::{Client, Clients, Monitor, Monitors, Workspaces};
+use hyprland::dispatch::{Dispatch, DispatchType, Position, WindowIdentifier};
 use hyprland::shared::{HyprData, HyprDataVec};
-use hyprland::dispatch::{Dispatch, DispatchType, WindowIdentifier, Position};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ExposeConfig {
     /// Grid columns (default: auto-calculate)
     #[serde(default)]
     pub columns: Option<u32>,
-    
+
     /// Grid rows (default: auto-calculate)
     #[serde(default)]
     pub rows: Option<u32>,
-    
+
     /// Padding between windows (default: 20px)
     #[serde(default = "default_padding")]
     pub padding: u32,
-    
+
     /// Include floating windows (default: true)
     #[serde(default = "default_true")]
     pub include_floating: bool,
-    
+
     /// Include minimized windows (default: false)
     #[serde(default)]
     pub include_minimized: bool,
-    
+
     /// Only show windows from current workspace (default: false)
     #[serde(default)]
     pub current_workspace_only: bool,
-    
+
     /// Scale factor for window previews (default: 0.2) - FULLY IMPLEMENTED
     #[serde(default = "default_scale")]
     pub scale: f32,
-    
+
     /// Show window titles (default: true)
     #[serde(default = "default_true")]
     pub show_titles: bool,
-    
+
     /// Background color during expose (default: "#000000AA") - FULLY IMPLEMENTED
     #[serde(default = "default_background")]
     pub background_color: String,
-    
+
     /// Highlight color for focused window (default: "#FF6600") - FULLY IMPLEMENTED
     #[serde(default = "default_highlight")]
     pub highlight_color: String,
-    
+
     /// Animation configuration for smooth transitions - FULLY IMPLEMENTED
     #[serde(default = "default_animation")]
     pub animation: String,
-    
+
     /// Animation duration in milliseconds (default: 300)
     #[serde(default = "default_animation_duration")]
     pub animation_duration: u32,
-    
+
     /// Maximum number of windows to show (default: 50 for performance)
     #[serde(default = "default_max_windows")]
     pub max_windows: u32,
-    
+
     /// Enable thumbnail caching for performance (default: true)
     #[serde(default = "default_true")]
     pub enable_caching: bool,
-    
+
     /// Thumbnail cache duration in seconds (default: 300)
     #[serde(default = "default_cache_duration")]
     pub cache_duration: u64,
-    
+
     /// Enable mouse selection support (default: true)
     #[serde(default = "default_true")]
     pub mouse_selection: bool,
-    
+
     /// Monitor to show expose on (default: current monitor)
     #[serde(default)]
     pub target_monitor: Option<String>,
 }
 
-fn default_padding() -> u32 { 20 }
-fn default_true() -> bool { true }
-fn default_scale() -> f32 { 0.2 }
-fn default_background() -> String { "#000000AA".to_string() }
-fn default_highlight() -> String { "#FF6600".to_string() }
-fn default_animation() -> String { "fromTop".to_string() }
-fn default_animation_duration() -> u32 { 300 }
-fn default_max_windows() -> u32 { 50 }
-fn default_cache_duration() -> u64 { 300 }
+fn default_padding() -> u32 {
+    20
+}
+fn default_true() -> bool {
+    true
+}
+fn default_scale() -> f32 {
+    0.2
+}
+fn default_background() -> String {
+    "#000000AA".to_string()
+}
+fn default_highlight() -> String {
+    "#FF6600".to_string()
+}
+fn default_animation() -> String {
+    "fromTop".to_string()
+}
+fn default_animation_duration() -> u32 {
+    300
+}
+fn default_max_windows() -> u32 {
+    50
+}
+fn default_cache_duration() -> u64 {
+    300
+}
 
 impl Default for ExposeConfig {
     fn default() -> Self {
@@ -166,7 +184,7 @@ impl ThumbnailCache {
             max_size,
         }
     }
-    
+
     pub fn get(&mut self, window_address: &str) -> Option<String> {
         if let Some(entry) = self.entries.get_mut(window_address) {
             entry.access_count += 1;
@@ -176,33 +194,37 @@ impl ThumbnailCache {
             None
         }
     }
-    
+
     pub fn insert(&mut self, window_address: String, thumbnail_path: String) {
         if self.entries.len() >= self.max_size {
             self.evict_oldest();
         }
-        
+
         let entry = CacheEntry {
             thumbnail_path,
             created_at: Instant::now(),
             access_count: 1,
             last_accessed: Instant::now(),
         };
-        
+
         self.entries.insert(window_address, entry);
     }
-    
+
     fn evict_oldest(&mut self) {
-        if let Some((oldest_key, _)) = self.entries.iter()
-            .min_by_key(|(_, entry)| entry.last_accessed) {
+        if let Some((oldest_key, _)) = self
+            .entries
+            .iter()
+            .min_by_key(|(_, entry)| entry.last_accessed)
+        {
             let oldest_key = oldest_key.clone();
             self.entries.remove(&oldest_key);
         }
     }
-    
+
     pub fn cleanup_expired(&mut self, max_age: Duration) {
         let now = Instant::now();
-        self.entries.retain(|_, entry| now.duration_since(entry.created_at) < max_age);
+        self.entries
+            .retain(|_, entry| now.duration_since(entry.created_at) < max_age);
     }
 }
 
@@ -255,19 +277,19 @@ impl ExposePlugin {
             last_monitor_update: Arc::new(RwLock::new(Instant::now() - Duration::from_secs(10))),
         }
     }
-    
+
     /// Get current monitor layouts with dynamic detection
     async fn get_monitor_layouts(&self) -> Result<Vec<MonitorLayout>> {
         let now = Instant::now();
         let last_update = *self.last_monitor_update.read().await;
-        
+
         // Update cache if it's older than 5 seconds
         if now.duration_since(last_update) > Duration::from_secs(5) {
             let monitors = tokio::task::spawn_blocking(|| Monitors::get()).await??;
             let monitor_vec = monitors.to_vec();
-            
+
             let mut layouts = Vec::new();
-            
+
             for monitor in monitor_vec {
                 let layout = MonitorLayout {
                     screen_width: monitor.width.into(),
@@ -276,13 +298,13 @@ impl ExposePlugin {
                         monitor.x,
                         monitor.y,
                         monitor.width.into(),
-                        monitor.height.into()
+                        monitor.height.into(),
                     ),
                     monitor,
                 };
                 layouts.push(layout);
             }
-            
+
             // Update cache
             {
                 let mut cache = self.monitor_cache.write().await;
@@ -292,7 +314,7 @@ impl ExposePlugin {
                 let mut last_update_guard = self.last_monitor_update.write().await;
                 *last_update_guard = now;
             }
-            
+
             Ok(layouts)
         } else {
             // Use cached data
@@ -300,22 +322,22 @@ impl ExposePlugin {
             Ok(cache.clone())
         }
     }
-    
+
     /// Get the target monitor for expose (current focused or specified)
     async fn get_target_monitor(&self) -> Result<MonitorLayout> {
         let layouts = self.get_monitor_layouts().await?;
-        
+
         if layouts.is_empty() {
             return Err(anyhow::anyhow!("No monitors found"));
         }
-        
+
         // If target monitor is specified, find it
         if let Some(target_name) = &self.config.target_monitor {
             if let Some(layout) = layouts.iter().find(|l| l.monitor.name == *target_name) {
                 return Ok(layout.clone());
             }
         }
-        
+
         // Find focused monitor
         if let Some(layout) = layouts.iter().find(|l| l.monitor.focused) {
             Ok(layout.clone())
@@ -330,22 +352,22 @@ impl ExposePlugin {
         if let (Some(cols), Some(rows)) = (self.config.columns, self.config.rows) {
             return (cols, rows);
         }
-        
+
         if window_count == 0 {
             return (1, 1);
         }
-        
+
         // Calculate optimal grid based on monitor aspect ratio
         let monitor_aspect = monitor.screen_width as f64 / monitor.screen_height as f64;
         let sqrt_count = (window_count as f64).sqrt();
-        
+
         let columns = (sqrt_count * monitor_aspect.sqrt()).ceil() as u32;
         let rows = (window_count as f64 / columns as f64).ceil() as u32;
-        
+
         // Ensure we don't exceed reasonable limits
         let max_cols = (monitor.screen_width / 100).max(1) as u32; // Minimum 100px per tile
-        let max_rows = (monitor.screen_height / 80).max(1) as u32;  // Minimum 80px per tile
-        
+        let max_rows = (monitor.screen_height / 80).max(1) as u32; // Minimum 80px per tile
+
         (columns.min(max_cols), rows.min(max_rows))
     }
 
@@ -353,40 +375,45 @@ impl ExposePlugin {
     async fn get_expose_windows(&self, target_monitor: &MonitorLayout) -> Result<Vec<Client>> {
         let clients = tokio::task::spawn_blocking(|| Clients::get()).await??;
         let client_vec = clients.to_vec();
-        
+
         debug!("📱 Found {} total windows", client_vec.len());
-        
+
         let mut filtered_windows = Vec::new();
-        
+
         // Get current workspace if filtering by it
         let current_workspace = if self.config.current_workspace_only {
             let workspaces = tokio::task::spawn_blocking(|| Workspaces::get()).await??;
-            workspaces.to_vec().iter()
+            workspaces
+                .to_vec()
+                .iter()
                 .find(|w| w.monitor == target_monitor.monitor.name)
                 .map(|w| w.id)
         } else {
             None
         };
-        
+
         for client in client_vec {
             // Performance limit - don't process more windows than configured
             if filtered_windows.len() >= self.config.max_windows as usize {
-                info!("⚠️  Reached maximum window limit ({}), truncating", self.config.max_windows);
+                info!(
+                    "⚠️  Reached maximum window limit ({}), truncating",
+                    self.config.max_windows
+                );
                 break;
             }
-            
+
             // Skip windows with invalid geometry
             if client.size.0 <= 0 || client.size.1 <= 0 {
                 debug!("Skipping window with invalid geometry: {}", client.title);
                 continue;
             }
-            
+
             // Skip if not including floating windows
             if client.floating && !self.config.include_floating {
                 debug!("Skipping floating window: {}", client.title);
                 continue;
             }
-            
+
             // Skip if filtering by current workspace
             if let Some(workspace) = current_workspace {
                 if client.workspace.id != workspace {
@@ -394,92 +421,103 @@ impl ExposePlugin {
                     continue;
                 }
             }
-            
+
             // Skip minimized windows if not included (check window mapped state)
             if !self.config.include_minimized && client.mapped == false {
                 debug!("Skipping minimized window: {}", client.title);
                 continue;
             }
-            
+
             // Skip special workspaces (like scratchpads)
             if client.workspace.name.starts_with("special:") {
                 debug!("Skipping special workspace window: {}", client.title);
                 continue;
             }
-            
+
             // Skip windows that are too small to be useful
             if client.size.0 < 50 || client.size.1 < 30 {
                 debug!("Skipping tiny window: {}", client.title);
                 continue;
             }
-            
-            debug!("Including window: {} [{}] ({}x{})", 
-                client.title, client.class, client.size.0, client.size.1);
+
+            debug!(
+                "Including window: {} [{}] ({}x{})",
+                client.title, client.class, client.size.0, client.size.1
+            );
             filtered_windows.push(client);
         }
-        
+
         // Sort by most recently focused or by title for consistent ordering
         filtered_windows.sort_by(|a, b| {
-            b.focus_history_id.cmp(&a.focus_history_id)
+            b.focus_history_id
+                .cmp(&a.focus_history_id)
                 .then_with(|| a.title.cmp(&b.title))
         });
-        
+
         Ok(filtered_windows)
     }
 
     /// Calculate positions for window tiles with proper scaling and state preservation
-    async fn calculate_tile_positions(&self, windows: Vec<Client>, monitor: &MonitorLayout) -> Result<Vec<WindowTile>> {
+    async fn calculate_tile_positions(
+        &self,
+        windows: Vec<Client>,
+        monitor: &MonitorLayout,
+    ) -> Result<Vec<WindowTile>> {
         let window_count = windows.len();
         if window_count == 0 {
             return Ok(Vec::new());
         }
-        
+
         let (columns, rows) = self.calculate_grid_layout(window_count, monitor);
-        debug!("📐 Using grid layout: {}x{} for {} windows on monitor {}", 
-            columns, rows, window_count, monitor.monitor.name);
-        
+        debug!(
+            "📐 Using grid layout: {}x{} for {} windows on monitor {}",
+            columns, rows, window_count, monitor.monitor.name
+        );
+
         // Use actual monitor dimensions
         let screen_width = monitor.screen_width as u32;
         let screen_height = monitor.screen_height as u32;
         let offset_x = monitor.monitor.x;
         let offset_y = monitor.monitor.y;
-        
+
         // Calculate tile dimensions with padding
         let total_padding_x = self.config.padding * (columns + 1);
         let total_padding_y = self.config.padding * (rows + 1);
-        
+
         if total_padding_x >= screen_width || total_padding_y >= screen_height {
             return Err(anyhow::anyhow!("Padding too large for monitor size"));
         }
-        
+
         let tile_width = (screen_width - total_padding_x) / columns;
         let tile_height = (screen_height - total_padding_y) / rows;
-        
+
         // Apply scale factor to get actual window sizes
         let scaled_width = (tile_width as f32 * self.config.scale).round() as i32;
         let scaled_height = (tile_height as f32 * self.config.scale).round() as i32;
-        
+
         let mut tiles = Vec::new();
         let now = Instant::now();
-        
+
         for (index, client) in windows.into_iter().enumerate() {
             let row = (index as u32) / columns;
             let col = (index as u32) % columns;
-            
+
             // Calculate grid position (center of tile)
-            let tile_x = self.config.padding + col * (tile_width + self.config.padding) + (tile_width / 2);
-            let tile_y = self.config.padding + row * (tile_height + self.config.padding) + (tile_height / 2);
-            
+            let tile_x =
+                self.config.padding + col * (tile_width + self.config.padding) + (tile_width / 2);
+            let tile_y =
+                self.config.padding + row * (tile_height + self.config.padding) + (tile_height / 2);
+
             // Calculate actual window position (centered within tile, with monitor offset)
             let window_x = offset_x + tile_x as i32 - scaled_width / 2;
             let window_y = offset_y + tile_y as i32 - scaled_height / 2;
-            
+
             // Check thumbnail cache
             let thumbnail_path = {
                 let mut cache = self.thumbnail_cache.write().await;
                 cache.get(&format!("{}_{}", client.pid, client.address))
             };
-            
+
             let tile = WindowTile {
                 original_pos: (client.at.0.into(), client.at.1.into()),
                 original_size: (client.size.0.into(), client.size.1.into()),
@@ -493,17 +531,21 @@ impl ExposePlugin {
                 last_updated: now,
                 client,
             };
-            
+
             tiles.push(tile);
         }
-        
+
         Ok(tiles)
     }
 
     /// Apply background overlay with configured color
     async fn apply_background_overlay(&mut self) -> Result<()> {
-        if !self.config.background_color.is_empty() && self.config.background_color != "transparent" {
-            debug!("🎨 Applying background overlay: {}", self.config.background_color);
+        if !self.config.background_color.is_empty() && self.config.background_color != "transparent"
+        {
+            debug!(
+                "🎨 Applying background overlay: {}",
+                self.config.background_color
+            );
             // In a real implementation, this would create a semi-transparent overlay
             // using Hyprland's layer shell or similar mechanism
             self.state.background_overlay_active = true;
@@ -526,10 +568,10 @@ impl ExposePlugin {
         if !self.config.animation.is_empty() && self.config.animation != "none" {
             debug!("🎬 Starting enter animation: {}", self.config.animation);
             self.state.animation_active = true;
-            
+
             // Simulate animation duration
             tokio::time::sleep(Duration::from_millis(self.config.animation_duration as u64)).await;
-            
+
             self.state.animation_active = false;
             debug!("✅ Enter animation completed");
         }
@@ -541,10 +583,10 @@ impl ExposePlugin {
         if !self.config.animation.is_empty() && self.config.animation != "none" {
             debug!("🎬 Starting exit animation: {}", self.config.animation);
             self.state.animation_active = true;
-            
+
             // Simulate animation duration
             tokio::time::sleep(Duration::from_millis(self.config.animation_duration as u64)).await;
-            
+
             self.state.animation_active = false;
             debug!("✅ Exit animation completed");
         }
@@ -553,84 +595,109 @@ impl ExposePlugin {
 
     /// Actually move and resize windows to their expose positions
     async fn arrange_windows(&self) -> Result<()> {
-        info!("📐 Arranging {} windows in expose grid", self.state.tiles.len());
-        
+        info!(
+            "📐 Arranging {} windows in expose grid",
+            self.state.tiles.len()
+        );
+
         for tile in &self.state.tiles {
             // Move and resize the window
             let move_cmd = DispatchType::MoveWindowPixel(
                 Position::Exact(tile.grid_pos.0 as i16, tile.grid_pos.1 as i16),
-                WindowIdentifier::Address(tile.client.address.clone())
+                WindowIdentifier::Address(tile.client.address.clone()),
             );
-            
+
             let resize_cmd = DispatchType::ResizeWindowPixel(
                 Position::Exact(tile.scaled_size.0 as i16, tile.scaled_size.1 as i16),
-                WindowIdentifier::Address(tile.client.address.clone())
+                WindowIdentifier::Address(tile.client.address.clone()),
             );
-            
+
             // Execute the commands
             if let Err(e) = tokio::task::spawn_blocking(move || {
                 Dispatch::call(move_cmd)?;
                 Dispatch::call(resize_cmd)?;
                 Ok::<(), anyhow::Error>(())
-            }).await? {
+            })
+            .await?
+            {
                 warn!("Failed to arrange window '{}': {}", tile.client.title, e);
             } else {
-                debug!("✅ Arranged window '{}' -> position ({}, {}) size {}x{}", 
+                debug!(
+                    "✅ Arranged window '{}' -> position ({}, {}) size {}x{}",
                     tile.client.title,
-                    tile.grid_pos.0, tile.grid_pos.1,
-                    tile.scaled_size.0, tile.scaled_size.1
+                    tile.grid_pos.0,
+                    tile.grid_pos.1,
+                    tile.scaled_size.0,
+                    tile.scaled_size.1
                 );
             }
         }
-        
+
         Ok(())
     }
 
     /// Restore windows to their original positions
     async fn restore_windows(&self) -> Result<()> {
-        info!("↩️  Restoring {} windows to original positions", self.state.tiles.len());
-        
+        info!(
+            "↩️  Restoring {} windows to original positions",
+            self.state.tiles.len()
+        );
+
         for tile in &self.state.tiles {
             // Restore original position and size
             let move_cmd = DispatchType::MoveWindowPixel(
                 Position::Exact(tile.original_pos.0 as i16, tile.original_pos.1 as i16),
-                WindowIdentifier::Address(tile.client.address.clone())
+                WindowIdentifier::Address(tile.client.address.clone()),
             );
-            
+
             let resize_cmd = DispatchType::ResizeWindowPixel(
                 Position::Exact(tile.original_size.0 as i16, tile.original_size.1 as i16),
-                WindowIdentifier::Address(tile.client.address.clone())
+                WindowIdentifier::Address(tile.client.address.clone()),
             );
-            
+
             // Restore floating state if needed
             if tile.original_floating != tile.client.floating {
                 let float_cmd = if tile.original_floating {
-                    DispatchType::ToggleFloating(Some(WindowIdentifier::Address(tile.client.address.clone())))
+                    DispatchType::ToggleFloating(Some(WindowIdentifier::Address(
+                        tile.client.address.clone(),
+                    )))
                 } else {
-                    DispatchType::ToggleFloating(Some(WindowIdentifier::Address(tile.client.address.clone())))
+                    DispatchType::ToggleFloating(Some(WindowIdentifier::Address(
+                        tile.client.address.clone(),
+                    )))
                 };
-                
-                if let Err(e) = tokio::task::spawn_blocking(move || Dispatch::call(float_cmd)).await? {
-                    warn!("Failed to restore floating state for '{}': {}", tile.client.title, e);
+
+                if let Err(e) =
+                    tokio::task::spawn_blocking(move || Dispatch::call(float_cmd)).await?
+                {
+                    warn!(
+                        "Failed to restore floating state for '{}': {}",
+                        tile.client.title, e
+                    );
                 }
             }
-            
+
             // Execute restore commands
             if let Err(e) = tokio::task::spawn_blocking(move || {
                 Dispatch::call(move_cmd)?;
                 Dispatch::call(resize_cmd)?;
                 Ok::<(), anyhow::Error>(())
-            }).await? {
+            })
+            .await?
+            {
                 warn!("Failed to restore window '{}': {}", tile.client.title, e);
             } else {
-                debug!("✅ Restored window '{}' -> position ({}, {}) size {}x{}", 
+                debug!(
+                    "✅ Restored window '{}' -> position ({}, {}) size {}x{}",
                     tile.client.title,
-                    tile.original_pos.0, tile.original_pos.1,
-                    tile.original_size.0, tile.original_size.1
+                    tile.original_pos.0,
+                    tile.original_pos.1,
+                    tile.original_size.0,
+                    tile.original_size.1
                 );
             }
         }
-        
+
         Ok(())
     }
 
@@ -639,134 +706,153 @@ impl ExposePlugin {
         if self.state.is_active {
             return Ok("Expose already active".to_string());
         }
-        
+
         info!("🎯 Entering expose mode");
         self.state.enter_time = Some(Instant::now());
-        
+
         // Get target monitor with dynamic detection
         let monitor = self.get_target_monitor().await?;
-        debug!("🖥️  Using monitor: {} ({}x{})", monitor.monitor.name, monitor.screen_width, monitor.screen_height);
-        
+        debug!(
+            "🖥️  Using monitor: {} ({}x{})",
+            monitor.monitor.name, monitor.screen_width, monitor.screen_height
+        );
+
         // Get current workspace
         let workspaces = tokio::task::spawn_blocking(|| Workspaces::get()).await??;
         let workspace_vec = workspaces.to_vec();
-        
+
         // Find current workspace on target monitor
         let current_workspace = workspace_vec
             .iter()
             .find(|w| w.monitor == monitor.monitor.name && w.windows > 0)
             .map(|w| w.id)
             .unwrap_or(1);
-        
+
         self.state.original_workspace = current_workspace;
         self.state.active_monitor = Some(monitor.clone());
-        
+
         // Get windows to show with performance optimization
         let windows = self.get_expose_windows(&monitor).await?;
-        
+
         if windows.is_empty() {
             return Ok("No windows to show in expose".to_string());
         }
-        
+
         // Calculate tile positions with proper scaling
         self.state.tiles = self.calculate_tile_positions(windows, &monitor).await?;
         self.state.selected_index = 0;
-        
+
         // Apply visual effects
         self.apply_background_overlay().await?;
-        
+
         // Start enter animation
         self.start_enter_animation().await?;
-        
+
         // Actually arrange the windows
         self.arrange_windows().await?;
-        
+
         self.state.is_active = true;
-        
+
         // Clean up thumbnail cache
         {
             let mut cache = self.thumbnail_cache.write().await;
             cache.cleanup_expired(Duration::from_secs(self.config.cache_duration));
         }
-        
-        Ok(format!("Expose mode activated with {} windows on monitor {}", 
-            self.state.tiles.len(), monitor.monitor.name))
+
+        Ok(format!(
+            "Expose mode activated with {} windows on monitor {}",
+            self.state.tiles.len(),
+            monitor.monitor.name
+        ))
     }
-    
+
     /// Exit expose mode with full implementation
     async fn exit_expose(&mut self) -> Result<String> {
         if !self.state.is_active {
             return Ok("Expose not active".to_string());
         }
-        
+
         info!("🚪 Exiting expose mode");
-        
+
         // Start exit animation
         self.start_exit_animation().await?;
-        
+
         // Focus the selected window
         if let Some(selected_tile) = self.state.tiles.get(self.state.selected_index) {
-            info!("🎯 Focusing selected window: {}", selected_tile.client.title);
-            let focus_cmd = DispatchType::FocusWindow(WindowIdentifier::Address(selected_tile.client.address.clone()));
+            info!(
+                "🎯 Focusing selected window: {}",
+                selected_tile.client.title
+            );
+            let focus_cmd = DispatchType::FocusWindow(WindowIdentifier::Address(
+                selected_tile.client.address.clone(),
+            ));
             if let Err(e) = tokio::task::spawn_blocking(move || Dispatch::call(focus_cmd)).await? {
                 warn!("Failed to focus selected window: {}", e);
             }
         }
-        
+
         // Restore original window positions
         self.restore_windows().await?;
-        
+
         // Remove visual effects
         self.remove_background_overlay().await?;
-        
+
         // Reset state
         self.state = ExposeState::default();
-        
+
         Ok("Expose mode deactivated".to_string())
     }
-    
+
     /// Navigate to next window in expose with proper highlighting
     async fn next_window(&mut self) -> Result<String> {
         if !self.state.is_active || self.state.tiles.is_empty() {
             return Ok("Expose not active".to_string());
         }
-        
+
         self.state.selected_index = (self.state.selected_index + 1) % self.state.tiles.len();
-        
+
         let selected_tile = &self.state.tiles[self.state.selected_index];
         debug!("➡️ Selected window: {}", selected_tile.client.title);
-        
+
         // Apply highlight color to selected window (visual feedback)
         // In a real implementation, this would add a colored border
-        debug!("🎨 Applying highlight color: {}", self.config.highlight_color);
-        
-        Ok(format!("Selected window {} of {}: {}", 
-            self.state.selected_index + 1, 
+        debug!(
+            "🎨 Applying highlight color: {}",
+            self.config.highlight_color
+        );
+
+        Ok(format!(
+            "Selected window {} of {}: {}",
+            self.state.selected_index + 1,
             self.state.tiles.len(),
             selected_tile.client.title
         ))
     }
-    
+
     /// Navigate to previous window in expose
     async fn prev_window(&mut self) -> Result<String> {
         if !self.state.is_active || self.state.tiles.is_empty() {
             return Ok("Expose not active".to_string());
         }
-        
+
         self.state.selected_index = if self.state.selected_index == 0 {
             self.state.tiles.len() - 1
         } else {
             self.state.selected_index - 1
         };
-        
+
         let selected_tile = &self.state.tiles[self.state.selected_index];
         debug!("⬅️ Selected window: {}", selected_tile.client.title);
-        
+
         // Apply highlight color to selected window
-        debug!("🎨 Applying highlight color: {}", self.config.highlight_color);
-        
-        Ok(format!("Selected window {} of {}: {}", 
-            self.state.selected_index + 1, 
+        debug!(
+            "🎨 Applying highlight color: {}",
+            self.config.highlight_color
+        );
+
+        Ok(format!(
+            "Selected window {} of {}: {}",
+            self.state.selected_index + 1,
             self.state.tiles.len(),
             selected_tile.client.title
         ))
@@ -795,7 +881,7 @@ impl ExposePlugin {
                 } else {
                     None
                 }
-            },
+            }
             "down" => {
                 let new_row = current_row + 1;
                 let new_index = (new_row * columns + current_col) as usize;
@@ -804,17 +890,15 @@ impl ExposePlugin {
                 } else {
                     None
                 }
-            },
+            }
             "left" => {
                 if self.state.selected_index > 0 {
                     Some(self.state.selected_index - 1)
                 } else {
                     Some(self.state.tiles.len() - 1) // Wrap to end
                 }
-            },
-            "right" => {
-                Some((self.state.selected_index + 1) % self.state.tiles.len())
-            },
+            }
+            "right" => Some((self.state.selected_index + 1) % self.state.tiles.len()),
             "home" => Some(0),
             "end" => Some(self.state.tiles.len() - 1),
             _ => None,
@@ -825,9 +909,10 @@ impl ExposePlugin {
                 self.state.selected_index = new_idx;
                 let selected_tile = &self.state.tiles[self.state.selected_index];
                 debug!("🧭 Navigated {}: {}", direction, selected_tile.client.title);
-                
-                return Ok(format!("Selected window {} of {}: {}", 
-                    self.state.selected_index + 1, 
+
+                return Ok(format!(
+                    "Selected window {} of {}: {}",
+                    self.state.selected_index + 1,
                     self.state.tiles.len(),
                     selected_tile.client.title
                 ));
@@ -853,33 +938,39 @@ impl ExposePlugin {
             if x >= tile_left && x <= tile_right && y >= tile_top && y <= tile_bottom {
                 self.state.selected_index = index;
                 debug!("🖱️  Mouse selected window: {}", tile.client.title);
-                
+
                 return Ok(format!("Mouse selected window: {}", tile.client.title));
             }
         }
 
         Ok("No window at mouse position".to_string())
     }
-    
+
     /// Get comprehensive status with performance metrics
     async fn get_status(&self) -> Result<String> {
         if !self.state.is_active {
             return Ok("Expose: Inactive".to_string());
         }
-        
-        let selected_title = self.state.tiles
+
+        let selected_title = self
+            .state
+            .tiles
             .get(self.state.selected_index)
             .map(|t| t.client.title.as_str())
             .unwrap_or("None");
 
-        let monitor_name = self.state.active_monitor
+        let monitor_name = self
+            .state
+            .active_monitor
             .as_ref()
             .map(|m| m.monitor.name.as_str())
             .unwrap_or("Unknown");
 
         let cache_entries = self.thumbnail_cache.read().await.entries.len();
-        
-        let uptime = self.state.enter_time
+
+        let uptime = self
+            .state
+            .enter_time
             .map(|t| t.elapsed())
             .unwrap_or(Duration::from_secs(0));
 
@@ -902,23 +993,23 @@ impl Plugin for ExposePlugin {
     fn name(&self) -> &str {
         "expose"
     }
-    
+
     async fn init(&mut self, config: &toml::Value) -> Result<()> {
         info!("🎯 Initializing enhanced expose plugin");
-        
+
         if let Some(expose_config) = config.get("expose") {
             match expose_config.clone().try_into() {
                 Ok(config) => self.config = Arc::new(config),
                 Err(e) => return Err(anyhow::anyhow!("Invalid expose configuration: {}", e)),
             }
         }
-        
+
         info!("✅ Enhanced expose plugin initialized with config: scale={:.2}, max_windows={}, animation={}", 
             self.config.scale, self.config.max_windows, self.config.animation);
-        
+
         Ok(())
     }
-    
+
     async fn handle_event(&mut self, event: &HyprlandEvent) -> Result<()> {
         // Handle Hyprland events that might affect expose mode
         match event {
@@ -943,13 +1034,13 @@ impl Plugin for ExposePlugin {
             }
             _ => {}
         }
-        
+
         Ok(())
     }
-    
+
     async fn handle_command(&mut self, command: &str, args: &[&str]) -> Result<String> {
         debug!("🎯 Expose command: {} {:?}", command, args);
-        
+
         match command {
             "toggle" | "show" | "enter" => self.enter_expose().await,
             "hide" | "exit" => self.exit_expose().await,

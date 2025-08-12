@@ -29,7 +29,7 @@ pub enum DaemonResponse {
     /// Command failed with error
     Error { message: String },
     /// Status information
-    Status { 
+    Status {
         version: String,
         uptime_seconds: u64,
         plugins_loaded: usize,
@@ -44,8 +44,8 @@ impl ClientMessage {
         match command {
             "toggle" => {
                 if let Some(scratchpad) = args.first() {
-                    Ok(ClientMessage::Toggle { 
-                        scratchpad: scratchpad.clone() 
+                    Ok(ClientMessage::Toggle {
+                        scratchpad: scratchpad.clone(),
                     })
                 } else {
                     Err(anyhow::anyhow!("Toggle command requires scratchpad name"))
@@ -55,16 +55,17 @@ impl ClientMessage {
                 if args.is_empty() {
                     Ok(ClientMessage::Expose)
                 } else {
-                    Ok(ClientMessage::ExposeAction { 
-                        action: args.first()
+                    Ok(ClientMessage::ExposeAction {
+                        action: args
+                            .first()
                             .ok_or_else(|| anyhow::anyhow!("Missing expose action"))?
-                            .clone()
+                            .clone(),
                     })
                 }
             }
             "workspace" => {
                 if let Some(action) = args.first() {
-                    Ok(ClientMessage::WorkspaceAction { 
+                    Ok(ClientMessage::WorkspaceAction {
                         action: action.clone(),
                         arg: args.get(1).cloned(),
                     })
@@ -74,7 +75,7 @@ impl ClientMessage {
             }
             "magnify" => {
                 if let Some(action) = args.first() {
-                    Ok(ClientMessage::MagnifyAction { 
+                    Ok(ClientMessage::MagnifyAction {
                         action: action.clone(),
                         arg: args.get(1).cloned(),
                     })
@@ -85,14 +86,13 @@ impl ClientMessage {
             "reload" => Ok(ClientMessage::Reload),
             "status" => Ok(ClientMessage::Status),
             "list" => Ok(ClientMessage::List),
-            _ => Err(anyhow::anyhow!("Unknown command: {}", command))
+            _ => Err(anyhow::anyhow!("Unknown command: {}", command)),
         }
     }
 }
 
 /// IPC socket path - uses runtime directory or falls back to /tmp
 pub fn get_socket_path() -> String {
-    let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
-        .unwrap_or_else(|_| "/tmp".to_string());
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
     format!("{}/rustrland.sock", runtime_dir)
 }
