@@ -9,8 +9,10 @@ use tokio::sync::{Mutex, mpsc};
 
 pub mod protocol;
 pub mod server;
+pub mod enhanced_client;
 
 pub use protocol::{ClientMessage, DaemonResponse};
+pub use enhanced_client::{EnhancedHyprlandClient, WindowGeometry, ConnectionStats};
 
 // Define a basic event type for now
 #[derive(Debug, Clone)]

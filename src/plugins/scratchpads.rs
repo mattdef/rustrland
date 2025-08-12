@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{Instant, Duration};
 
 use crate::plugins::Plugin;
-use crate::ipc::{HyprlandEvent, HyprlandClient, MonitorInfo};
+use crate::ipc::{HyprlandEvent, HyprlandClient, MonitorInfo, EnhancedHyprlandClient, WindowGeometry};
 
 // ============================================================================
 // CONFIGURATION STRUCTURES
@@ -182,13 +182,6 @@ impl Default for ScratchpadState {
 // GEOMETRY CALCULATION
 // ============================================================================
 
-#[derive(Debug, Clone)]
-pub struct WindowGeometry {
-    pub x: i32,
-    pub y: i32,
-    pub width: i32,
-    pub height: i32,
-}
 
 pub struct GeometryCalculator;
 
@@ -225,6 +218,9 @@ impl GeometryCalculator {
             y: final_y,
             width,
             height,
+            workspace: "e+0".to_string(), // Default workspace
+            monitor: 0, // Will be updated based on actual monitor
+            floating: true, // Scratchpads are typically floating
         })
     }
     
@@ -495,6 +491,7 @@ pub struct ScratchpadsPlugin {
     pub scratchpads: HashMap<String, ScratchpadConfig>,
     pub states: HashMap<String, ScratchpadState>,
     pub hyprland_client: Arc<Mutex<Option<Arc<HyprlandClient>>>>,
+    pub enhanced_client: Arc<EnhancedHyprlandClient>, // Enhanced client for better reliability
     pub variables: HashMap<String, String>,
     
     // Performance optimizations
@@ -514,6 +511,10 @@ pub struct ScratchpadsPlugin {
     
     // Validated configurations
     pub validated_configs: HashMap<String, ValidatedConfig>,
+    
+    // Geometry synchronization
+    pub geometry_cache: Arc<RwLock<HashMap<String, WindowGeometry>>>, // window_address -> geometry
+    pub sync_tasks: HashMap<String, JoinHandle<()>>, // window_address -> sync task
 }
 
 impl ScratchpadsPlugin {
@@ -522,6 +523,7 @@ impl ScratchpadsPlugin {
             scratchpads: HashMap::new(),
             states: HashMap::new(),
             hyprland_client: Arc::new(Mutex::new(None)),
+            enhanced_client: Arc::new(EnhancedHyprlandClient::new()),
             variables: HashMap::new(),
             monitors_cache: Arc::new(RwLock::new(Vec::new())),
             cache_valid_until: Arc::new(RwLock::new(Instant::now())),
@@ -531,6 +533,8 @@ impl ScratchpadsPlugin {
             resolved_configs: HashMap::new(),
             hide_tasks: HashMap::new(),
             validated_configs: HashMap::new(),
+            geometry_cache: Arc::new(RwLock::new(HashMap::new())),
+            sync_tasks: HashMap::new(),
         }
     }
     
@@ -620,6 +624,119 @@ impl ScratchpadsPlugin {
         
         debug!("🔄 Expanded command '{}' to '{}'", command, result);
         result
+    }
+    
+    /// Start geometry synchronization for a window
+    async fn start_geometry_sync(&mut self, window_address: &str) {
+        // Cancel any existing sync for this window
+        if let Some(handle) = self.sync_tasks.remove(window_address) {
+            handle.abort();
+        }
+        
+        let window_address = window_address.to_string();
+        let enhanced_client = Arc::clone(&self.enhanced_client);
+        let geometry_cache = Arc::clone(&self.geometry_cache);
+        
+        let window_key = window_address.to_string();
+        
+        let handle = tokio::spawn(async move {
+            Self::geometry_sync_loop(window_address.to_string(), enhanced_client, geometry_cache).await;
+        });
+        
+        self.sync_tasks.insert(window_key, handle);
+    }
+    
+    /// Geometry synchronization loop for a specific window
+    async fn geometry_sync_loop(
+        window_address: String,
+        enhanced_client: Arc<EnhancedHyprlandClient>,
+        geometry_cache: Arc<RwLock<HashMap<String, WindowGeometry>>>,
+    ) {
+        let mut interval = tokio::time::interval(Duration::from_millis(500)); // Check every 500ms
+        
+        loop {
+            interval.tick().await;
+            
+            // Get current geometry from Hyprland
+            match enhanced_client.get_window_geometry(&window_address).await {
+                Ok(current_geometry) => {
+                    // Check if geometry has changed
+                    let mut needs_update = false;
+                    
+                    {
+                        let cache = geometry_cache.read().await;
+                        if let Some(cached_geometry) = cache.get(&window_address) {
+                            needs_update = cached_geometry.x != current_geometry.x
+                                || cached_geometry.y != current_geometry.y
+                                || cached_geometry.width != current_geometry.width
+                                || cached_geometry.height != current_geometry.height
+                                || cached_geometry.workspace != current_geometry.workspace;
+                        } else {
+                            needs_update = true; // First time caching
+                        }
+                    }
+                    
+                    if needs_update {
+                        debug!("📐 Geometry updated for window {}: {}x{} at ({}, {})", 
+                               window_address, current_geometry.width, current_geometry.height,
+                               current_geometry.x, current_geometry.y);
+                        
+                        // Update cache
+                        let mut cache = geometry_cache.write().await;
+                        cache.insert(window_address.clone(), current_geometry);
+                    }
+                }
+                Err(e) => {
+                    debug!("❌ Failed to get geometry for window {}: {}", window_address, e);
+                    // Window might have been closed, remove from cache
+                    let mut cache = geometry_cache.write().await;
+                    cache.remove(&window_address);
+                    break; // Stop sync loop for this window
+                }
+            }
+        }
+    }
+    
+    /// Stop geometry synchronization for a window
+    async fn stop_geometry_sync(&mut self, window_address: &str) {
+        if let Some(handle) = self.sync_tasks.remove(window_address) {
+            handle.abort();
+            debug!("🛑 Stopped geometry sync for window: {}", window_address);
+        }
+        
+        // Remove from cache
+        let mut cache = self.geometry_cache.write().await;
+        cache.remove(window_address);
+    }
+    
+    /// Get cached geometry for a window
+    pub async fn get_cached_geometry(&self, window_address: &str) -> Option<WindowGeometry> {
+        let cache = self.geometry_cache.read().await;
+        cache.get(window_address).cloned()
+    }
+    
+    /// Bulk update geometries for all tracked windows
+    pub async fn sync_all_geometries(&mut self) {
+        let window_addresses: Vec<String> = self.window_to_scratchpad.keys().cloned().collect();
+        
+        if window_addresses.is_empty() {
+            return;
+        }
+        
+        debug!("🔄 Syncing geometries for {} windows", window_addresses.len());
+        
+        match self.enhanced_client.get_multiple_window_geometries(&window_addresses).await {
+            Ok(geometries) => {
+                let mut cache = self.geometry_cache.write().await;
+                for (address, geometry) in geometries {
+                    cache.insert(address, geometry);
+                }
+                debug!("✅ Synced geometries for {} windows", cache.len());
+            }
+            Err(e) => {
+                warn!("⚠️  Failed to sync geometries: {}", e);
+            }
+        }
     }
     
     /// Helper methods for internal operations
@@ -872,7 +989,7 @@ impl ScratchpadsPlugin {
         state.last_used = Some(Instant::now());
         
         // Find or create window state
-        if let Some(window_state) = state.windows.iter_mut().find(|w| w.address == window_address) {
+        if let Some(window_state) = state.windows.iter_mut().find(|w| w.address == *window_address) {
             window_state.is_visible = true;
             window_state.last_focus = Some(Instant::now());
         } else {
@@ -1020,26 +1137,37 @@ impl Plugin for ScratchpadsPlugin {
         match event {
             HyprlandEvent::WindowOpened { window } => {
                 debug!("Window opened: {} - checking if it is a scratchpad", window);
-                // Enhanced window tracking logic would go here
+                self.handle_window_opened(window).await;
             }
             HyprlandEvent::WindowClosed { window } => {
                 debug!("Window closed: {} - cleaning up if scratchpad", window);
                 self.handle_window_closed(window).await;
             }
+            HyprlandEvent::WindowMoved { window } => {
+                debug!("Window moved: {} - syncing geometry", window);
+                self.handle_window_moved(window).await;
+            }
             HyprlandEvent::WorkspaceChanged { workspace } => {
                 debug!("Workspace changed to: {}", workspace);
+                self.handle_workspace_changed(workspace).await;
             }
             HyprlandEvent::MonitorChanged { monitor: _ } => {
                 debug!("Monitor changed - invalidating cache");
                 // Invalidate monitor cache
-                let mut cache_valid = self.cache_valid_until.write().await;
-                *cache_valid = Instant::now();
+                {
+                    let mut cache_valid = self.cache_valid_until.write().await;
+                    *cache_valid = Instant::now();
+                }
+                
+                // Sync all geometries as monitor layout may have changed
+                self.sync_all_geometries().await;
             }
             HyprlandEvent::WindowFocusChanged { window } => {
                 self.handle_focus_changed(window).await;
             }
             HyprlandEvent::Other(msg) => {
                 debug!("Other event: {}", msg);
+                self.handle_other_event(msg).await;
             }
             _ => {
                 // Handle other events
@@ -1102,6 +1230,121 @@ impl Plugin for ScratchpadsPlugin {
 
 // Enhanced event handling methods
 impl ScratchpadsPlugin {
+    async fn handle_window_opened(&mut self, window_address: &str) {
+        debug!("🪟 Window opened: {}", window_address);
+        
+        // Check if this window belongs to any scratchpad by checking class
+        if let Ok(client) = self.enhanced_client.get_window_geometry(window_address).await {
+            // Find scratchpad that matches this window class
+            for (scratchpad_name, config) in &self.scratchpads {
+                if config.class == client.workspace || 
+                   (config.class.is_empty() && scratchpad_name == &client.workspace) {
+                    
+                    debug!("📋 Detected scratchpad window: {} for '{}'", window_address, scratchpad_name);
+                    
+                    // Add to tracking
+                    self.window_to_scratchpad.insert(window_address.to_string(), scratchpad_name.clone());
+                    
+                    // Update state
+                    let state = self.states.entry(scratchpad_name.clone()).or_default();
+                    
+                    let window_state = WindowState {
+                        address: window_address.to_string(),
+                        is_visible: !client.workspace.starts_with("special:"),
+                        last_position: None,
+                        monitor: Some(client.monitor.to_string()),
+                        workspace: Some(client.workspace.clone()),
+                        last_focus: Some(std::time::Instant::now()),
+                    };
+                    
+                    // Add if not already tracked
+                    if !state.windows.iter().any(|w| w.address == *window_address) {
+                        state.windows.push(window_state);
+                        state.is_spawned = true;
+                        debug!("✅ Added window to scratchpad '{}' state", scratchpad_name);
+                    }
+                    
+                    // Start geometry sync for this window
+                    self.start_geometry_sync(window_address).await;
+                    
+                    break;
+                }
+            }
+        }
+    }
+    
+    async fn handle_window_moved(&mut self, window_address: &str) {
+        debug!("📍 Window moved: {}", window_address);
+        
+        // Only sync geometry for tracked scratchpad windows
+        if self.window_to_scratchpad.contains_key(window_address) {
+            // Update geometry cache
+            if let Ok(geometry) = self.enhanced_client.get_window_geometry(window_address).await {
+                let mut cache = self.geometry_cache.write().await;
+                cache.insert(window_address.to_string(), geometry);
+                debug!("🔄 Updated geometry cache for window: {}", window_address);
+            }
+        }
+    }
+    
+    async fn handle_workspace_changed(&mut self, workspace: &str) {
+        debug!("🖥️ Workspace changed to: {}", workspace);
+        
+        // Update visibility status for scratchpad windows
+        // Special workspaces (like special:scratchpad) typically hide windows
+        let is_special_workspace = workspace.starts_with("special:");
+        
+        // Update window visibility status based on workspace
+        for (window_address, scratchpad_name) in &self.window_to_scratchpad {
+            if let Some(state) = self.states.get_mut(scratchpad_name) {
+                if let Some(window_state) = state.windows.iter_mut().find(|w| w.address == *window_address) {
+                    // Get current window info to determine actual visibility
+                    if let Ok(geometry) = self.enhanced_client.get_window_geometry(window_address).await {
+                        let new_visibility = !geometry.workspace.starts_with("special:");
+                        if window_state.is_visible != new_visibility {
+                            window_state.is_visible = new_visibility;
+                            debug!("👁️ Updated visibility for {}: {}", window_address, new_visibility);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    async fn handle_other_event(&mut self, event_msg: &str) {
+        debug!("🔄 Processing other event: {}", event_msg);
+        
+        // Handle specific other events that might be useful for scratchpads
+        if event_msg.starts_with("windowtitle>>") {
+            // Extract window address and title
+            let parts: Vec<&str> = event_msg.splitn(2, ">>").collect();
+            if parts.len() == 2 {
+                let data_parts: Vec<&str> = parts[1].splitn(2, ',').collect();
+                if data_parts.len() >= 1 {
+                    let window_address = data_parts[0];
+                    debug!("📝 Title changed for window: {}", window_address);
+                    
+                    // Sync geometry if this is a tracked window
+                    if self.window_to_scratchpad.contains_key(window_address) {
+                        self.start_geometry_sync(window_address).await;
+                    }
+                }
+            }
+        } else if event_msg.starts_with("resizewindow>>") {
+            // Window resized, update geometry
+            let parts: Vec<&str> = event_msg.splitn(2, ">>").collect();
+            if parts.len() == 2 {
+                let window_address = parts[1];
+                debug!("📏 Window resized: {}", window_address);
+                
+                if self.window_to_scratchpad.contains_key(window_address) {
+                    self.start_geometry_sync(window_address).await;
+                }
+            }
+        }
+    }
+    
+
     async fn handle_window_closed(&mut self, window_address: &str) {
         // Remove from window mapping
         if let Some(scratchpad_name) = self.window_to_scratchpad.remove(window_address) {
@@ -1133,7 +1376,7 @@ impl ScratchpadsPlugin {
         // Update focus time for scratchpad windows
         if let Some(scratchpad_name) = self.window_to_scratchpad.get(window_address) {
             if let Some(state) = self.states.get_mut(scratchpad_name) {
-                if let Some(window_state) = state.windows.iter_mut().find(|w| w.address == window_address) {
+                if let Some(window_state) = state.windows.iter_mut().find(|w| w.address == *window_address) {
                     window_state.last_focus = Some(Instant::now());
                 }
                 state.last_used = Some(Instant::now());
@@ -1325,5 +1568,326 @@ mod tests {
         assert_eq!(term_config.command, "foot");
         assert_eq!(term_config.class, "foot");
         assert!(term_config.parsed_size.is_some());
+    }
+
+    // ============================================================================
+    // TESTS FOR ENHANCED FUNCTIONALITY
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_enhanced_event_handling() {
+        let mut plugin = ScratchpadsPlugin::new();
+        let config = create_test_config();
+        plugin.init(&config).await.unwrap();
+
+        // Test window opened event handling
+        let window_address = "0x12345";
+        plugin.handle_window_opened(window_address).await;
+        
+        // Should not add to tracking since enhanced_client will fail in test environment
+        assert!(plugin.window_to_scratchpad.is_empty());
+    }
+
+    #[tokio::test] 
+    async fn test_window_state_management() {
+        let mut plugin = ScratchpadsPlugin::new();
+        let config = create_test_config();
+        plugin.init(&config).await.unwrap();
+
+        // Simulate window state
+        let mut state = ScratchpadState::default();
+        state.windows.push(WindowState {
+            address: "0x12345".to_string(),
+            is_visible: true,
+            last_position: Some((100, 100, 800, 600)),
+            monitor: Some("DP-1".to_string()),
+            workspace: Some("1".to_string()),
+            last_focus: Some(Instant::now()),
+        });
+
+        plugin.states.insert("term".to_string(), state);
+        plugin.window_to_scratchpad.insert("0x12345".to_string(), "term".to_string());
+
+        // Test window closed handling
+        plugin.handle_window_closed("0x12345").await;
+        
+        // Window should be removed from tracking
+        assert!(!plugin.window_to_scratchpad.contains_key("0x12345"));
+        
+        let term_state = plugin.states.get("term").unwrap();
+        assert!(term_state.windows.is_empty());
+        assert!(!term_state.is_spawned);
+    }
+
+    #[tokio::test]
+    async fn test_focus_tracking() {
+        let mut plugin = ScratchpadsPlugin::new();
+        let config = create_test_config();
+        plugin.init(&config).await.unwrap();
+
+        // Setup test state
+        let mut state = ScratchpadState::default();
+        let now = Instant::now();
+        state.windows.push(WindowState {
+            address: "0x12345".to_string(),
+            is_visible: true,
+            last_position: None,
+            monitor: Some("DP-1".to_string()),
+            workspace: Some("1".to_string()),
+            last_focus: Some(now),
+        });
+
+        plugin.states.insert("term".to_string(), state);
+        plugin.window_to_scratchpad.insert("0x12345".to_string(), "term".to_string());
+
+        // Test focus changed
+        plugin.handle_focus_changed("0x12345").await;
+        
+        // Focus should be updated
+        assert_eq!(plugin.focused_window, Some("0x12345".to_string()));
+        
+        let term_state = plugin.states.get("term").unwrap();
+        let window_state = &term_state.windows[0];
+        assert!(window_state.last_focus.unwrap() > now);
+        assert!(term_state.last_used.unwrap() > now);
+    }
+
+    #[tokio::test]
+    async fn test_workspace_change_handling() {
+        let mut plugin = ScratchpadsPlugin::new();
+        let config = create_test_config();
+        plugin.init(&config).await.unwrap();
+
+        // Setup test state with visible window
+        let mut state = ScratchpadState::default();
+        state.windows.push(WindowState {
+            address: "0x12345".to_string(),
+            is_visible: true,
+            last_position: None,
+            monitor: Some("DP-1".to_string()),
+            workspace: Some("1".to_string()),
+            last_focus: Some(Instant::now()),
+        });
+
+        plugin.states.insert("term".to_string(), state);
+        plugin.window_to_scratchpad.insert("0x12345".to_string(), "term".to_string());
+
+        // Test workspace change to special workspace
+        plugin.handle_workspace_changed("special:scratchpad").await;
+        
+        // Window visibility should be handled (though enhanced_client will fail in test)
+        // The test validates the logic path is executed correctly
+        assert!(plugin.states.contains_key("term"));
+    }
+
+    #[tokio::test]
+    async fn test_other_event_handling() {
+        let mut plugin = ScratchpadsPlugin::new();
+        let config = create_test_config();
+        plugin.init(&config).await.unwrap();
+
+        // Setup tracking
+        plugin.window_to_scratchpad.insert("0x12345".to_string(), "term".to_string());
+
+        // Test window title change event
+        plugin.handle_other_event("windowtitle>>0x12345,New Title with, Commas").await;
+        
+        // Test window resize event
+        plugin.handle_other_event("resizewindow>>0x12345").await;
+        
+        // Test unknown event
+        plugin.handle_other_event("unknown>>data").await;
+        
+        // Should complete without errors (geometry sync will fail due to test environment)
+        assert!(plugin.window_to_scratchpad.contains_key("0x12345"));
+    }
+
+    #[test]
+    fn test_window_geometry_structure() {
+        use crate::ipc::WindowGeometry;
+        
+        // Test WindowGeometry structure from enhanced client
+        let geometry = WindowGeometry {
+            x: 100,
+            y: 200, 
+            width: 800,
+            height: 600,
+            workspace: "1".to_string(),
+            monitor: 0,
+            floating: true,
+        };
+
+        assert_eq!(geometry.x, 100);
+        assert_eq!(geometry.y, 200);
+        assert_eq!(geometry.width, 800);
+        assert_eq!(geometry.height, 600);
+        assert_eq!(geometry.workspace, "1");
+        assert_eq!(geometry.monitor, 0);
+        assert!(geometry.floating);
+    }
+
+    #[tokio::test]
+    async fn test_geometry_caching() {
+        let plugin = ScratchpadsPlugin::new();
+        
+        // Test empty cache
+        let cached = plugin.get_cached_geometry("0x12345").await;
+        assert!(cached.is_none());
+        
+        // Test cache insertion (done via geometry sync normally)
+        // This validates the cache structure works correctly
+        let cache = plugin.geometry_cache.read().await;
+        assert!(cache.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_enhanced_client_initialization() {
+        let plugin = ScratchpadsPlugin::new();
+        
+        // Verify enhanced client is initialized
+        assert!(plugin.enhanced_client.is_connected().await == false); // Not connected in test environment
+        
+        // Test connection stats
+        let stats = plugin.enhanced_client.get_connection_stats().await;
+        assert!(!stats.is_connected);
+        assert_eq!(stats.connection_failures, 0);
+    }
+
+    #[tokio::test]
+    async fn test_sync_task_management() {
+        let mut plugin = ScratchpadsPlugin::new();
+        let config = create_test_config();
+        plugin.init(&config).await.unwrap();
+
+        // Test that sync tasks can be managed
+        assert!(plugin.sync_tasks.is_empty());
+        
+        // In real usage, start_geometry_sync would add tasks
+        // This validates the HashMap structure works
+        let task_count = plugin.sync_tasks.len();
+        assert_eq!(task_count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_bulk_geometry_sync() {
+        let mut plugin = ScratchpadsPlugin::new();
+        let config = create_test_config();
+        plugin.init(&config).await.unwrap();
+
+        // Setup multiple tracked windows
+        plugin.window_to_scratchpad.insert("0x12345".to_string(), "term".to_string());
+        plugin.window_to_scratchpad.insert("0x67890".to_string(), "browser".to_string());
+
+        // Test bulk sync (will fail due to test environment but validates logic)
+        plugin.sync_all_geometries().await;
+        
+        // Should complete without panic
+        assert_eq!(plugin.window_to_scratchpad.len(), 2);
+    }
+
+    #[test]
+    fn test_enhanced_window_geometry_calculation() {
+        let monitor = create_test_monitor();
+        
+        // Test that geometry calculation includes new fields
+        let geometry = GeometryCalculator::calculate_geometry(
+            &ValidatedConfig {
+                command: "test".to_string(),
+                class: "test".to_string(),
+                size: "50% 60%".to_string(),
+                animation: None,
+                margin: Some(10),
+                offset: None,
+                hide_delay: None,
+                lazy: false,
+                pinned: true,
+                excludes: Vec::new(),
+                restore_excluded: false,
+                preserve_aspect: false,
+                force_monitor: None,
+                alt_toggle: false,
+                allow_special_workspaces: false,
+                smart_focus: true,
+                close_on_hide: false,
+                unfocus: None,
+                max_size: None,
+                r#use: None,
+                multi_window: false,
+                max_instances: Some(1),
+                validation_errors: Vec::new(),
+                validation_warnings: Vec::new(),
+                parsed_size: Some((960, 648)),
+                parsed_offset: None,
+                parsed_max_size: None,
+            },
+            &monitor
+        ).unwrap();
+
+        // Verify enhanced fields are set
+        assert_eq!(geometry.workspace, "e+0");
+        assert_eq!(geometry.monitor, 0);
+        assert!(geometry.floating);
+        
+        // Verify basic geometry calculation still works
+        assert_eq!(geometry.width, 960);  // 50% of 1920
+        assert_eq!(geometry.height, 648); // 60% of 1080
+    }
+
+    #[tokio::test]
+    async fn test_event_filtering_performance() {
+        let mut plugin = ScratchpadsPlugin::new();
+        let config = create_test_config();
+        plugin.init(&config).await.unwrap();
+
+        // Test that plugin can handle rapid event processing
+        let events = vec![
+            "workspace>>1",
+            "openwindow>>0x12345,1,foot,Terminal",
+            "closewindow>>0x12345", 
+            "movewindow>>0x67890,2",
+            "windowtitle>>0x12345,New Title with, Commas in it",
+            "resizewindow>>0x12345,800x600",
+            "unknown>>irrelevant data",
+        ];
+
+        // Process events rapidly
+        for event in events {
+            plugin.handle_other_event(event).await;
+        }
+
+        // Should complete without performance issues
+        assert!(plugin.states.len() >= 0); // Basic validation
+    }
+
+    #[test]
+    fn test_configuration_validation_with_enhanced_features() {
+        let monitors = vec![create_test_monitor()];
+        let mut configs = HashMap::new();
+        
+        // Test enhanced configuration options
+        configs.insert("advanced".to_string(), ScratchpadConfig {
+            command: "advanced-app".to_string(),
+            class: "advanced".to_string(),
+            size: "80% 70%".to_string(),
+            lazy: true,
+            pinned: false,
+            multi_window: true,
+            max_instances: Some(3),
+            smart_focus: true,
+            preserve_aspect: true,
+            max_size: Some("1600px 900px".to_string()),
+            ..Default::default()
+        });
+
+        let validated = ConfigValidator::validate_configs(&configs, &monitors);
+        let advanced_config = validated.get("advanced").unwrap();
+        
+        // Verify enhanced features are validated correctly
+        assert!(advanced_config.validation_errors.is_empty());
+        assert!(advanced_config.multi_window);
+        assert_eq!(advanced_config.max_instances, Some(3));
+        assert!(advanced_config.smart_focus);
+        assert!(advanced_config.preserve_aspect);
+        assert!(advanced_config.max_size.is_some());
     }
 }

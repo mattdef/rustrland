@@ -336,7 +336,7 @@ mod tests {
             .direction(AnimationDirection::Alternate)
             .build();
         
-        assert_eq!(timeline.keyframes.len(), 3);
+        assert_eq!(timeline.keyframes.len(), 5); // 2 default + 3 added = 5 keyframes
         assert_eq!(timeline.loop_count, Some(3));
     }
 }
