@@ -1,6 +1,6 @@
 [package]
 name = "rustrland"
-version = "0.2.3"
+version = "0.2.5"
 edition = "2021"
 authors = ["Rustrland Contributors"]
 license = "MIT"
@@ -50,9 +50,19 @@ shellexpand = "3.1"
 futures = "0.3"
 serde_json = "1.0.142"
 
+# Hot reload
+notify = "6.1"
+tokio-stream = { version = "0.1", features = ["sync"] }
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.8"
+criterion = { version = "0.5", features = ["html_reports"] }
+futures = "0.3"
+
+[[bench]]
+name = "scratchpads_bench"
+harness = false
 
 [profile.release]
 lto = true

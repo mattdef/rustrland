@@ -1,0 +1,94 @@
+# Comprehensive Scratchpad Configuration Example
+# Demonstrates all Pyprland-compatible features
+
+[rustrland]
+plugins = ["scratchpads"]
+
+# Variables for reusability
+[rustrland.variables]
+term_class = "foot"
+browser_class = "firefox"
+file_manager = "thunar"
+editor_class = "code"
+
+# Terminal scratchpad with advanced features
+[scratchpads.term]
+command = "foot --app-id=[term_class]"
+class = "foot" 
+size = "75% 60%"
+animation = "fromTop"
+margin = 20
+lazy = false
+pinned = true
+smart_focus = true
+
+# Browser scratchpad with exclusion
+[scratchpads.browser]
+command = "firefox --new-window"
+class = "firefox"
+size = "80% 70%"
+max_size = "1600px 1000px"
+lazy = true
+pinned = true
+excludes = ["term", "editor"]
+restore_excluded = true
+force_monitor = "DP-1"
+
+# File manager scratchpad
+[scratchpads.filemanager]
+command = "thunar"
+class = "Thunar"
+size = "60% 80%"
+animation = "fromLeft"
+margin = 10
+offset = "50px 50px"
+lazy = true
+pinned = false
+unfocus = "hide"
+
+# Code editor with multi-window support
+[scratchpads.editor]
+command = "code --new-window"
+class = "code-oss"
+size = "90% 90%"
+lazy = true
+pinned = true
+multi_window = true
+max_instances = 3
+preserve_aspect = true
+
+# Music player scratchpad with special features
+[scratchpads.music]
+command = "spotify"
+class = "Spotify"
+size = "50% 70%"
+animation = "fromRight"
+lazy = true
+excludes = ["*"]  # Exclude all other scratchpads
+close_on_hide = false
+allow_special_workspaces = true
+alt_toggle = true
+
+# System monitor scratchpad
+[scratchpads.monitor]
+command = "htop"
+class = "htop"
+size = "70% 80%"
+lazy = true
+pinned = true
+hide_delay = 500
+
+# Template scratchpad for inheritance
+[scratchpads.template_base]
+size = "60% 60%"
+lazy = true
+pinned = true
+margin = 15
+animation = "fromTop"
+
+# Scratchpad using template inheritance
+[scratchpads.calculator]
+command = "gnome-calculator"
+class = "gnome-calculator"
+use = "template_base"
+size = "30% 40%"  # Override template size

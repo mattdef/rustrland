@@ -1,0 +1,150 @@
+# Hot Reload Demo Configuration
+# This file demonstrates Rustrland's advanced hot reload capabilities
+# Change any values and run: rustr reload
+
+[rustrland]
+plugins = ["scratchpads", "expose", "magnify"]
+
+[rustrland.variables]
+term_classed = "foot --app-id"
+browser_cmd = "firefox"
+editor_cmd = "code"
+
+# ========================================
+# HOT RELOAD FEATURES DEMO
+# ========================================
+
+# TRY THESE CHANGES:
+# 1. Add/remove plugins from the plugins list above
+# 2. Modify animation settings below
+# 3. Change scratchpad sizes, commands, or animations
+# 4. Add new scratchpads
+# 5. Run: rustr reload
+
+# Basic scratchpad - try changing the size or animation
+[scratchpads.terminal]
+command = "[term_classed] dropterm"
+class = "dropterm"
+size = "75% 60%"  # Change to "80% 70%" and reload!
+animation = "fromTop"
+animation_config = { 
+    duration = 300,  # Try changing to 500
+    easing = "ease-out",  # Try "bounce" or "elastic"
+    offset = "100px" 
+}
+
+# Try adding this new scratchpad by uncommenting:
+# [scratchpads.calculator]
+# command = "gnome-calculator"
+# class = "gnome-calculator"
+# size = "30% 40%"
+# animation = "spring"
+# animation_config = {
+#     duration = 400,
+#     easing = "spring",
+#     spring = { stiffness = 300.0, damping = 25.0 },
+#     offset = "50px"
+# }
+
+# Browser scratchpad - try changing animation type
+[scratchpads.browser]
+command = "[browser_cmd]"
+class = "firefox"
+size = "90% 80%"
+animation = "fromBottom"  # Try "elastic" or "bounce"
+animation_config = { 
+    duration = 350, 
+    easing = "ease-in-out",
+    offset = "150px" 
+}
+
+# File manager - try different easing
+[scratchpads.files]
+command = "thunar"
+class = "Thunar"
+size = "70% 60%"
+animation = "fromLeft"
+animation_config = {
+    duration = 280,
+    easing = "ease-out-back",  # Try "cubic-bezier(0.68, -0.55, 0.265, 1.55)"
+    offset = "100%"
+}
+
+# ========================================
+# PLUGIN CONFIGURATIONS
+# ========================================
+
+# Expose plugin config - try changing values
+[expose]
+padding = 20        # Try changing to 30
+scale = 0.2         # Try 0.25
+show_titles = true  # Try false
+
+# Magnify plugin config - try different physics
+[magnify]
+factor = 2.0           # Try 2.5
+duration = 300         # Try 500
+smooth_animation = true
+spring = { 
+    stiffness = 300.0,  # Try 400.0 for snappier
+    damping = 25.0      # Try 15.0 for more bouncy
+}
+min_zoom = 1.0
+max_zoom = 5.0         # Try 3.0
+increment = 0.5        # Try 0.3
+
+# ========================================
+# HOT RELOAD TESTING SCENARIOS
+# ========================================
+
+# SCENARIO 1: Add a new plugin
+# Uncomment this line in the plugins list: "workspaces_follow_focus"
+# Then add this config:
+# [workspaces_follow_focus]
+# follow_window_focus = true
+# allow_cross_monitor_switch = true
+
+# SCENARIO 2: Change animation system-wide
+# Try changing all animation durations to 200ms for snappy feel
+# Or change all to 500ms for smooth feel
+
+# SCENARIO 3: Add complex animation
+# Try this advanced scratchpad config:
+# [scratchpads.advanced]
+# command = "kitty --class advanced"
+# class = "advanced"
+# size = "60% 50%"
+# animation = "complex"
+# animation_config = {
+#     duration = 400,
+#     properties = [
+#         { property = "x", from = "100%", to = "20%", easing = "ease-out" },
+#         { property = "opacity", from = "0.0", to = "1.0", easing = "ease-in" },
+#         { property = "scale", from = "0.9", to = "1.0", easing = "bounce" }
+#     ]
+# }
+
+# ========================================
+# RELOAD INSTRUCTIONS
+# ========================================
+
+# After making changes to this file:
+# 1. Save the file
+# 2. Run: rustr reload
+# 3. Watch the logs for hot reload messages
+# 4. Test your changes with: rustr toggle <scratchpad>
+# 
+# The hot reload system will:
+# ✅ Validate your configuration
+# ✅ Only reload changed plugins  
+# ✅ Preserve active scratchpad states
+# ✅ Show you exactly what changed
+# ✅ Rollback on errors
+
+# ADVANCED: File watcher mode
+# Set up automatic reload on file changes:
+# [hot_reload]
+# auto_reload = true
+# debounce_ms = 500
+# validate_before_apply = true
+# preserve_plugin_state = true

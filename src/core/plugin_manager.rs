@@ -117,3 +117,77 @@ impl PluginManager {
         self.plugins.len()
     }
 }
+
+// Implementation of HotReloadable trait for PluginManager
+impl super::hot_reload::HotReloadable for PluginManager {
+    async fn get_plugin_state(&self, plugin_name: &str) -> Result<serde_json::Value> {
+        // For now, return empty JSON object - plugins can implement their own state serialization
+        if self.plugins.contains_key(plugin_name) {
+            Ok(serde_json::json!({}))
+        } else {
+            Err(anyhow::anyhow!("Plugin '{}' not found", plugin_name))
+        }
+    }
+    
+    async fn preserve_plugin_state(&self, _plugin_name: &str, _state: serde_json::Value) -> Result<()> {
+        // Plugin state preservation would be implemented here
+        Ok(())
+    }
+    
+    async fn restore_plugin_state(&self, _plugin_name: &str, _state: serde_json::Value) -> Result<()> {
+        // Plugin state restoration would be implemented here
+        Ok(())
+    }
+    
+    async fn reload_plugin(&mut self, plugin_name: &str, config: &Config) -> Result<()> {
+        info!("🔄 Reloading plugin: {}", plugin_name);
+        
+        // Remove existing plugin
+        self.plugins.remove(plugin_name);
+        
+        // Load fresh plugin
+        // Note: This is a simplified implementation - a full version would preserve the hyprland client
+        let hyprland_client = Arc::new(crate::ipc::HyprlandClient::new().await?);
+        self.load_single_plugin(plugin_name, config, hyprland_client).await?;
+        
+        Ok(())
+    }
+    
+    async fn unload_plugin(&mut self, plugin_name: &str) -> Result<()> {
+        if let Some(_plugin) = self.plugins.remove(plugin_name) {
+            info!("🗑️ Unloaded plugin: {}", plugin_name);
+        }
+        Ok(())
+    }
+    
+    async fn unload_all_plugins(&mut self) -> Result<()> {
+        let count = self.plugins.len();
+        self.plugins.clear();
+        info!("🗑️ Unloaded all {} plugins", count);
+        Ok(())
+    }
+    
+    async fn load_plugin(&mut self, plugin_name: &str, config: &Config) -> Result<()> {
+        let hyprland_client = Arc::new(crate::ipc::HyprlandClient::new().await?);
+        self.load_single_plugin(plugin_name, config, hyprland_client).await
+    }
+    
+    async fn load_from_config(&mut self, config: &Config) -> Result<()> {
+        let hyprland_client = Arc::new(crate::ipc::HyprlandClient::new().await?);
+        self.load_plugins(config, hyprland_client).await
+    }
+    
+    fn get_loaded_plugins(&self) -> Vec<String> {
+        self.plugins.keys().cloned().collect()
+    }
+    
+    fn get_plugin_config(&self, plugin_name: &str) -> Result<toml::Value> {
+        // This would return the plugin's configuration from the config
+        // For now, return empty config
+        if self.plugins.contains_key(plugin_name) {
+            Ok(toml::Value::Table(toml::Table::new()))
+        } else {
+            Err(anyhow::anyhow!("Plugin '{}' not found", plugin_name))
+        }
+    }
+}

@@ -9,6 +9,7 @@ pub mod config;
 pub mod core;
 pub mod ipc;
 pub mod plugins;
+pub mod animation;
 
 // Re-export commonly used types
 pub use config::Config;
