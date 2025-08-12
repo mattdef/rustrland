@@ -4,11 +4,16 @@ use tracing::{info, debug, warn, error};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
+use tokio::task::JoinHandle;
 use serde::{Deserialize, Serialize};
 use std::time::{Instant, Duration};
 
 use crate::plugins::Plugin;
 use crate::ipc::{HyprlandEvent, HyprlandClient, MonitorInfo};
+
+// ============================================================================
+// CONFIGURATION STRUCTURES
+// ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScratchpadConfig {
@@ -72,6 +77,76 @@ impl Default for ScratchpadConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidatedConfig {
+    // All fields from ScratchpadConfig
+    pub command: String,
+    pub class: String,
+    pub size: String,
+    pub animation: Option<String>,
+    pub margin: Option<i32>,
+    pub offset: Option<String>,
+    pub hide_delay: Option<u32>,
+    pub lazy: bool,
+    pub pinned: bool,
+    pub excludes: Vec<String>,
+    pub restore_excluded: bool,
+    pub preserve_aspect: bool,
+    pub force_monitor: Option<String>,
+    pub alt_toggle: bool,
+    pub allow_special_workspaces: bool,
+    pub smart_focus: bool,
+    pub close_on_hide: bool,
+    pub unfocus: Option<String>,
+    pub max_size: Option<String>,
+    pub r#use: Option<String>,
+    pub multi_window: bool,
+    pub max_instances: Option<u32>,
+    
+    // Validation metadata
+    pub validation_errors: Vec<String>,
+    pub validation_warnings: Vec<String>,
+    
+    // Pre-calculated values for performance
+    pub parsed_size: Option<(i32, i32)>, // width, height (cached for default monitor)
+    pub parsed_offset: Option<(i32, i32)>, // x, y offset
+    pub parsed_max_size: Option<(i32, i32)>, // max width, height
+}
+
+impl Default for ValidatedConfig {
+    fn default() -> Self {
+        Self {
+            command: String::new(),
+            class: String::new(),
+            size: "50% 50%".to_string(),
+            animation: None,
+            margin: None,
+            offset: None,
+            hide_delay: None,
+            lazy: false,
+            pinned: true,
+            excludes: Vec::new(),
+            restore_excluded: false,
+            preserve_aspect: false,
+            force_monitor: None,
+            alt_toggle: false,
+            allow_special_workspaces: false,
+            smart_focus: true,
+            close_on_hide: false,
+            unfocus: None,
+            max_size: None,
+            r#use: None,
+            multi_window: false,
+            max_instances: Some(1),
+            validation_errors: Vec::new(),
+            validation_warnings: Vec::new(),
+            parsed_size: None,
+            parsed_offset: None,
+            parsed_max_size: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct WindowState {
     pub address: String,
@@ -103,6 +178,319 @@ impl Default for ScratchpadState {
     }
 }
 
+// ============================================================================
+// GEOMETRY CALCULATION
+// ============================================================================
+
+#[derive(Debug, Clone)]
+pub struct WindowGeometry {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+pub struct GeometryCalculator;
+
+impl GeometryCalculator {
+    /// Calculate window geometry with monitor-aware positioning
+    pub fn calculate_geometry(config: &ValidatedConfig, monitor: &MonitorInfo) -> Result<WindowGeometry> {
+        let (width, height) = Self::parse_size(&config.size, monitor, config.max_size.as_deref())?;
+        let (offset_x, offset_y) = Self::parse_offset(config.offset.as_deref(), monitor)?;
+        let margin = config.margin.unwrap_or(0);
+        
+        // Calculate position with monitor-aware positioning
+        let base_x = monitor.x + offset_x + margin;
+        let base_y = monitor.y + offset_y + margin;
+        
+        // Center the window if no specific positioning
+        let x = if offset_x == 0 && config.offset.is_none() {
+            monitor.x + (monitor.width - width) / 2
+        } else {
+            base_x
+        };
+        
+        let y = if offset_y == 0 && config.offset.is_none() {
+            monitor.y + (monitor.height - height) / 2
+        } else {
+            base_y
+        };
+        
+        // Ensure window stays within monitor bounds
+        let final_x = x.max(monitor.x).min(monitor.x + monitor.width - width);
+        let final_y = y.max(monitor.y).min(monitor.y + monitor.height - height);
+        
+        Ok(WindowGeometry {
+            x: final_x,
+            y: final_y,
+            width,
+            height,
+        })
+    }
+    
+    /// Parse size string with monitor-aware dimensions
+    pub fn parse_size(size_str: &str, monitor: &MonitorInfo, max_size: Option<&str>) -> Result<(i32, i32)> {
+        let parts: Vec<&str> = size_str.split_whitespace().collect();
+        if parts.len() != 2 {
+            return Err(anyhow::anyhow!("Invalid size format '{}', expected 'width height'", size_str));
+        }
+        
+        let width = Self::parse_dimension(parts[0], monitor.width)?;
+        let height = Self::parse_dimension(parts[1], monitor.height)?;
+        
+        // Apply max_size constraints if specified
+        if let Some(max_size_str) = max_size {
+            let max_parts: Vec<&str> = max_size_str.split_whitespace().collect();
+            if max_parts.len() == 2 {
+                let max_width = Self::parse_dimension(max_parts[0], monitor.width)?;
+                let max_height = Self::parse_dimension(max_parts[1], monitor.height)?;
+                return Ok((width.min(max_width), height.min(max_height)));
+            }
+        }
+        
+        Ok((width, height))
+    }
+    
+    /// Parse offset string like "50px 100px" or "10% 20%"
+    pub fn parse_offset(offset_str: Option<&str>, monitor: &MonitorInfo) -> Result<(i32, i32)> {
+        let offset_str = match offset_str {
+            Some(s) => s,
+            None => return Ok((0, 0)),
+        };
+        
+        let parts: Vec<&str> = offset_str.split_whitespace().collect();
+        if parts.len() != 2 {
+            return Err(anyhow::anyhow!("Invalid offset format '{}', expected 'x y'", offset_str));
+        }
+        
+        let x = Self::parse_dimension(parts[0], monitor.width)?;
+        let y = Self::parse_dimension(parts[1], monitor.height)?;
+        
+        Ok((x, y))
+    }
+    
+    /// Parse individual dimension (supports %, px, or raw numbers)
+    pub fn parse_dimension(dim_str: &str, monitor_size: i32) -> Result<i32> {
+        if dim_str.ends_with('%') {
+            let percent = dim_str.trim_end_matches('%').parse::<f32>()
+                .map_err(|_| anyhow::anyhow!("Invalid percentage: {}", dim_str))?;
+            Ok((monitor_size as f32 * percent / 100.0) as i32)
+        } else if dim_str.ends_with("px") {
+            let pixels = dim_str.trim_end_matches("px").parse::<i32>()
+                .map_err(|_| anyhow::anyhow!("Invalid pixel value: {}", dim_str))?;
+            Ok(pixels)
+        } else {
+            // Raw number, assume pixels
+            dim_str.parse::<i32>()
+                .map_err(|_| anyhow::anyhow!("Invalid dimension: {}", dim_str))
+        }
+    }
+}
+
+// ============================================================================
+// CONFIGURATION VALIDATION
+// ============================================================================
+
+pub struct ConfigValidator;
+
+impl ConfigValidator {
+    /// Validate and preprocess scratchpad configurations
+    pub fn validate_configs(
+        configs: &HashMap<String, ScratchpadConfig>,
+        monitors: &[MonitorInfo],
+    ) -> HashMap<String, ValidatedConfig> {
+        let mut validated = HashMap::new();
+        
+        // First pass: basic validation and template resolution
+        for (name, config) in configs {
+            let mut validated_config = Self::convert_to_validated(config);
+            
+            // Resolve template inheritance
+            if let Some(template_name) = &config.r#use {
+                if let Some(template_config) = configs.get(template_name) {
+                    validated_config = Self::merge_with_template(validated_config, template_config);
+                } else {
+                    validated_config.validation_errors.push(
+                        format!("Template '{}' not found", template_name)
+                    );
+                }
+            }
+            
+            validated.insert(name.clone(), validated_config);
+        }
+        
+        // Second pass: cross-validation and advanced checks
+        let validated_clone = validated.clone();
+        for (name, config) in &mut validated {
+            Self::validate_config(name, config, monitors, &validated_clone);
+        }
+        
+        validated
+    }
+    
+    fn convert_to_validated(config: &ScratchpadConfig) -> ValidatedConfig {
+        ValidatedConfig {
+            command: config.command.clone(),
+            class: config.class.clone(),
+            size: config.size.clone(),
+            animation: config.animation.clone(),
+            margin: config.margin,
+            offset: config.offset.clone(),
+            hide_delay: config.hide_delay,
+            lazy: config.lazy,
+            pinned: config.pinned,
+            excludes: config.excludes.clone(),
+            restore_excluded: config.restore_excluded,
+            preserve_aspect: config.preserve_aspect,
+            force_monitor: config.force_monitor.clone(),
+            alt_toggle: config.alt_toggle,
+            allow_special_workspaces: config.allow_special_workspaces,
+            smart_focus: config.smart_focus,
+            close_on_hide: config.close_on_hide,
+            unfocus: config.unfocus.clone(),
+            max_size: config.max_size.clone(),
+            r#use: config.r#use.clone(),
+            multi_window: config.multi_window,
+            max_instances: config.max_instances,
+            validation_errors: Vec::new(),
+            validation_warnings: Vec::new(),
+            parsed_size: None,
+            parsed_offset: None,
+            parsed_max_size: None,
+        }
+    }
+    
+    fn validate_config(
+        name: &str,
+        config: &mut ValidatedConfig,
+        monitors: &[MonitorInfo],
+        all_configs: &HashMap<String, ValidatedConfig>,
+    ) {
+        // Validate required fields
+        if config.command.is_empty() {
+            config.validation_errors.push("Command cannot be empty".to_string());
+        }
+        
+        if config.class.is_empty() {
+            config.validation_errors.push("Class cannot be empty".to_string());
+        }
+        
+        // Validate size format and pre-calculate for default monitor
+        if let Some(default_monitor) = monitors.first() {
+            match GeometryCalculator::parse_size(&config.size, default_monitor, config.max_size.as_deref()) {
+                Ok((width, height)) => {
+                    config.parsed_size = Some((width, height));
+                }
+                Err(e) => {
+                    config.validation_errors.push(format!("Invalid size format: {}", e));
+                }
+            }
+            
+            // Pre-calculate offset
+            if let Ok((x, y)) = GeometryCalculator::parse_offset(config.offset.as_deref(), default_monitor) {
+                config.parsed_offset = Some((x, y));
+            }
+            
+            // Pre-calculate max_size
+            if let Some(max_size) = &config.max_size {
+                if let Ok((max_w, max_h)) = GeometryCalculator::parse_size(max_size, default_monitor, None) {
+                    config.parsed_max_size = Some((max_w, max_h));
+                }
+            }
+        }
+        
+        // Validate monitor reference
+        if let Some(monitor_name) = &config.force_monitor {
+            if !monitors.iter().any(|m| m.name == *monitor_name) {
+                config.validation_warnings.push(
+                    format!("Monitor '{}' not found, will use focused monitor", monitor_name)
+                );
+            }
+        }
+        
+        // Validate excludes references
+        for exclude in &config.excludes {
+            if exclude != "*" && !all_configs.contains_key(exclude) {
+                config.validation_warnings.push(
+                    format!("Excluded scratchpad '{}' not found", exclude)
+                );
+            }
+        }
+        
+        // Validate multi-window settings
+        if config.multi_window {
+            if let Some(max_instances) = config.max_instances {
+                if max_instances == 0 {
+                    config.validation_errors.push(
+                        "max_instances cannot be 0 when multi_window is enabled".to_string()
+                    );
+                } else if max_instances > 10 {
+                    config.validation_warnings.push(
+                        "High max_instances value may impact performance".to_string()
+                    );
+                }
+            }
+        }
+        
+        // Validate hide_delay
+        if let Some(delay) = config.hide_delay {
+            if delay > 10000 {
+                config.validation_warnings.push(
+                    "Hide delay over 10 seconds may be unintentionally long".to_string()
+                );
+            }
+        }
+        
+        // Log validation results
+        if !config.validation_errors.is_empty() {
+            for error in &config.validation_errors {
+                warn!("❌ Scratchpad '{}': {}", name, error);
+            }
+        }
+        
+        if !config.validation_warnings.is_empty() {
+            for warning in &config.validation_warnings {
+                warn!("⚠️  Scratchpad '{}': {}", name, warning);
+            }
+        }
+        
+        if config.validation_errors.is_empty() && config.validation_warnings.is_empty() {
+            debug!("✅ Scratchpad '{}' validation passed", name);
+        }
+    }
+    
+    fn merge_with_template(mut config: ValidatedConfig, template: &ScratchpadConfig) -> ValidatedConfig {
+        // Only use template values if current config doesn't have them set
+        if config.command.is_empty() && !template.command.is_empty() {
+            config.command = template.command.clone();
+        }
+        if config.class.is_empty() && !template.class.is_empty() {
+            config.class = template.class.clone();
+        }
+        if config.size == "50% 50%" && template.size != "50% 50%" {
+            config.size = template.size.clone();
+        }
+        if config.animation.is_none() {
+            config.animation = template.animation.clone();
+        }
+        if config.margin.is_none() {
+            config.margin = template.margin;
+        }
+        if config.offset.is_none() {
+            config.offset = template.offset.clone();
+        }
+        if config.hide_delay.is_none() {
+            config.hide_delay = template.hide_delay;
+        }
+        
+        config
+    }
+}
+
+// ============================================================================
+// MAIN PLUGIN IMPLEMENTATION
+// ============================================================================
+
 pub struct ScratchpadsPlugin {
     pub scratchpads: HashMap<String, ScratchpadConfig>,
     pub states: HashMap<String, ScratchpadState>,
@@ -120,6 +508,12 @@ pub struct ScratchpadsPlugin {
     
     // Template inheritance cache
     pub resolved_configs: HashMap<String, ScratchpadConfig>,
+    
+    // Animation and delay management
+    pub hide_tasks: HashMap<String, JoinHandle<()>>,
+    
+    // Validated configurations
+    pub validated_configs: HashMap<String, ValidatedConfig>,
 }
 
 impl ScratchpadsPlugin {
@@ -135,6 +529,8 @@ impl ScratchpadsPlugin {
             window_to_scratchpad: HashMap::new(),
             focused_window: None,
             resolved_configs: HashMap::new(),
+            hide_tasks: HashMap::new(),
+            validated_configs: HashMap::new(),
         }
     }
     
@@ -193,7 +589,7 @@ impl ScratchpadsPlugin {
     }
     
     /// Get the target monitor for a scratchpad
-    pub async fn get_target_monitor(&self, config: &ScratchpadConfig) -> Result<MonitorInfo> {
+    pub async fn get_target_monitor(&self, config: &ValidatedConfig) -> Result<MonitorInfo> {
         let monitors = self.get_monitors().await?;
         
         // Force specific monitor if configured
@@ -212,47 +608,6 @@ impl ScratchpadsPlugin {
             .ok_or_else(|| anyhow::anyhow!("No monitors available"))
     }
     
-    /// Parse size string with monitor-aware dimensions
-    pub async fn parse_size(&self, size_str: &str, monitor: &MonitorInfo, max_size: Option<&str>) -> Result<(i32, i32)> {
-        let parts: Vec<&str> = size_str.split_whitespace().collect();
-        if parts.len() != 2 {
-            warn!("Invalid size format '{}', using default 50% 50%", size_str);
-            return Ok((monitor.width / 2, monitor.height / 2));
-        }
-        
-        let width = self.parse_dimension(parts[0], monitor.width)?;
-        let height = self.parse_dimension(parts[1], monitor.height)?;
-        
-        // Apply max_size constraints if specified
-        if let Some(max_size_str) = max_size {
-            let max_parts: Vec<&str> = max_size_str.split_whitespace().collect();
-            if max_parts.len() == 2 {
-                let max_width = self.parse_dimension(max_parts[0], monitor.width)?;
-                let max_height = self.parse_dimension(max_parts[1], monitor.height)?;
-                return Ok((width.min(max_width), height.min(max_height)));
-            }
-        }
-        
-        Ok((width, height))
-    }
-    
-    /// Parse individual dimension (supports %, px, or raw numbers)
-    pub fn parse_dimension(&self, dim_str: &str, monitor_size: i32) -> Result<i32> {
-        if dim_str.ends_with('%') {
-            let percent = dim_str.trim_end_matches('%').parse::<f32>()
-                .map_err(|_| anyhow::anyhow!("Invalid percentage: {}", dim_str))?;
-            Ok((monitor_size as f32 * percent / 100.0) as i32)
-        } else if dim_str.ends_with("px") {
-            let pixels = dim_str.trim_end_matches("px").parse::<i32>()
-                .map_err(|_| anyhow::anyhow!("Invalid pixel value: {}", dim_str))?;
-            Ok(pixels)
-        } else {
-            // Raw number, assume pixels
-            dim_str.parse::<i32>()
-                .map_err(|_| anyhow::anyhow!("Invalid dimension: {}", dim_str))
-        }
-    }
-    
     /// Process variable substitution in commands
     pub fn expand_command(&self, command: &str, variables: &HashMap<String, String>) -> String {
         let mut result = command.to_string();
@@ -267,51 +622,285 @@ impl ScratchpadsPlugin {
         result
     }
     
+    /// Helper methods for internal operations
+    async fn get_hyprland_client(&self) -> Result<Arc<HyprlandClient>> {
+        let client_guard = self.hyprland_client.lock().await;
+        match client_guard.as_ref() {
+            Some(client) => Ok(Arc::clone(client)),
+            None => Err(anyhow::anyhow!("Hyprland client not available")),
+        }
+    }
+    
+    fn get_validated_config(&self, name: &str) -> Result<&ValidatedConfig> {
+        self.validated_configs.get(name)
+            .ok_or_else(|| anyhow::anyhow!("Scratchpad '{}' not found or not validated", name))
+    }
+    
+    async fn cancel_hide_delay(&mut self, name: &str) {
+        if let Some(handle) = self.hide_tasks.remove(name) {
+            handle.abort();
+            debug!("🚫 Cancelled hide delay for scratchpad '{}'", name);
+        }
+    }
+    
     /// Main toggle logic for scratchpads
     async fn toggle_scratchpad(&mut self, name: &str) -> Result<String> {
-        let config = if let Some(config) = self.scratchpads.get(name).cloned() {
-            config
+        // Cancel any pending hide animation
+        self.cancel_hide_delay(name).await;
+        
+        let validated_config = self.get_validated_config(name)?.clone();
+        debug!("🔄 Processing toggle for scratchpad '{}' with class '{}'", name, validated_config.class);
+        
+        let client = self.get_hyprland_client().await?;
+        let existing_windows = client.find_windows_by_class(&validated_config.class).await?;
+        
+        if existing_windows.is_empty() {
+            self.spawn_scratchpad(name, &validated_config).await
         } else {
-            return Err(anyhow::anyhow!("Scratchpad '{}' not found", name));
+            self.toggle_visibility(name, &validated_config, &existing_windows).await
+        }
+    }
+    
+    /// Spawn a new scratchpad application
+    async fn spawn_scratchpad(&mut self, name: &str, config: &ValidatedConfig) -> Result<String> {
+        debug!("🚀 Spawning scratchpad '{}'", name);
+        
+        let client = self.get_hyprland_client().await?;
+        let expanded_command = self.expand_command(&config.command, &self.variables);
+        
+        info!("🚀 Spawning application: {}", expanded_command);
+        client.spawn_app(&expanded_command).await?;
+        
+        // Update state
+        let state = self.states.entry(name.to_string()).or_default();
+        state.is_spawned = true;
+        state.last_used = Some(Instant::now());
+        
+        Ok(format!("Scratchpad '{}' spawned", name))
+    }
+    
+    /// Toggle visibility of existing windows
+    async fn toggle_visibility(&mut self, name: &str, config: &ValidatedConfig, windows: &[hyprland::data::Client]) -> Result<String> {
+        debug!("🪟 Toggling visibility for scratchpad '{}'", name);
+        
+        let _client = self.get_hyprland_client().await?;
+        let target_monitor = self.get_target_monitor(config).await?;
+        
+        // Check current visibility state
+        let is_visible = self.is_scratchpad_visible(name);
+        
+        if is_visible {
+            self.hide_scratchpad(name, config, windows).await
+        } else {
+            self.show_scratchpad(name, config, windows, &target_monitor).await
+        }
+    }
+    
+    /// Show scratchpad with proper positioning
+    async fn show_scratchpad(&mut self, name: &str, config: &ValidatedConfig, windows: &[hyprland::data::Client], monitor: &MonitorInfo) -> Result<String> {
+        debug!("👁️ Showing scratchpad '{}'", name);
+        
+        let client = self.get_hyprland_client().await?;
+        
+        // Handle excludes
+        if !config.excludes.is_empty() {
+            self.handle_excludes(name, config).await?;
+        }
+        
+        // Get the primary window (or create if multi-window)
+        let window = if config.multi_window {
+            self.get_or_create_window(name, config, windows).await?
+        } else {
+            windows.first().unwrap().clone()
         };
         
-        debug!("🔄 Processing toggle for scratchpad '{}' with class '{}'", name, config.class);
+        // Apply geometry
+        self.apply_geometry(&window, config, monitor).await?;
         
-        let client_guard = self.hyprland_client.lock().await;
-        let client = match client_guard.as_ref() {
-            Some(client) => Arc::clone(client),
-            None => return Err(anyhow::anyhow!("Hyprland client not available")),
-        };
-        drop(client_guard);
+        // Show window
+        client.show_window(&window.address.to_string()).await?;
         
-        // Check if window exists
-        let existing_window = client.find_window_by_class(&config.class).await?;
+        // Focus if smart_focus is enabled
+        if config.smart_focus {
+            client.focus_window(&window.address.to_string()).await?;
+        }
         
-        match existing_window {
-            Some(window) => {
-                debug!("🪟 Window exists, toggling visibility");
-                client.toggle_window_visibility(&window.address.to_string()).await?;
-                
-                // Update state
-                let state = self.states.entry(name.to_string()).or_default();
-                state.last_used = Some(Instant::now());
-                
-                Ok(format!("Scratchpad '{}' toggled", name))
+        // Update state
+        self.mark_window_visible(name, &window.address.to_string());
+        
+        Ok(format!("Scratchpad '{}' shown", name))
+    }
+    
+    /// Hide scratchpad with delay if configured
+    async fn hide_scratchpad(&mut self, name: &str, config: &ValidatedConfig, windows: &[hyprland::data::Client]) -> Result<String> {
+        debug!("🙈 Hiding scratchpad '{}'", name);
+        
+        if let Some(delay_ms) = config.hide_delay {
+            self.schedule_hide_delay(name, config, windows, delay_ms).await?;
+            Ok(format!("Scratchpad '{}' will hide in {}ms", name, delay_ms))
+        } else {
+            self.perform_hide(name, config, windows).await?;
+            Ok(format!("Scratchpad '{}' hidden", name))
+        }
+    }
+    
+    /// Apply geometry (position and size) to window
+    async fn apply_geometry(&self, window: &hyprland::data::Client, config: &ValidatedConfig, monitor: &MonitorInfo) -> Result<()> {
+        let client = self.get_hyprland_client().await?;
+        let geometry = GeometryCalculator::calculate_geometry(config, monitor)?;
+        
+        client.move_resize_window(
+            &window.address.to_string(),
+            geometry.x,
+            geometry.y,
+            geometry.width,
+            geometry.height
+        ).await?;
+        
+        Ok(())
+    }
+    
+    async fn schedule_hide_delay(&mut self, name: &str, config: &ValidatedConfig, windows: &[hyprland::data::Client], delay_ms: u32) -> Result<()> {
+        let scratchpad_name = name.to_string();
+        let _config = config.clone();
+        let windows = windows.to_vec();
+        let client = self.get_hyprland_client().await?;
+        
+        let name_for_debug = scratchpad_name.clone();
+        let handle = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(delay_ms as u64)).await;
+            
+            // Perform the hide operation
+            for window in &windows {
+                if let Err(e) = client.hide_window(&window.address.to_string()).await {
+                    error!("Failed to hide window after delay: {}", e);
+                }
             }
-            None => {
-                debug!("🚀 Window does not exist, spawning new application");
-                let expanded_command = self.expand_command(&config.command, &self.variables);
-                info!("🚀 Spawning application: {}", expanded_command);
-                client.spawn_app(&expanded_command).await?;
-                
-                // Update state
-                let state = self.states.entry(name.to_string()).or_default();
-                state.is_spawned = true;
-                state.last_used = Some(Instant::now());
-                
-                Ok(format!("Scratchpad '{}' spawned", name))
+            
+            debug!("⏰ Hide delay completed for scratchpad '{}'", name_for_debug);
+        });
+        
+        self.hide_tasks.insert(scratchpad_name, handle);
+        Ok(())
+    }
+    
+    async fn perform_hide(&mut self, name: &str, config: &ValidatedConfig, windows: &[hyprland::data::Client]) -> Result<()> {
+        let client = self.get_hyprland_client().await?;
+        
+        for window in windows {
+            if config.close_on_hide {
+                client.close_window(&window.address.to_string()).await?;
+            } else {
+                client.hide_window(&window.address.to_string()).await?;
             }
         }
+        
+        // Update state
+        self.mark_scratchpad_hidden(name);
+        
+        // Restore excluded scratchpads if configured
+        if config.restore_excluded {
+            self.restore_excluded_scratchpads(name).await?;
+        }
+        
+        Ok(())
+    }
+    
+    async fn handle_excludes(&mut self, name: &str, config: &ValidatedConfig) -> Result<()> {
+        let excludes = config.excludes.clone();
+        let scratchpad_names: Vec<String> = self.scratchpads.keys().cloned().collect();
+        
+        for exclude_pattern in &excludes {
+            if exclude_pattern == "*" {
+                // Hide all other scratchpads
+                for other_name in &scratchpad_names {
+                    if other_name != name {
+                        self.mark_scratchpad_excluded_by(other_name, name);
+                        // Hide the other scratchpad logic would go here
+                    }
+                }
+            } else if scratchpad_names.contains(exclude_pattern) {
+                // Hide specific scratchpad
+                self.mark_scratchpad_excluded_by(exclude_pattern, name);
+                // Hide logic would go here
+            }
+        }
+        Ok(())
+    }
+    
+    async fn restore_excluded_scratchpads(&mut self, excluding_scratchpad: &str) -> Result<()> {
+        for (name, state) in &mut self.states {
+            if state.excluded_by.remove(excluding_scratchpad) {
+                debug!("🔄 Restoring excluded scratchpad '{}'", name);
+                // Restore logic would go here
+            }
+        }
+        Ok(())
+    }
+    
+    async fn get_or_create_window(&mut self, _name: &str, config: &ValidatedConfig, existing_windows: &[hyprland::data::Client]) -> Result<hyprland::data::Client> {
+        let max_instances = config.max_instances.unwrap_or(1);
+        
+        if existing_windows.len() < max_instances as usize {
+            // Spawn new instance
+            let client = self.get_hyprland_client().await?;
+            let expanded_command = self.expand_command(&config.command, &self.variables);
+            client.spawn_app(&expanded_command).await?;
+            
+            // Wait for window to appear
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            
+            let new_windows = client.find_windows_by_class(&config.class).await?;
+            new_windows.into_iter()
+                .find(|w| !existing_windows.iter().any(|e| e.address == w.address))
+                .ok_or_else(|| anyhow::anyhow!("Failed to find newly spawned window"))
+        } else {
+            // Use existing window
+            Ok(existing_windows[0].clone())
+        }
+    }
+    
+    // Helper methods for state management
+    fn is_scratchpad_visible(&self, name: &str) -> bool {
+        self.states.get(name)
+            .map(|s| s.windows.iter().any(|w| w.is_visible))
+            .unwrap_or(false)
+    }
+    
+    fn mark_window_visible(&mut self, scratchpad_name: &str, window_address: &str) {
+        let state = self.states.entry(scratchpad_name.to_string()).or_default();
+        state.last_used = Some(Instant::now());
+        
+        // Find or create window state
+        if let Some(window_state) = state.windows.iter_mut().find(|w| w.address == window_address) {
+            window_state.is_visible = true;
+            window_state.last_focus = Some(Instant::now());
+        } else {
+            state.windows.push(WindowState {
+                address: window_address.to_string(),
+                is_visible: true,
+                last_position: None,
+                monitor: None,
+                workspace: None,
+                last_focus: Some(Instant::now()),
+            });
+        }
+        
+        self.window_to_scratchpad.insert(window_address.to_string(), scratchpad_name.to_string());
+    }
+    
+    fn mark_scratchpad_hidden(&mut self, name: &str) {
+        if let Some(state) = self.states.get_mut(name) {
+            for window in &mut state.windows {
+                window.is_visible = false;
+            }
+            state.last_used = Some(Instant::now());
+        }
+    }
+    
+    fn mark_scratchpad_excluded_by(&mut self, scratchpad_name: &str, excluded_by: &str) {
+        let state = self.states.entry(scratchpad_name.to_string()).or_default();
+        state.excluded_by.insert(excluded_by.to_string());
     }
 }
 
@@ -397,6 +986,18 @@ impl Plugin for ScratchpadsPlugin {
                     if let Some(toml::Value::Integer(margin)) = sc.get("margin") {
                         config.margin = Some(*margin as i32);
                     }
+                    if let Some(toml::Value::String(offset)) = sc.get("offset") {
+                        config.offset = Some(offset.clone());
+                    }
+                    if let Some(toml::Value::Integer(hide_delay)) = sc.get("hide_delay") {
+                        config.hide_delay = Some(*hide_delay as u32);
+                    }
+                    if let Some(toml::Value::Boolean(multi_window)) = sc.get("multi_window") {
+                        config.multi_window = *multi_window;
+                    }
+                    if let Some(toml::Value::Integer(max_instances)) = sc.get("max_instances") {
+                        config.max_instances = Some(*max_instances as u32);
+                    }
                     
                     self.scratchpads.insert(name.clone(), config);
                     self.states.insert(name.clone(), ScratchpadState::default());
@@ -404,6 +1005,10 @@ impl Plugin for ScratchpadsPlugin {
                 }
             }
         }
+        
+        // Validate configurations
+        let monitors = self.get_monitors().await.unwrap_or_default();
+        self.validated_configs = ConfigValidator::validate_configs(&self.scratchpads, &monitors);
         
         info!("✅ Scratchpads plugin initialized with {} scratchpads", self.scratchpads.len());
         Ok(())
@@ -415,9 +1020,11 @@ impl Plugin for ScratchpadsPlugin {
         match event {
             HyprlandEvent::WindowOpened { window } => {
                 debug!("Window opened: {} - checking if it is a scratchpad", window);
+                // Enhanced window tracking logic would go here
             }
             HyprlandEvent::WindowClosed { window } => {
                 debug!("Window closed: {} - cleaning up if scratchpad", window);
+                self.handle_window_closed(window).await;
             }
             HyprlandEvent::WorkspaceChanged { workspace } => {
                 debug!("Workspace changed to: {}", workspace);
@@ -427,6 +1034,9 @@ impl Plugin for ScratchpadsPlugin {
                 // Invalidate monitor cache
                 let mut cache_valid = self.cache_valid_until.write().await;
                 *cache_valid = Instant::now();
+            }
+            HyprlandEvent::WindowFocusChanged { window } => {
+                self.handle_focus_changed(window).await;
             }
             HyprlandEvent::Other(msg) => {
                 debug!("Other event: {}", msg);
@@ -490,6 +1100,49 @@ impl Plugin for ScratchpadsPlugin {
     }
 }
 
+// Enhanced event handling methods
+impl ScratchpadsPlugin {
+    async fn handle_window_closed(&mut self, window_address: &str) {
+        // Remove from window mapping
+        if let Some(scratchpad_name) = self.window_to_scratchpad.remove(window_address) {
+            debug!("📋 Window '{}' belonged to scratchpad '{}'", window_address, scratchpad_name);
+            
+            if let Some(state) = self.states.get_mut(&scratchpad_name) {
+                // Remove window from state
+                state.windows.retain(|w| w.address != window_address);
+                
+                // If no windows left, mark as not spawned
+                if state.windows.is_empty() {
+                    state.is_spawned = false;
+                    debug!("📋 Scratchpad '{}' has no windows left, marked as not spawned", scratchpad_name);
+                }
+            }
+        }
+        
+        // Update focus if this was the focused window
+        if self.focused_window.as_deref() == Some(window_address) {
+            self.focused_window = None;
+        }
+    }
+    
+    async fn handle_focus_changed(&mut self, window_address: &str) {
+        debug!("👁️ Focus changed to: {}", window_address);
+        
+        self.focused_window = Some(window_address.to_string());
+        
+        // Update focus time for scratchpad windows
+        if let Some(scratchpad_name) = self.window_to_scratchpad.get(window_address) {
+            if let Some(state) = self.states.get_mut(scratchpad_name) {
+                if let Some(window_state) = state.windows.iter_mut().find(|w| w.address == window_address) {
+                    window_state.last_focus = Some(Instant::now());
+                }
+                state.last_used = Some(Instant::now());
+                debug!("🎯 Updated focus time for scratchpad '{}'", scratchpad_name);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,6 +1167,18 @@ mod tests {
             [variables]
             term_class = "foot"
         "#).unwrap()
+    }
+    
+    fn create_test_monitor() -> MonitorInfo {
+        MonitorInfo {
+            name: "DP-1".to_string(),
+            width: 1920,
+            height: 1080,
+            x: 0,
+            y: 0,
+            scale: 1.0,
+            is_focused: true,
+        }
     }
     
     #[tokio::test]
@@ -542,57 +1207,63 @@ mod tests {
         
         // Check variables
         assert_eq!(plugin.variables.get("term_class"), Some(&"foot".to_string()));
+        
+        // Check validated configs were created
+        assert_eq!(plugin.validated_configs.len(), 2);
     }
     
-    #[tokio::test]
-    async fn test_size_parsing() {
-        let plugin = ScratchpadsPlugin::new();
-        let monitor = MonitorInfo {
-            name: "DP-1".to_string(),
-            width: 1920,
-            height: 1080,
-            x: 0,
-            y: 0,
-            scale: 1.0,
-            is_focused: true,
-        };
+    #[test]
+    fn test_geometry_calculation() {
+        let monitor = create_test_monitor();
         
         // Test percentage sizes
-        let (width, height) = plugin.parse_size("75% 60%", &monitor, None).await.unwrap();
+        let (width, height) = GeometryCalculator::parse_size("75% 60%", &monitor, None).unwrap();
         assert_eq!(width, 1440); // 75% of 1920
         assert_eq!(height, 648);  // 60% of 1080
         
         // Test pixel sizes
-        let (width, height) = plugin.parse_size("800px 600px", &monitor, None).await.unwrap();
+        let (width, height) = GeometryCalculator::parse_size("800px 600px", &monitor, None).unwrap();
         assert_eq!(width, 800);
         assert_eq!(height, 600);
         
         // Test mixed sizes
-        let (width, height) = plugin.parse_size("50% 500px", &monitor, None).await.unwrap();
+        let (width, height) = GeometryCalculator::parse_size("50% 500px", &monitor, None).unwrap();
         assert_eq!(width, 960);  // 50% of 1920
         assert_eq!(height, 500);
         
         // Test max_size constraint
-        let (width, height) = plugin.parse_size("90% 90%", &monitor, Some("1600px 900px")).await.unwrap();
+        let (width, height) = GeometryCalculator::parse_size("90% 90%", &monitor, Some("1600px 900px")).unwrap();
         assert_eq!(width, 1600); // Constrained by max_size
         assert_eq!(height, 900);  // Constrained by max_size
     }
     
-    #[tokio::test]
-    async fn test_dimension_parsing() {
-        let plugin = ScratchpadsPlugin::new();
+    #[test]
+    fn test_dimension_parsing() {
+        assert_eq!(GeometryCalculator::parse_dimension("50%", 1920).unwrap(), 960);
+        assert_eq!(GeometryCalculator::parse_dimension("75%", 1080).unwrap(), 810);
         
-        // Test percentage
-        assert_eq!(plugin.parse_dimension("50%", 1920).unwrap(), 960);
-        assert_eq!(plugin.parse_dimension("75%", 1080).unwrap(), 810);
+        assert_eq!(GeometryCalculator::parse_dimension("800px", 1920).unwrap(), 800);
+        assert_eq!(GeometryCalculator::parse_dimension("600", 1080).unwrap(), 600);
         
-        // Test pixels
-        assert_eq!(plugin.parse_dimension("800px", 1920).unwrap(), 800);
-        assert_eq!(plugin.parse_dimension("600", 1080).unwrap(), 600);
+        assert!(GeometryCalculator::parse_dimension("invalid", 1920).is_err());
+        assert!(GeometryCalculator::parse_dimension("200%px", 1920).is_err());
+    }
+    
+    #[test]
+    fn test_offset_parsing() {
+        let monitor = create_test_monitor();
         
-        // Test invalid input
-        assert!(plugin.parse_dimension("invalid", 1920).is_err());
-        assert!(plugin.parse_dimension("200%px", 1920).is_err());
+        let (x, y) = GeometryCalculator::parse_offset(Some("50px 100px"), &monitor).unwrap();
+        assert_eq!(x, 50);
+        assert_eq!(y, 100);
+        
+        let (x, y) = GeometryCalculator::parse_offset(Some("10% 20%"), &monitor).unwrap();
+        assert_eq!(x, 192); // 10% of 1920
+        assert_eq!(y, 216); // 20% of 1080
+        
+        let (x, y) = GeometryCalculator::parse_offset(None, &monitor).unwrap();
+        assert_eq!(x, 0);
+        assert_eq!(y, 0);
     }
     
     #[tokio::test]
@@ -611,8 +1282,8 @@ mod tests {
         assert_eq!(expanded, "no variables here");
     }
     
-    #[tokio::test]
-    async fn test_configuration_defaults() {
+    #[test]
+    fn test_configuration_defaults() {
         let config = ScratchpadConfig::default();
         
         assert_eq!(config.command, "");
@@ -633,5 +1304,26 @@ mod tests {
         assert!(config.r#use.is_none());
         assert!(!config.multi_window);
         assert_eq!(config.max_instances, Some(1));
+    }
+    
+    #[test]
+    fn test_config_validation() {
+        let monitors = vec![create_test_monitor()];
+        let mut configs = HashMap::new();
+        
+        configs.insert("term".to_string(), ScratchpadConfig {
+            command: "foot".to_string(),
+            class: "foot".to_string(),
+            size: "75% 60%".to_string(),
+            ..Default::default()
+        });
+        
+        let validated = ConfigValidator::validate_configs(&configs, &monitors);
+        let term_config = validated.get("term").unwrap();
+        
+        assert!(term_config.validation_errors.is_empty());
+        assert_eq!(term_config.command, "foot");
+        assert_eq!(term_config.class, "foot");
+        assert!(term_config.parsed_size.is_some());
     }
 }
