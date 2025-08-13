@@ -63,7 +63,6 @@ impl Default for ReconnectConfig {
     }
 }
 
-
 impl Default for EnhancedHyprlandClient {
     fn default() -> Self {
         Self::new()
