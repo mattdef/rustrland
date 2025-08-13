@@ -16,11 +16,17 @@ pub enum ClientMessage {
     /// Shift workspaces between monitors
     ShiftMonitors { direction: Option<String> },
     /// Toggle special workspace
-    ToggleSpecial { workspace_name: Option<String>, command: Option<String> },
+    ToggleSpecial {
+        workspace_name: Option<String>,
+        command: Option<String>,
+    },
     /// Monitor management
     Monitors { command: Option<String> },
     /// Wallpaper management
-    Wallpapers { command: Option<String>, args: Vec<String> },
+    Wallpapers {
+        command: Option<String>,
+        args: Vec<String>,
+    },
     /// Reload configuration
     Reload,
     /// Get daemon status
@@ -91,28 +97,20 @@ impl ClientMessage {
                     Err(anyhow::anyhow!("Magnify command requires action"))
                 }
             }
-            "shift_monitors" => {
-                Ok(ClientMessage::ShiftMonitors {
-                    direction: args.first().cloned(),
-                })
-            }
-            "toggle_special" => {
-                Ok(ClientMessage::ToggleSpecial {
-                    workspace_name: args.first().cloned(),
-                    command: args.get(1).cloned(),
-                })
-            }
-            "monitors" => {
-                Ok(ClientMessage::Monitors {
-                    command: args.first().cloned(),
-                })
-            }
-            "wallpapers" | "wall" => {
-                Ok(ClientMessage::Wallpapers {
-                    command: args.first().cloned(),
-                    args: args.iter().skip(1).map(|s| s.to_string()).collect(),
-                })
-            }
+            "shift_monitors" => Ok(ClientMessage::ShiftMonitors {
+                direction: args.first().cloned(),
+            }),
+            "toggle_special" => Ok(ClientMessage::ToggleSpecial {
+                workspace_name: args.first().cloned(),
+                command: args.get(1).cloned(),
+            }),
+            "monitors" => Ok(ClientMessage::Monitors {
+                command: args.first().cloned(),
+            }),
+            "wallpapers" | "wall" => Ok(ClientMessage::Wallpapers {
+                command: args.first().cloned(),
+                args: args.iter().skip(1).map(|s| s.to_string()).collect(),
+            }),
             "reload" => Ok(ClientMessage::Reload),
             "status" => Ok(ClientMessage::Status),
             "list" => Ok(ClientMessage::List),

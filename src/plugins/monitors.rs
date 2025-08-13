@@ -12,7 +12,7 @@ use tracing::{debug, error, info, warn};
 use crate::ipc::{HyprlandClient, HyprlandEvent};
 use crate::plugins::Plugin;
 
-use hyprland::data::{Monitors};
+use hyprland::data::Monitors;
 use hyprland::shared::{HyprData, HyprDataVec};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -213,8 +213,8 @@ impl MonitorsPlugin {
                 id: monitor.id,
                 name: monitor.name.clone(),
                 description: monitor.description.clone(),
-                make: String::new(), // Not available in hyprland crate
-                model: String::new(), // Not available in hyprland crate
+                make: String::new(),   // Not available in hyprland crate
+                model: String::new(),  // Not available in hyprland crate
                 serial: String::new(), // Not available in hyprland crate
                 active_workspace_id: monitor.active_workspace.id,
                 active_workspace_name: monitor.active_workspace.name.clone(),
@@ -241,14 +241,20 @@ impl MonitorsPlugin {
         });
 
         if self.config.debug_logging {
-            debug!("🖥️  Updated monitor layout with {} monitors", self.current_layout.as_ref().unwrap().monitors.len());
+            debug!(
+                "🖥️  Updated monitor layout with {} monitors",
+                self.current_layout.as_ref().unwrap().monitors.len()
+            );
         }
 
         Ok(())
     }
 
     /// Resolve placement rules from configuration
-    fn resolve_placement_rules(&self, monitors: &HashMap<String, MonitorInfo>) -> Result<Vec<ResolvedPlacementRule>> {
+    fn resolve_placement_rules(
+        &self,
+        monitors: &HashMap<String, MonitorInfo>,
+    ) -> Result<Vec<ResolvedPlacementRule>> {
         let mut rules = Vec::new();
 
         for (monitor_name, rule_config) in &self.config.placement {
@@ -279,11 +285,11 @@ impl MonitorsPlugin {
                     });
                 }
             }
-            
+
             PlacementRuleConfig::PyprlandStyle(style_map) => {
                 for (direction_key, targets) in style_map {
                     let (direction, alignment) = self.parse_direction_key(direction_key);
-                    
+
                     for target in targets {
                         if self.monitor_exists(target, monitors) {
                             rules.push(ResolvedPlacementRule {
@@ -297,7 +303,10 @@ impl MonitorsPlugin {
                 }
             }
 
-            PlacementRuleConfig::Complex { direction_target, alignment } => {
+            PlacementRuleConfig::Complex {
+                direction_target,
+                alignment,
+            } => {
                 // Handle complex direction-target combinations
                 let direction_mappings = [
                     (&direction_target.left_of, PlacementDirection::LeftOf),
@@ -305,19 +314,29 @@ impl MonitorsPlugin {
                     (&direction_target.top_of, PlacementDirection::TopOf),
                     (&direction_target.bottom_of, PlacementDirection::BottomOf),
                     (&direction_target.left_center_of, PlacementDirection::LeftOf),
-                    (&direction_target.right_center_of, PlacementDirection::RightOf),
+                    (
+                        &direction_target.right_center_of,
+                        PlacementDirection::RightOf,
+                    ),
                     (&direction_target.top_center_of, PlacementDirection::TopOf),
-                    (&direction_target.bottom_center_of, PlacementDirection::BottomOf),
+                    (
+                        &direction_target.bottom_center_of,
+                        PlacementDirection::BottomOf,
+                    ),
                     (&direction_target.left_end_of, PlacementDirection::LeftOf),
                     (&direction_target.right_end_of, PlacementDirection::RightOf),
                     (&direction_target.top_end_of, PlacementDirection::TopOf),
-                    (&direction_target.bottom_end_of, PlacementDirection::BottomOf),
+                    (
+                        &direction_target.bottom_end_of,
+                        PlacementDirection::BottomOf,
+                    ),
                 ];
 
                 for (targets_option, direction) in direction_mappings {
                     if let Some(targets) = targets_option {
-                        let rule_alignment = self.extract_alignment_from_direction_key(&format!("{:?}", direction));
-                        
+                        let rule_alignment =
+                            self.extract_alignment_from_direction_key(&format!("{:?}", direction));
+
                         for target in targets {
                             if self.monitor_exists(target, monitors) {
                                 rules.push(ResolvedPlacementRule {
@@ -339,7 +358,7 @@ impl MonitorsPlugin {
     /// Parse direction key (e.g., "leftOf", "topCenterOf") into direction and alignment
     fn parse_direction_key(&self, key: &str) -> (PlacementDirection, Option<PlacementAlignment>) {
         let key_lower = key.to_lowercase();
-        
+
         let alignment = if key_lower.contains("center") || key_lower.contains("middle") {
             Some(PlacementAlignment::Center)
         } else if key_lower.contains("end") {
@@ -366,7 +385,7 @@ impl MonitorsPlugin {
     /// Extract alignment information from direction key
     fn extract_alignment_from_direction_key(&self, key: &str) -> Option<PlacementAlignment> {
         let key_lower = key.to_lowercase();
-        
+
         if key_lower.contains("center") {
             Some(PlacementAlignment::Center)
         } else if key_lower.contains("middle") {
@@ -381,24 +400,28 @@ impl MonitorsPlugin {
     /// Check if monitor exists (with case-insensitive matching if enabled)
     fn monitor_exists(&self, name: &str, monitors: &HashMap<String, MonitorInfo>) -> bool {
         if self.config.case_insensitive {
-            monitors.keys().any(|k| k.to_lowercase() == name.to_lowercase()) ||
-            monitors.values().any(|m| 
-                m.description.to_lowercase().contains(&name.to_lowercase()) ||
-                m.model.to_lowercase() == name.to_lowercase() ||
-                m.make.to_lowercase() == name.to_lowercase()
-            )
+            monitors
+                .keys()
+                .any(|k| k.to_lowercase() == name.to_lowercase())
+                || monitors.values().any(|m| {
+                    m.description.to_lowercase().contains(&name.to_lowercase())
+                        || m.model.to_lowercase() == name.to_lowercase()
+                        || m.make.to_lowercase() == name.to_lowercase()
+                })
         } else {
-            monitors.contains_key(name) ||
-            monitors.values().any(|m| 
-                m.description.contains(name) ||
-                m.model == name ||
-                m.make == name
-            )
+            monitors.contains_key(name)
+                || monitors
+                    .values()
+                    .any(|m| m.description.contains(name) || m.model == name || m.make == name)
         }
     }
 
     /// Find monitor by name or description
-    fn find_monitor<'a>(&self, name: &str, monitors: &'a HashMap<String, MonitorInfo>) -> Option<&'a MonitorInfo> {
+    fn find_monitor<'a>(
+        &self,
+        name: &str,
+        monitors: &'a HashMap<String, MonitorInfo>,
+    ) -> Option<&'a MonitorInfo> {
         // First try exact name match
         if let Some(monitor) = monitors.get(name) {
             return Some(monitor);
@@ -406,7 +429,10 @@ impl MonitorsPlugin {
 
         // Then try case-insensitive name match if enabled
         if self.config.case_insensitive {
-            if let Some((_, monitor)) = monitors.iter().find(|(k, _)| k.to_lowercase() == name.to_lowercase()) {
+            if let Some((_, monitor)) = monitors
+                .iter()
+                .find(|(k, _)| k.to_lowercase() == name.to_lowercase())
+            {
                 return Some(monitor);
             }
         }
@@ -414,13 +440,11 @@ impl MonitorsPlugin {
         // Try description/model/make matching
         monitors.values().find(|m| {
             let matches = if self.config.case_insensitive {
-                m.description.to_lowercase().contains(&name.to_lowercase()) ||
-                m.model.to_lowercase() == name.to_lowercase() ||
-                m.make.to_lowercase() == name.to_lowercase()
+                m.description.to_lowercase().contains(&name.to_lowercase())
+                    || m.model.to_lowercase() == name.to_lowercase()
+                    || m.make.to_lowercase() == name.to_lowercase()
             } else {
-                m.description.contains(name) ||
-                m.model == name ||
-                m.make == name
+                m.description.contains(name) || m.model == name || m.make == name
             };
             matches
         })
@@ -433,15 +457,15 @@ impl MonitorsPlugin {
         }
 
         self.pending_layout_apply = true;
-        
+
         // Add delay to prevent rapid re-applications
         sleep(Duration::from_millis(self.config.new_monitor_delay)).await;
 
         let result = self.apply_layout_internal().await;
-        
+
         self.pending_layout_apply = false;
         self.last_layout_time = Some(Instant::now());
-        
+
         result
     }
 
@@ -455,8 +479,11 @@ impl MonitorsPlugin {
         };
 
         if self.config.debug_logging {
-            debug!("🖥️  Applying monitor layout with {} monitors and {} rules", 
-                layout.monitors.len(), layout.placement_rules.len());
+            debug!(
+                "🖥️  Applying monitor layout with {} monitors and {} rules",
+                layout.monitors.len(),
+                layout.placement_rules.len()
+            );
         }
 
         let mut commands_applied = 0;
@@ -473,7 +500,8 @@ impl MonitorsPlugin {
                         }
                     }
                     Err(e) => {
-                        let error_msg = format!("Failed to apply settings for {}: {}", monitor_name, e);
+                        let error_msg =
+                            format!("Failed to apply settings for {}: {}", monitor_name, e);
                         errors.push(error_msg.clone());
                         warn!("{}", error_msg);
                     }
@@ -487,13 +515,17 @@ impl MonitorsPlugin {
                 Ok(_) => {
                     commands_applied += 1;
                     if self.config.debug_logging {
-                        debug!("✅ Applied placement rule: {} {:?} {}", 
-                            rule.source_monitor, rule.direction, rule.target_monitor);
+                        debug!(
+                            "✅ Applied placement rule: {} {:?} {}",
+                            rule.source_monitor, rule.direction, rule.target_monitor
+                        );
                     }
                 }
                 Err(e) => {
-                    let error_msg = format!("Failed to apply rule {} {:?} {}: {}", 
-                        rule.source_monitor, rule.direction, rule.target_monitor, e);
+                    let error_msg = format!(
+                        "Failed to apply rule {} {:?} {}: {}",
+                        rule.source_monitor, rule.direction, rule.target_monitor, e
+                    );
                     errors.push(error_msg.clone());
                     warn!("{}", error_msg);
                 }
@@ -501,36 +533,44 @@ impl MonitorsPlugin {
         }
 
         let mut result = format!("Applied {} monitor layout commands", commands_applied);
-        
+
         if !errors.is_empty() {
-            result.push_str(&format!(" with {} errors:\n{}", errors.len(), errors.join("\n")));
+            result.push_str(&format!(
+                " with {} errors:\n{}",
+                errors.len(),
+                errors.join("\n")
+            ));
         }
 
         info!("🖥️  Monitor layout applied: {}", result);
-        
+
         Ok(result)
     }
 
     /// Apply settings for a specific monitor
-    async fn apply_monitor_settings(&self, monitor: &MonitorInfo, settings: &MonitorSettings) -> Result<()> {
+    async fn apply_monitor_settings(
+        &self,
+        monitor: &MonitorInfo,
+        settings: &MonitorSettings,
+    ) -> Result<()> {
         let mut monitor_spec = monitor.name.clone();
-        
+
         // Build monitor specification
         if let Some(resolution) = &settings.resolution {
             monitor_spec.push('@');
             monitor_spec.push_str(resolution);
         }
-        
+
         if let Some(rate) = settings.rate {
             monitor_spec.push('@');
             monitor_spec.push_str(&rate.to_string());
         }
-        
+
         if let Some(scale) = settings.scale {
             monitor_spec.push(',');
             monitor_spec.push_str(&scale.to_string());
         }
-        
+
         if let Some(transform) = settings.transform {
             monitor_spec.push(',');
             monitor_spec.push_str("transform,");
@@ -547,30 +587,36 @@ impl MonitorsPlugin {
 
         if !output.status.success() {
             let error_msg = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow::anyhow!("hyprctl monitor command failed: {}", error_msg));
+            return Err(anyhow::anyhow!(
+                "hyprctl monitor command failed: {}",
+                error_msg
+            ));
         }
 
         Ok(())
     }
 
     /// Apply a placement rule
-    async fn apply_placement_rule(&self, rule: &ResolvedPlacementRule, monitors: &HashMap<String, MonitorInfo>) -> Result<()> {
-        let source_monitor = self.find_monitor(&rule.source_monitor, monitors)
+    async fn apply_placement_rule(
+        &self,
+        rule: &ResolvedPlacementRule,
+        monitors: &HashMap<String, MonitorInfo>,
+    ) -> Result<()> {
+        let source_monitor = self
+            .find_monitor(&rule.source_monitor, monitors)
             .ok_or_else(|| anyhow::anyhow!("Source monitor '{}' not found", rule.source_monitor))?;
-        
-        let target_monitor = self.find_monitor(&rule.target_monitor, monitors)
+
+        let target_monitor = self
+            .find_monitor(&rule.target_monitor, monitors)
             .ok_or_else(|| anyhow::anyhow!("Target monitor '{}' not found", rule.target_monitor))?;
 
         // Calculate new position based on rule
         let (new_x, new_y) = self.calculate_position(source_monitor, target_monitor, rule)?;
 
         // Build monitor positioning command
-        let position_spec = format!("{}@{}x{},{}x{}", 
-            source_monitor.name,
-            source_monitor.width,
-            source_monitor.height,
-            new_x,
-            new_y
+        let position_spec = format!(
+            "{}@{}x{},{}x{}",
+            source_monitor.name, source_monitor.width, source_monitor.height, new_x, new_y
         );
 
         // Execute hyprctl command
@@ -583,14 +629,22 @@ impl MonitorsPlugin {
 
         if !output.status.success() {
             let error_msg = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow::anyhow!("hyprctl position command failed: {}", error_msg));
+            return Err(anyhow::anyhow!(
+                "hyprctl position command failed: {}",
+                error_msg
+            ));
         }
 
         Ok(())
     }
 
     /// Calculate new position for monitor based on placement rule
-    fn calculate_position(&self, source: &MonitorInfo, target: &MonitorInfo, rule: &ResolvedPlacementRule) -> Result<(i32, i32)> {
+    fn calculate_position(
+        &self,
+        source: &MonitorInfo,
+        target: &MonitorInfo,
+        rule: &ResolvedPlacementRule,
+    ) -> Result<(i32, i32)> {
         let (mut new_x, mut new_y) = match rule.direction {
             PlacementDirection::LeftOf => (target.x - source.width as i32, target.y),
             PlacementDirection::RightOf => (target.x + target.width as i32, target.y),
@@ -640,16 +694,15 @@ impl MonitorsPlugin {
         // Check for monitor-specific command first
         if let Some(command) = self.config.hotplug_commands.get(monitor_name) {
             if self.config.debug_logging {
-                debug!("🔌 Executing hotplug command for {}: {}", monitor_name, command);
+                debug!(
+                    "🔌 Executing hotplug command for {}: {}",
+                    monitor_name, command
+                );
             }
-            
+
             let output = tokio::task::spawn_blocking({
                 let cmd = command.clone();
-                move || {
-                    Command::new("sh")
-                        .args(["-c", &cmd])
-                        .output()
-                }
+                move || Command::new("sh").args(["-c", &cmd]).output()
             })
             .await??;
 
@@ -666,14 +719,10 @@ impl MonitorsPlugin {
             if self.config.debug_logging {
                 debug!("🔌 Executing general hotplug command: {}", command);
             }
-            
+
             let output = tokio::task::spawn_blocking({
                 let cmd = command.clone();
-                move || {
-                    Command::new("sh")
-                        .args(["-c", &cmd])
-                        .output()
-                }
+                move || Command::new("sh").args(["-c", &cmd]).output()
             })
             .await??;
 
@@ -700,9 +749,13 @@ impl MonitorsPlugin {
         let mut output = String::from("🖥️  Monitors:\n");
 
         for (name, monitor) in &layout.monitors {
-            let status = if monitor.disabled { "❌ disabled" } else { "✅ active" };
+            let status = if monitor.disabled {
+                "❌ disabled"
+            } else {
+                "✅ active"
+            };
             let focused = if monitor.focused { " 🎯" } else { "" };
-            
+
             output.push_str(&format!(
                 "  {} {}{}\n    Resolution: {}x{}@{:.1}Hz, Scale: {:.1}x, Transform: {}\n    Position: ({}, {}), Workspace: {}\n",
                 name, status, focused,
@@ -744,10 +797,7 @@ impl MonitorsPlugin {
                 };
                 output.push_str(&format!(
                     "  {} → {:?} {}{}\n",
-                    rule.source_monitor,
-                    rule.direction,
-                    rule.target_monitor,
-                    alignment_str
+                    rule.source_monitor, rule.direction, rule.target_monitor, alignment_str
                 ));
             }
         }
@@ -771,22 +821,30 @@ impl MonitorsPlugin {
         for (monitor_name, monitor_info) in &layout.monitors {
             if let Some(settings) = self.config.settings.get(monitor_name) {
                 output.push_str(&format!("📝 Settings for {}:\n", monitor_name));
-                
+
                 if let Some(resolution) = &settings.resolution {
-                    output.push_str(&format!("  Resolution: {} (current: {}x{})\n", 
-                        resolution, monitor_info.width, monitor_info.height));
+                    output.push_str(&format!(
+                        "  Resolution: {} (current: {}x{})\n",
+                        resolution, monitor_info.width, monitor_info.height
+                    ));
                 }
                 if let Some(rate) = settings.rate {
-                    output.push_str(&format!("  Rate: {}Hz (current: {:.1}Hz)\n", 
-                        rate, monitor_info.refresh_rate));
+                    output.push_str(&format!(
+                        "  Rate: {}Hz (current: {:.1}Hz)\n",
+                        rate, monitor_info.refresh_rate
+                    ));
                 }
                 if let Some(scale) = settings.scale {
-                    output.push_str(&format!("  Scale: {:.1}x (current: {:.1}x)\n", 
-                        scale, monitor_info.scale));
+                    output.push_str(&format!(
+                        "  Scale: {:.1}x (current: {:.1}x)\n",
+                        scale, monitor_info.scale
+                    ));
                 }
                 if let Some(transform) = settings.transform {
-                    output.push_str(&format!("  Transform: {} (current: {})\n", 
-                        transform, monitor_info.transform));
+                    output.push_str(&format!(
+                        "  Transform: {} (current: {})\n",
+                        transform, monitor_info.transform
+                    ));
                 }
             }
         }
@@ -803,12 +861,20 @@ impl MonitorsPlugin {
                         Ok((new_x, new_y)) => {
                             output.push_str(&format!(
                                 "  ✅ {} → {:?} {}: would move to ({}, {}) (current: ({}, {}))\n",
-                                rule.source_monitor, rule.direction, rule.target_monitor,
-                                new_x, new_y, source.x, source.y
+                                rule.source_monitor,
+                                rule.direction,
+                                rule.target_monitor,
+                                new_x,
+                                new_y,
+                                source.x,
+                                source.y
                             ));
                         }
                         Err(e) => {
-                            let error_msg = format!("Failed to calculate position for {}: {}", rule.source_monitor, e);
+                            let error_msg = format!(
+                                "Failed to calculate position for {}: {}",
+                                rule.source_monitor, e
+                            );
                             errors.push(error_msg.clone());
                             output.push_str(&format!("  ❌ {}\n", error_msg));
                         }
@@ -841,7 +907,11 @@ impl MonitorsPlugin {
         self.update_monitors().await?;
 
         let (monitor_count, rule_count, last_update) = match &self.current_layout {
-            Some(layout) => (layout.monitors.len(), layout.placement_rules.len(), Some(layout.last_update)),
+            Some(layout) => (
+                layout.monitors.len(),
+                layout.placement_rules.len(),
+                Some(layout.last_update),
+            ),
             None => (0, 0, None),
         };
 
@@ -852,14 +922,20 @@ impl MonitorsPlugin {
 
         if let Some(last_time) = self.last_layout_time {
             let elapsed = last_time.elapsed();
-            status.push_str(&format!("  Last layout applied: {:.1}s ago\n", elapsed.as_secs_f64()));
+            status.push_str(&format!(
+                "  Last layout applied: {:.1}s ago\n",
+                elapsed.as_secs_f64()
+            ));
         } else {
             status.push_str("  No layout applied yet\n");
         }
 
         if let Some(update_time) = last_update {
             let elapsed = update_time.elapsed();
-            status.push_str(&format!("  Monitor data updated: {:.1}s ago\n", elapsed.as_secs_f64()));
+            status.push_str(&format!(
+                "  Monitor data updated: {:.1}s ago\n",
+                elapsed.as_secs_f64()
+            ));
         }
 
         status.push_str(&format!(
@@ -870,14 +946,25 @@ impl MonitorsPlugin {
             self.config.debug_logging
         ));
 
-        let hotplug_commands = self.config.hotplug_commands.len() + if self.config.hotplug_command.is_some() { 1 } else { 0 };
+        let hotplug_commands = self.config.hotplug_commands.len()
+            + if self.config.hotplug_command.is_some() {
+                1
+            } else {
+                0
+            };
         if hotplug_commands > 0 {
-            status.push_str(&format!("  - Hotplug commands: {} configured\n", hotplug_commands));
+            status.push_str(&format!(
+                "  - Hotplug commands: {} configured\n",
+                hotplug_commands
+            ));
         }
 
         let settings_count = self.config.settings.len();
         if settings_count > 0 {
-            status.push_str(&format!("  - Monitor settings: {} configured\n", settings_count));
+            status.push_str(&format!(
+                "  - Monitor settings: {} configured\n",
+                settings_count
+            ));
         }
 
         Ok(status)
@@ -896,12 +983,7 @@ impl Plugin for MonitorsPlugin {
         if let Some(plugin_config) = config.get("monitors") {
             match plugin_config.clone().try_into() {
                 Ok(config) => self.config = config,
-                Err(e) => {
-                    return Err(anyhow::anyhow!(
-                        "Invalid monitors configuration: {}",
-                        e
-                    ))
-                }
+                Err(e) => return Err(anyhow::anyhow!("Invalid monitors configuration: {}", e)),
             }
         }
 
@@ -917,8 +999,13 @@ impl Plugin for MonitorsPlugin {
             }
         }
 
-        info!("✅ Monitors plugin initialized with {} monitors", 
-            self.current_layout.as_ref().map(|l| l.monitors.len()).unwrap_or(0));
+        info!(
+            "✅ Monitors plugin initialized with {} monitors",
+            self.current_layout
+                .as_ref()
+                .map(|l| l.monitors.len())
+                .unwrap_or(0)
+        );
 
         Ok(())
     }
@@ -928,15 +1015,21 @@ impl Plugin for MonitorsPlugin {
             HyprlandEvent::Other(event_data) => {
                 // Handle monitor connection events
                 if event_data.starts_with("monitoradded>>") {
-                    let monitor_name = event_data.strip_prefix("monitoradded>>").unwrap_or("").trim();
-                    
+                    let monitor_name = event_data
+                        .strip_prefix("monitoradded>>")
+                        .unwrap_or("")
+                        .trim();
+
                     if self.config.debug_logging {
                         debug!("🔌 Monitor connected: {}", monitor_name);
                     }
 
                     // Execute hotplug commands
                     if let Err(e) = self.execute_hotplug_command(monitor_name).await {
-                        warn!("Failed to execute hotplug command for {}: {}", monitor_name, e);
+                        warn!(
+                            "Failed to execute hotplug command for {}: {}",
+                            monitor_name, e
+                        );
                     }
 
                     // Apply layout after delay
@@ -944,8 +1037,11 @@ impl Plugin for MonitorsPlugin {
                         warn!("Failed to apply layout after monitor connection: {}", e);
                     }
                 } else if event_data.starts_with("monitorremoved>>") {
-                    let monitor_name = event_data.strip_prefix("monitorremoved>>").unwrap_or("").trim();
-                    
+                    let monitor_name = event_data
+                        .strip_prefix("monitorremoved>>")
+                        .unwrap_or("")
+                        .trim();
+
                     if self.config.debug_logging {
                         debug!("🔌 Monitor disconnected: {}", monitor_name);
                     }
@@ -954,13 +1050,13 @@ impl Plugin for MonitorsPlugin {
                     self.update_monitors().await?;
                 }
             }
-            
+
             _ => {
                 // Update monitor state on workspace or window changes
                 // This helps keep monitor information current
-                if matches!(event, 
-                    HyprlandEvent::WorkspaceChanged { .. } | 
-                    HyprlandEvent::WindowMoved { .. }
+                if matches!(
+                    event,
+                    HyprlandEvent::WorkspaceChanged { .. } | HyprlandEvent::WindowMoved { .. }
                 ) {
                     self.update_monitors().await?;
                 }
@@ -989,7 +1085,10 @@ impl Plugin for MonitorsPlugin {
                 Ok("Monitor configuration reloaded".to_string())
             }
 
-            _ => Ok(format!("Unknown monitors command: {}. Available: relayout, list, status, test, reload", command)),
+            _ => Ok(format!(
+                "Unknown monitors command: {}. Available: relayout, list, status, test, reload",
+                command
+            )),
         }
     }
 }
@@ -1058,7 +1157,7 @@ mod tests {
     #[test]
     fn test_monitor_info_structure() {
         let monitor = create_test_monitor("DP-1", 0, 0, 1920, 1080);
-        
+
         assert_eq!(monitor.name, "DP-1");
         assert_eq!(monitor.width, 1920);
         assert_eq!(monitor.height, 1080);
@@ -1134,7 +1233,7 @@ mod tests {
     #[test]
     fn test_position_calculation() {
         let plugin = create_test_plugin();
-        
+
         let source = create_test_monitor("DP-1", 0, 0, 1920, 1080);
         let target = create_test_monitor("DP-2", 1920, 0, 1920, 1080);
 
@@ -1156,7 +1255,9 @@ mod tests {
             alignment: None,
         };
 
-        let (new_x, new_y) = plugin.calculate_position(&source, &target, &rule_right).unwrap();
+        let (new_x, new_y) = plugin
+            .calculate_position(&source, &target, &rule_right)
+            .unwrap();
         assert_eq!(new_x, 3840); // 1920 + 1920 = 3840
         assert_eq!(new_y, 0);
     }
@@ -1167,8 +1268,11 @@ mod tests {
         plugin.config.case_insensitive = true;
 
         let mut monitors = HashMap::new();
-        monitors.insert("DP-1".to_string(), create_test_monitor("DP-1", 0, 0, 1920, 1080));
-        
+        monitors.insert(
+            "DP-1".to_string(),
+            create_test_monitor("DP-1", 0, 0, 1920, 1080),
+        );
+
         assert!(plugin.monitor_exists("DP-1", &monitors));
         assert!(plugin.monitor_exists("dp-1", &monitors)); // case insensitive
         assert!(!plugin.monitor_exists("HDMI-1", &monitors));
@@ -1230,7 +1334,10 @@ mod tests {
     #[test]
     fn test_monitor_layout_structure() {
         let mut monitors = HashMap::new();
-        monitors.insert("DP-1".to_string(), create_test_monitor("DP-1", 0, 0, 1920, 1080));
+        monitors.insert(
+            "DP-1".to_string(),
+            create_test_monitor("DP-1", 0, 0, 1920, 1080),
+        );
 
         let placement_rules = vec![ResolvedPlacementRule {
             source_monitor: "DP-2".to_string(),
@@ -1264,9 +1371,9 @@ mod tests {
         // Both should serialize to their respective values
         let center_json = serde_json::to_string(&center).unwrap();
         let middle_json = serde_json::to_string(&middle).unwrap();
-        
+
         assert_ne!(center_json, middle_json); // They serialize differently
-        
+
         // But in logic they should be treated the same
         assert!(matches!(center, PlacementAlignment::Center));
         assert!(matches!(middle, PlacementAlignment::Middle));

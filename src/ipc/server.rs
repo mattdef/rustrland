@@ -192,7 +192,10 @@ impl IpcServer {
                 let mut pm = plugin_manager.write().await;
 
                 let direction_str = direction.as_deref().unwrap_or("+1");
-                match pm.handle_command("shift_monitors", direction_str, &[]).await {
+                match pm
+                    .handle_command("shift_monitors", direction_str, &[])
+                    .await
+                {
                     Ok(result) => DaemonResponse::Success { message: result },
                     Err(e) => DaemonResponse::Error {
                         message: e.to_string(),
@@ -200,19 +203,25 @@ impl IpcServer {
                 }
             }
 
-            ClientMessage::ToggleSpecial { workspace_name, command } => {
-                debug!("🎯 Processing toggle special: {:?} {:?}", workspace_name, command);
+            ClientMessage::ToggleSpecial {
+                workspace_name,
+                command,
+            } => {
+                debug!(
+                    "🎯 Processing toggle special: {:?} {:?}",
+                    workspace_name, command
+                );
                 let mut pm = plugin_manager.write().await;
 
                 let workspace = workspace_name.as_deref().unwrap_or("special");
                 let cmd = command.as_deref().unwrap_or("");
-                
+
                 let args: Vec<&str> = if workspace != "special" {
                     vec![workspace]
                 } else {
                     vec![]
                 };
-                
+
                 match pm.handle_command("toggle_special", cmd, &args).await {
                     Ok(result) => DaemonResponse::Success { message: result },
                     Err(e) => DaemonResponse::Error {
@@ -235,7 +244,10 @@ impl IpcServer {
             }
 
             ClientMessage::Wallpapers { command, args } => {
-                debug!("🖼️  Processing wallpapers command: {:?} {:?}", command, args);
+                debug!(
+                    "🖼️  Processing wallpapers command: {:?} {:?}",
+                    command, args
+                );
                 let mut pm = plugin_manager.write().await;
 
                 let cmd = command.as_deref().unwrap_or("next");

@@ -12,9 +12,7 @@ use crate::ipc::{HyprlandClient, HyprlandEvent};
 use crate::plugins::Plugin;
 
 use hyprland::data::{Client, Clients, Workspaces};
-use hyprland::dispatch::{
-    Dispatch, DispatchType, WorkspaceIdentifierWithSpecial,
-};
+use hyprland::dispatch::{Dispatch, DispatchType, WorkspaceIdentifierWithSpecial};
 use hyprland::shared::{HyprData, HyprDataVec};
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -146,11 +144,17 @@ impl ToggleSpecialPlugin {
             if self.config.remember_position && !client.workspace.name.starts_with("special") {
                 self.window_positions.insert(
                     client.address.to_string(),
-                    (client.at.0.into(), client.at.1.into(), client.size.0.into(), client.size.1.into()),
+                    (
+                        client.at.0.into(),
+                        client.at.1.into(),
+                        client.size.0.into(),
+                        client.size.1.into(),
+                    ),
                 );
             }
 
-            self.current_windows.insert(client.address.to_string(), window_info);
+            self.current_windows
+                .insert(client.address.to_string(), window_info);
         }
 
         // Update special workspace states
@@ -181,15 +185,16 @@ impl ToggleSpecialPlugin {
         for (_, window) in &self.current_windows {
             if window.workspace_name.starts_with("special") {
                 let workspace_name = window.workspace_name.clone();
-                
-                let state = self.special_workspaces.entry(workspace_name.clone()).or_insert_with(|| {
-                    SpecialWorkspaceState {
+
+                let state = self
+                    .special_workspaces
+                    .entry(workspace_name.clone())
+                    .or_insert_with(|| SpecialWorkspaceState {
                         name: workspace_name.clone(),
                         windows: Vec::new(),
                         visible: visible_specials.contains(&workspace_name),
                         last_focused_window: None,
-                    }
-                });
+                    });
 
                 if !state.windows.contains(&window.address) {
                     state.windows.push(window.address.clone());
@@ -206,14 +211,19 @@ impl ToggleSpecialPlugin {
         // Clean up empty special workspaces
         self.special_workspaces.retain(|_, state| {
             // Remove windows that no longer exist
-            state.windows.retain(|addr| self.current_windows.contains_key(addr));
-            
+            state
+                .windows
+                .retain(|addr| self.current_windows.contains_key(addr));
+
             // Keep workspace if it has windows or if it's visible
             !state.windows.is_empty() || state.visible
         });
 
         if self.config.debug_logging {
-            debug!("🎯 Tracking {} special workspaces", self.special_workspaces.len());
+            debug!(
+                "🎯 Tracking {} special workspaces",
+                self.special_workspaces.len()
+            );
         }
 
         Ok(())
@@ -263,7 +273,10 @@ impl ToggleSpecialPlugin {
         }
 
         if self.config.debug_logging {
-            debug!("🎬 Starting transition animation ({}ms)", self.config.animation_duration);
+            debug!(
+                "🎬 Starting transition animation ({}ms)",
+                self.config.animation_duration
+            );
         }
 
         sleep(Duration::from_millis(self.config.animation_duration)).await;
@@ -300,13 +313,18 @@ impl ToggleSpecialPlugin {
         if self.config.remember_position {
             self.window_positions.insert(
                 focused_window.address.clone(),
-                (focused_window.x, focused_window.y, focused_window.width, focused_window.height),
+                (
+                    focused_window.x,
+                    focused_window.y,
+                    focused_window.width,
+                    focused_window.height,
+                ),
             );
         }
 
         // Move window to special workspace
         let special_workspace = format!("special:{}", special_name);
-        
+
         tokio::task::spawn_blocking(move || {
             let workspace_identifier = WorkspaceIdentifierWithSpecial::Name(&special_workspace);
             Dispatch::call(DispatchType::MoveToWorkspace(workspace_identifier, None))
@@ -357,7 +375,7 @@ impl ToggleSpecialPlugin {
 
         // Move window to workspace 1 (or current workspace)
         let workspace_identifier = WorkspaceIdentifierWithSpecial::Id(1);
-        
+
         tokio::task::spawn_blocking(move || {
             Dispatch::call(DispatchType::MoveToWorkspace(workspace_identifier, None))
         })
@@ -383,7 +401,10 @@ impl ToggleSpecialPlugin {
     /// Toggle special workspace visibility
     async fn toggle_special_visibility(&mut self, special_name: &str) -> Result<String> {
         if self.config.debug_logging {
-            debug!("👁️ Toggling visibility of special workspace '{}'", special_name);
+            debug!(
+                "👁️ Toggling visibility of special workspace '{}'",
+                special_name
+            );
         }
 
         // Use Hyprland's togglespecialworkspace command
@@ -394,7 +415,9 @@ impl ToggleSpecialPlugin {
         };
 
         tokio::task::spawn_blocking(move || {
-            Dispatch::call(DispatchType::ToggleSpecialWorkspace(Some(special_workspace)))
+            Dispatch::call(DispatchType::ToggleSpecialWorkspace(Some(
+                special_workspace,
+            )))
         })
         .await??;
 
@@ -404,12 +427,17 @@ impl ToggleSpecialPlugin {
         // Update last operation time
         self.last_operation_time = Some(Instant::now());
 
-        Ok(format!("Toggled visibility of special workspace '{}'", special_name))
+        Ok(format!(
+            "Toggled visibility of special workspace '{}'",
+            special_name
+        ))
     }
 
     /// Main toggle function - intelligently decides what to do
     async fn toggle_special(&mut self, special_name: Option<&str>) -> Result<String> {
-        let special_name = special_name.unwrap_or(&self.config.default_special_name).to_string();
+        let special_name = special_name
+            .unwrap_or(&self.config.default_special_name)
+            .to_string();
 
         // Update window state
         self.update_windows().await?;
@@ -443,10 +471,16 @@ impl ToggleSpecialPlugin {
             output.push_str("  No special workspaces currently active\n");
         } else {
             for (name, state) in &self.special_workspaces {
-                let visibility = if state.visible { "👁️  visible" } else { "🙈 hidden" };
+                let visibility = if state.visible {
+                    "👁️  visible"
+                } else {
+                    "🙈 hidden"
+                };
                 output.push_str(&format!(
                     "  {} ({}) - {} windows {}\n",
-                    name, visibility, state.windows.len(),
+                    name,
+                    visibility,
+                    state.windows.len(),
                     if state.windows.len() > 0 { ":" } else { "" }
                 ));
 
@@ -478,7 +512,9 @@ impl ToggleSpecialPlugin {
 
         let total_windows = self.current_windows.len();
         let special_workspaces_count = self.special_workspaces.len();
-        let special_windows_count: usize = self.special_workspaces.values()
+        let special_windows_count: usize = self
+            .special_workspaces
+            .values()
             .map(|state| state.windows.len())
             .sum();
 
@@ -511,9 +547,7 @@ impl ToggleSpecialPlugin {
 
         status.push_str(&format!(
             "  - Auto-close empty: {}\n  - Remember position: {}\n  - Debug logging: {}\n",
-            self.config.auto_close_empty,
-            self.config.remember_position,
-            self.config.debug_logging
+            self.config.auto_close_empty, self.config.remember_position, self.config.debug_logging
         ));
 
         Ok(status)
@@ -569,10 +603,11 @@ impl Plugin for ToggleSpecialPlugin {
             HyprlandEvent::WindowClosed { window: _ } => {
                 // Update window state when windows are closed
                 self.update_windows().await?;
-                
+
                 // Clean up window positions for closed windows
                 if self.config.remember_position {
-                    self.window_positions.retain(|addr, _| self.current_windows.contains_key(addr));
+                    self.window_positions
+                        .retain(|addr, _| self.current_windows.contains_key(addr));
                 }
             }
 
@@ -721,10 +756,9 @@ mod tests {
         plugin.config.remember_position = true;
 
         // Add a window position
-        plugin.window_positions.insert(
-            "0x12345".to_string(),
-            (100, 200, 800, 600),
-        );
+        plugin
+            .window_positions
+            .insert("0x12345".to_string(), (100, 200, 800, 600));
 
         assert_eq!(plugin.window_positions.len(), 1);
         assert_eq!(
@@ -736,34 +770,40 @@ mod tests {
     #[test]
     fn test_is_window_in_special() {
         let mut plugin = create_test_plugin();
-        
+
         // Add a regular window
-        plugin.current_windows.insert("0x12345".to_string(), WindowInfo {
-            address: "0x12345".to_string(),
-            title: "Regular Window".to_string(),
-            class: "test-app".to_string(),
-            workspace_id: 1,
-            workspace_name: "1".to_string(),
-            focused: false,
-            x: 0,
-            y: 0,
-            width: 800,
-            height: 600,
-        });
+        plugin.current_windows.insert(
+            "0x12345".to_string(),
+            WindowInfo {
+                address: "0x12345".to_string(),
+                title: "Regular Window".to_string(),
+                class: "test-app".to_string(),
+                workspace_id: 1,
+                workspace_name: "1".to_string(),
+                focused: false,
+                x: 0,
+                y: 0,
+                width: 800,
+                height: 600,
+            },
+        );
 
         // Add a special window
-        plugin.current_windows.insert("0x67890".to_string(), WindowInfo {
-            address: "0x67890".to_string(),
-            title: "Special Window".to_string(),
-            class: "test-app".to_string(),
-            workspace_id: -99,
-            workspace_name: "special:test".to_string(),
-            focused: false,
-            x: 0,
-            y: 0,
-            width: 800,
-            height: 600,
-        });
+        plugin.current_windows.insert(
+            "0x67890".to_string(),
+            WindowInfo {
+                address: "0x67890".to_string(),
+                title: "Special Window".to_string(),
+                class: "test-app".to_string(),
+                workspace_id: -99,
+                workspace_name: "special:test".to_string(),
+                focused: false,
+                x: 0,
+                y: 0,
+                width: 800,
+                height: 600,
+            },
+        );
 
         assert!(!plugin.is_window_in_special("0x12345"));
         assert!(plugin.is_window_in_special("0x67890"));
@@ -773,20 +813,23 @@ mod tests {
     #[test]
     fn test_get_window_special_workspace() {
         let mut plugin = create_test_plugin();
-        
+
         // Add a special window
-        plugin.current_windows.insert("0x67890".to_string(), WindowInfo {
-            address: "0x67890".to_string(),
-            title: "Special Window".to_string(),
-            class: "test-app".to_string(),
-            workspace_id: -99,
-            workspace_name: "special:minimized".to_string(),
-            focused: false,
-            x: 0,
-            y: 0,
-            width: 800,
-            height: 600,
-        });
+        plugin.current_windows.insert(
+            "0x67890".to_string(),
+            WindowInfo {
+                address: "0x67890".to_string(),
+                title: "Special Window".to_string(),
+                class: "test-app".to_string(),
+                workspace_id: -99,
+                workspace_name: "special:minimized".to_string(),
+                focused: false,
+                x: 0,
+                y: 0,
+                width: 800,
+                height: 600,
+            },
+        );
 
         assert_eq!(
             plugin.get_window_special_workspace("0x67890"),
@@ -825,33 +868,39 @@ mod tests {
     #[test]
     fn test_focused_window_detection() {
         let mut plugin = create_test_plugin();
-        
-        // Add windows, one focused
-        plugin.current_windows.insert("0x12345".to_string(), WindowInfo {
-            address: "0x12345".to_string(),
-            title: "Unfocused Window".to_string(),
-            class: "test-app".to_string(),
-            workspace_id: 1,
-            workspace_name: "1".to_string(),
-            focused: false,
-            x: 0,
-            y: 0,
-            width: 800,
-            height: 600,
-        });
 
-        plugin.current_windows.insert("0x67890".to_string(), WindowInfo {
-            address: "0x67890".to_string(),
-            title: "Focused Window".to_string(),
-            class: "test-app".to_string(),
-            workspace_id: 1,
-            workspace_name: "1".to_string(),
-            focused: true,
-            x: 0,
-            y: 0,
-            width: 800,
-            height: 600,
-        });
+        // Add windows, one focused
+        plugin.current_windows.insert(
+            "0x12345".to_string(),
+            WindowInfo {
+                address: "0x12345".to_string(),
+                title: "Unfocused Window".to_string(),
+                class: "test-app".to_string(),
+                workspace_id: 1,
+                workspace_name: "1".to_string(),
+                focused: false,
+                x: 0,
+                y: 0,
+                width: 800,
+                height: 600,
+            },
+        );
+
+        plugin.current_windows.insert(
+            "0x67890".to_string(),
+            WindowInfo {
+                address: "0x67890".to_string(),
+                title: "Focused Window".to_string(),
+                class: "test-app".to_string(),
+                workspace_id: 1,
+                workspace_name: "1".to_string(),
+                focused: true,
+                x: 0,
+                y: 0,
+                width: 800,
+                height: 600,
+            },
+        );
 
         let focused = plugin.get_focused_window();
         assert!(focused.is_some());

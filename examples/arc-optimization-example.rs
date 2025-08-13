@@ -248,6 +248,8 @@ fn process_config(_config: TraditionalConfig) {}
 fn process_config_ref(_config: ConfigRef) {}
 
 fn main() {
-    println!("Arc optimization example - demonstrates memory optimization with Arc<T> in Rustrland");
+    println!(
+        "Arc optimization example - demonstrates memory optimization with Arc<T> in Rustrland"
+    );
     println!("This example shows how shared references reduce memory usage in plugin systems.");
 }

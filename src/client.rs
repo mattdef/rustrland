@@ -97,10 +97,23 @@ async fn main() -> Result<()> {
         Commands::List => ClientMessage::List,
         Commands::Workspace { action, arg } => ClientMessage::WorkspaceAction { action, arg },
         Commands::Magnify { action, arg } => ClientMessage::MagnifyAction { action, arg },
-        Commands::ShiftMonitors { direction } => ClientMessage::ShiftMonitors { direction: Some(direction) },
-        Commands::ToggleSpecial { workspace_name, command } => ClientMessage::ToggleSpecial { workspace_name: Some(workspace_name), command },
-        Commands::Monitors { command } => ClientMessage::Monitors { command: Some(command) },
-        Commands::Wallpapers { command, args } => ClientMessage::Wallpapers { command: Some(command), args },
+        Commands::ShiftMonitors { direction } => ClientMessage::ShiftMonitors {
+            direction: Some(direction),
+        },
+        Commands::ToggleSpecial {
+            workspace_name,
+            command,
+        } => ClientMessage::ToggleSpecial {
+            workspace_name: Some(workspace_name),
+            command,
+        },
+        Commands::Monitors { command } => ClientMessage::Monitors {
+            command: Some(command),
+        },
+        Commands::Wallpapers { command, args } => ClientMessage::Wallpapers {
+            command: Some(command),
+            args,
+        },
     };
 
     match send_command(message).await {

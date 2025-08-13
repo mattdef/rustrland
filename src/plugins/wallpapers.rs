@@ -1,22 +1,22 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::fs;
 use tokio::sync::Mutex;
 use tokio::time::{interval, sleep};
-use tokio::fs;
 use tracing::{debug, error, info, warn};
-use rand::seq::SliceRandom;
-use rand::thread_rng;
 
 use crate::ipc::{HyprlandClient, HyprlandEvent};
 use crate::plugins::Plugin;
 
-use hyprland::data::{Monitors};
+use hyprland::data::Monitors;
 use hyprland::shared::{HyprData, HyprDataVec};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -103,7 +103,12 @@ fn default_interval() -> u64 {
 }
 
 fn default_extensions() -> Vec<String> {
-    vec!["png".to_string(), "jpg".to_string(), "jpeg".to_string(), "webp".to_string()]
+    vec![
+        "png".to_string(),
+        "jpg".to_string(),
+        "jpeg".to_string(),
+        "webp".to_string(),
+    ]
 }
 
 fn default_command() -> String {
@@ -251,14 +256,15 @@ impl WallpapersPlugin {
 
         for path in paths {
             let expanded_path = self.expand_path(&path)?;
-            
+
             if !expanded_path.exists() {
                 warn!("Wallpaper path does not exist: {}", expanded_path.display());
                 continue;
             }
 
             if self.config.recurse {
-                self.scan_directory_recursive(&expanded_path, &mut wallpapers).await?;
+                self.scan_directory_recursive(&expanded_path, &mut wallpapers)
+                    .await?;
             } else {
                 self.scan_directory(&expanded_path, &mut wallpapers).await?;
             }
@@ -291,16 +297,22 @@ impl WallpapersPlugin {
 
         while let Some(entry) = entries.next_entry().await? {
             let file_path = entry.path();
-            
+
             if file_path.is_file() {
                 if let Some(ext) = file_path.extension() {
                     let ext_str = ext.to_string_lossy().to_lowercase();
-                    
-                    if self.config.extensions.iter().any(|e| e.to_lowercase() == ext_str) {
+
+                    if self
+                        .config
+                        .extensions
+                        .iter()
+                        .any(|e| e.to_lowercase() == ext_str)
+                    {
                         let metadata = entry.metadata().await?;
                         let wallpaper_info = WallpaperInfo {
                             path: file_path.clone(),
-                            filename: file_path.file_name()
+                            filename: file_path
+                                .file_name()
                                 .unwrap_or_default()
                                 .to_string_lossy()
                                 .to_string(),
@@ -319,7 +331,11 @@ impl WallpapersPlugin {
     }
 
     /// Recursively scan directories for images
-    fn scan_directory_recursive<'a>(&'a self, path: &'a Path, wallpapers: &'a mut Vec<WallpaperInfo>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+    fn scan_directory_recursive<'a>(
+        &'a self,
+        path: &'a Path,
+        wallpapers: &'a mut Vec<WallpaperInfo>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(async move {
             self.scan_directory(path, wallpapers).await?;
 
@@ -327,7 +343,8 @@ impl WallpapersPlugin {
             while let Some(entry) = entries.next_entry().await? {
                 let entry_path = entry.path();
                 if entry_path.is_dir() {
-                    self.scan_directory_recursive(&entry_path, wallpapers).await?;
+                    self.scan_directory_recursive(&entry_path, wallpapers)
+                        .await?;
                 }
             }
 
@@ -349,14 +366,22 @@ impl WallpapersPlugin {
         }
 
         let thumbnail_size = self.config.thumbnail_size;
-        
-        let wallpaper_paths: Vec<PathBuf> = self.wallpapers.iter().map(|w| w.path.clone()).collect();
-        let wallpaper_modified_times: Vec<std::time::SystemTime> = self.wallpapers.iter().map(|w| w.last_modified).collect();
-        
-        for (i, (wallpaper_path, last_modified)) in wallpaper_paths.iter().zip(wallpaper_modified_times.iter()).enumerate() {
-            let thumbnail_name = format!("thumb_{}_{}.jpg", 
+
+        let wallpaper_paths: Vec<PathBuf> =
+            self.wallpapers.iter().map(|w| w.path.clone()).collect();
+        let wallpaper_modified_times: Vec<std::time::SystemTime> =
+            self.wallpapers.iter().map(|w| w.last_modified).collect();
+
+        for (i, (wallpaper_path, last_modified)) in wallpaper_paths
+            .iter()
+            .zip(wallpaper_modified_times.iter())
+            .enumerate()
+        {
+            let thumbnail_name = format!(
+                "thumb_{}_{}.jpg",
                 thumbnail_size,
-                wallpaper_path.file_name()
+                wallpaper_path
+                    .file_name()
                     .unwrap_or_default()
                     .to_string_lossy()
             );
@@ -375,7 +400,11 @@ impl WallpapersPlugin {
             }
 
             // Generate thumbnail using ImageMagick (hardware-accelerated when available)
-            if self.generate_thumbnail(wallpaper_path, &thumbnail_path, thumbnail_size).await.is_ok() {
+            if self
+                .generate_thumbnail(wallpaper_path, &thumbnail_path, thumbnail_size)
+                .await
+                .is_ok()
+            {
                 self.wallpapers[i].thumbnail_path = Some(thumbnail_path);
             }
         }
@@ -395,18 +424,22 @@ impl WallpapersPlugin {
             let source_str_cloned = source_str.clone();
             let dest_str_cloned = dest_str.clone();
             let resize_arg_cloned = resize_arg.clone();
-            
+
             let output = tokio::task::spawn_blocking(move || {
                 Command::new("magick")
                     .args([
                         &source_str_cloned,
-                        "-define", "accelerate:minimum-image-size=256",
-                        "-resize", &resize_arg_cloned,
-                        "-quality", "85",
+                        "-define",
+                        "accelerate:minimum-image-size=256",
+                        "-resize",
+                        &resize_arg_cloned,
+                        "-quality",
+                        "85",
                         &dest_str_cloned,
                     ])
                     .output()
-            }).await??;
+            })
+            .await??;
 
             if output.status.success() {
                 return Ok(());
@@ -418,18 +451,23 @@ impl WallpapersPlugin {
             Command::new("magick")
                 .args([
                     &source_str,
-                    "-resize", &resize_arg,
-                    "-quality", "85",
+                    "-resize",
+                    &resize_arg,
+                    "-quality",
+                    "85",
                     &dest_str,
                 ])
                 .output()
-        }).await??;
+        })
+        .await??;
 
         if output.status.success() {
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Failed to generate thumbnail: {}", 
-                String::from_utf8_lossy(&output.stderr)))
+            Err(anyhow::anyhow!(
+                "Failed to generate thumbnail: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ))
         }
     }
 
@@ -440,16 +478,20 @@ impl WallpapersPlugin {
         }
 
         let preload_count = std::cmp::min(self.config.preload_count, self.wallpapers.len());
-        
+
         if self.config.debug_logging {
-            debug!("🚀 Preloading {} images for hardware acceleration", preload_count);
+            debug!(
+                "🚀 Preloading {} images for hardware acceleration",
+                preload_count
+            );
         }
 
         for i in 0..preload_count {
             let wallpaper = &self.wallpapers[i];
-            
+
             if let Ok(image_data) = fs::read(&wallpaper.path).await {
-                self.preloaded_images.insert(wallpaper.path.clone(), image_data);
+                self.preloaded_images
+                    .insert(wallpaper.path.clone(), image_data);
             }
         }
 
@@ -463,18 +505,22 @@ impl WallpapersPlugin {
 
         for monitor in &monitor_vec {
             if !self.monitors.contains_key(&monitor.name) {
-                self.monitors.insert(monitor.name.clone(), MonitorState {
-                    name: monitor.name.clone(),
-                    current_wallpaper: None,
-                    wallpaper_index: 0,
-                    last_change: Instant::now() - Duration::from_secs(self.config.interval),
-                });
+                self.monitors.insert(
+                    monitor.name.clone(),
+                    MonitorState {
+                        name: monitor.name.clone(),
+                        current_wallpaper: None,
+                        wallpaper_index: 0,
+                        last_change: Instant::now() - Duration::from_secs(self.config.interval),
+                    },
+                );
             }
         }
 
         // Remove monitors that no longer exist
         let current_monitor_names: Vec<String> = monitor_vec.into_iter().map(|m| m.name).collect();
-        self.monitors.retain(|name, _| current_monitor_names.contains(name));
+        self.monitors
+            .retain(|name, _| current_monitor_names.contains(name));
 
         Ok(())
     }
@@ -510,27 +556,37 @@ impl WallpapersPlugin {
     async fn set_wallpaper_for_monitor(&mut self, monitor_name: &str) -> Result<String> {
         // Get current wallpaper index and info
         let (wallpaper_index, wallpaper_path, wallpaper_filename) = {
-            let monitor_state = self.monitors.get(monitor_name)
+            let monitor_state = self
+                .monitors
+                .get(monitor_name)
                 .ok_or_else(|| anyhow::anyhow!("Monitor {} not found", monitor_name))?;
             let wallpaper = &self.wallpapers[monitor_state.wallpaper_index];
-            (monitor_state.wallpaper_index, wallpaper.path.clone(), wallpaper.filename.clone())
+            (
+                monitor_state.wallpaper_index,
+                wallpaper.path.clone(),
+                wallpaper.filename.clone(),
+            )
         };
-        
+
         // Execute wallpaper command with substitutions
         let mut command = self.config.command.clone();
         command = command.replace("[file]", &wallpaper_path.to_string_lossy());
         command = command.replace("[output]", monitor_name);
 
         if self.config.debug_logging {
-            debug!("🖼️  Setting wallpaper for {}: {} -> {}", 
-                monitor_name, wallpaper_filename, command);
+            debug!(
+                "🖼️  Setting wallpaper for {}: {} -> {}",
+                monitor_name, wallpaper_filename, command
+            );
         }
 
         // Execute command with hardware acceleration if available
         let _result = self.execute_wallpaper_command(&command).await?;
 
         // Update monitor state
-        let monitor_state = self.monitors.get_mut(monitor_name)
+        let monitor_state = self
+            .monitors
+            .get_mut(monitor_name)
             .ok_or_else(|| anyhow::anyhow!("Monitor {} not found", monitor_name))?;
         monitor_state.current_wallpaper = Some(wallpaper_path.clone());
         monitor_state.last_change = Instant::now();
@@ -542,7 +598,10 @@ impl WallpapersPlugin {
             self.preload_next_image(next_index).await?;
         }
 
-        Ok(format!("Set wallpaper '{}' for monitor {}", wallpaper_filename, monitor_name))
+        Ok(format!(
+            "Set wallpaper '{}' for monitor {}",
+            wallpaper_filename, monitor_name
+        ))
     }
 
     /// Set wallpaper globally (all monitors)
@@ -552,9 +611,12 @@ impl WallpapersPlugin {
 
         let mut command = self.config.command.clone();
         command = command.replace("[file]", &wallpaper.path.to_string_lossy());
-        
+
         if self.config.debug_logging {
-            debug!("🖼️  Setting wallpaper globally: {} -> {}", wallpaper.filename, command);
+            debug!(
+                "🖼️  Setting wallpaper globally: {} -> {}",
+                wallpaper.filename, command
+            );
         }
 
         self.execute_wallpaper_command(&command).await?;
@@ -572,14 +634,15 @@ impl WallpapersPlugin {
     /// Execute wallpaper command with hardware acceleration optimizations
     async fn execute_wallpaper_command(&self, command: &str) -> Result<()> {
         let command = command.to_string();
-        
+
         let output = tokio::task::spawn_blocking(move || {
             if cfg!(unix) {
                 Command::new("sh").args(["-c", &command]).output()
             } else {
                 Command::new("cmd").args(["/C", &command]).output()
             }
-        }).await??;
+        })
+        .await??;
 
         if !output.status.success() {
             let error_msg = String::from_utf8_lossy(&output.stderr);
@@ -605,8 +668,9 @@ impl WallpapersPlugin {
 
         if !self.preloaded_images.contains_key(&next_wallpaper.path) {
             if let Ok(image_data) = fs::read(&next_wallpaper.path).await {
-                self.preloaded_images.insert(next_wallpaper.path.clone(), image_data);
-                
+                self.preloaded_images
+                    .insert(next_wallpaper.path.clone(), image_data);
+
                 // Keep cache size manageable
                 if self.preloaded_images.len() > self.config.preload_count * 2 {
                     let oldest_key = self.preloaded_images.keys().next().cloned();
@@ -636,15 +700,21 @@ impl WallpapersPlugin {
 
         // Clone necessary data for the background task
         let _monitors: Vec<String> = self.monitors.keys().cloned().collect();
-        
+
         if debug_logging {
-            info!("🔄 Starting wallpaper rotation every {} seconds", interval_secs);
+            info!(
+                "🔄 Starting wallpaper rotation every {} seconds",
+                interval_secs
+            );
         }
 
         // For now, we'll implement a simple rotation mechanism
         // In a full implementation, this would need more sophisticated state sharing
-        info!("⏰ Wallpaper rotation configured for {} second intervals", interval_secs);
-        
+        info!(
+            "⏰ Wallpaper rotation configured for {} second intervals",
+            interval_secs
+        );
+
         Ok(())
     }
 
@@ -673,10 +743,13 @@ impl WallpapersPlugin {
         // In a full implementation, this would launch a GUI carousel
         // For now, we'll provide text-based navigation
         let visible_wallpapers = self.get_visible_wallpapers();
-        
+
         let mut output = String::from("🎠 Wallpaper Carousel (Interactive Mode)\n\n");
-        output.push_str(&format!("Showing {} of {} wallpapers:\n", 
-            visible_wallpapers.len(), self.wallpapers.len()));
+        output.push_str(&format!(
+            "Showing {} of {} wallpapers:\n",
+            visible_wallpapers.len(),
+            self.wallpapers.len()
+        ));
 
         for (i, wallpaper) in visible_wallpapers.iter().enumerate() {
             let marker = if i == (self.carousel_state.current_index % visible_wallpapers.len()) {
@@ -684,9 +757,10 @@ impl WallpapersPlugin {
             } else {
                 "  "
             };
-            
-            output.push_str(&format!("{} [{}] {}\n", 
-                marker, 
+
+            output.push_str(&format!(
+                "{} [{}] {}\n",
+                marker,
                 self.carousel_state.visible_start + i + 1,
                 wallpaper.filename
             ));
@@ -705,9 +779,9 @@ impl WallpapersPlugin {
         let start = self.carousel_state.visible_start;
         let end = std::cmp::min(
             start + self.carousel_state.visible_count,
-            self.wallpapers.len()
+            self.wallpapers.len(),
         );
-        
+
         self.wallpapers[start..end].iter().collect()
     }
 
@@ -721,10 +795,11 @@ impl WallpapersPlugin {
             "next" => {
                 if self.carousel_state.current_index < self.wallpapers.len() - 1 {
                     self.carousel_state.current_index += 1;
-                    
+
                     // Scroll visible window if needed
-                    if self.carousel_state.current_index >= 
-                        self.carousel_state.visible_start + self.carousel_state.visible_count {
+                    if self.carousel_state.current_index
+                        >= self.carousel_state.visible_start + self.carousel_state.visible_count
+                    {
                         self.carousel_state.visible_start += 1;
                     }
                 } else {
@@ -733,11 +808,11 @@ impl WallpapersPlugin {
                     self.carousel_state.visible_start = 0;
                 }
             }
-            
+
             "prev" | "previous" => {
                 if self.carousel_state.current_index > 0 {
                     self.carousel_state.current_index -= 1;
-                    
+
                     // Scroll visible window if needed
                     if self.carousel_state.current_index < self.carousel_state.visible_start {
                         self.carousel_state.visible_start = self.carousel_state.current_index;
@@ -745,12 +820,19 @@ impl WallpapersPlugin {
                 } else {
                     // Wrap to end
                     self.carousel_state.current_index = self.wallpapers.len() - 1;
-                    self.carousel_state.visible_start = self.wallpapers.len()
+                    self.carousel_state.visible_start = self
+                        .wallpapers
+                        .len()
                         .saturating_sub(self.carousel_state.visible_count);
                 }
             }
-            
-            _ => return Err(anyhow::anyhow!("Invalid navigation direction: {}", direction)),
+
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Invalid navigation direction: {}",
+                    direction
+                ))
+            }
         }
 
         self.carousel_state.last_navigation = Instant::now();
@@ -768,7 +850,7 @@ impl WallpapersPlugin {
         }
 
         let selected_wallpaper = &self.wallpapers[self.carousel_state.current_index];
-        
+
         // Set the selected wallpaper
         let mut command = self.config.command.clone();
         command = command.replace("[file]", &selected_wallpaper.path.to_string_lossy());
@@ -777,7 +859,10 @@ impl WallpapersPlugin {
 
         self.carousel_state.active = false;
 
-        Ok(format!("Selected wallpaper: {}", selected_wallpaper.filename))
+        Ok(format!(
+            "Selected wallpaper: {}",
+            selected_wallpaper.filename
+        ))
     }
 
     /// Close carousel
@@ -790,14 +875,15 @@ impl WallpapersPlugin {
     async fn clear_wallpapers(&self) -> Result<String> {
         if let Some(clear_command) = &self.config.clear_command {
             let command = clear_command.clone();
-            
+
             let output = tokio::task::spawn_blocking(move || {
                 if cfg!(unix) {
                     Command::new("sh").args(["-c", &command]).output()
                 } else {
                     Command::new("cmd").args(["/C", &command]).output()
                 }
-            }).await??;
+            })
+            .await??;
 
             if !output.status.success() {
                 let error_msg = String::from_utf8_lossy(&output.stderr);
@@ -809,7 +895,8 @@ impl WallpapersPlugin {
             // Default: kill background processes
             let _ = tokio::task::spawn_blocking(|| {
                 Command::new("pkill").args(["-f", "swaybg"]).output()
-            }).await?;
+            })
+            .await?;
 
             Ok("Background processes terminated".to_string())
         }
@@ -839,7 +926,8 @@ impl WallpapersPlugin {
         ));
 
         if self.carousel_state.active {
-            status.push_str(&format!("  - Carousel active: viewing {} of {}\n",
+            status.push_str(&format!(
+                "  - Carousel active: viewing {} of {}\n",
                 self.carousel_state.current_index + 1,
                 self.wallpapers.len()
             ));
@@ -850,12 +938,14 @@ impl WallpapersPlugin {
             status.push_str("\nCurrent wallpapers:\n");
             for (monitor_name, monitor_state) in &self.monitors {
                 if let Some(wallpaper) = &monitor_state.current_wallpaper {
-                    let filename = wallpaper.file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy();
+                    let filename = wallpaper.file_name().unwrap_or_default().to_string_lossy();
                     let elapsed = monitor_state.last_change.elapsed();
-                    status.push_str(&format!("  {} -> {} ({:.1}s ago)\n", 
-                        monitor_name, filename, elapsed.as_secs_f64()));
+                    status.push_str(&format!(
+                        "  {} -> {} ({:.1}s ago)\n",
+                        monitor_name,
+                        filename,
+                        elapsed.as_secs_f64()
+                    ));
                 } else {
                     status.push_str(&format!("  {} -> (none set)\n", monitor_name));
                 }
@@ -864,7 +954,10 @@ impl WallpapersPlugin {
 
         let preloaded_count = self.preloaded_images.len();
         if preloaded_count > 0 {
-            status.push_str(&format!("\nPerformance: {} images preloaded\n", preloaded_count));
+            status.push_str(&format!(
+                "\nPerformance: {} images preloaded\n",
+                preloaded_count
+            ));
         }
 
         Ok(status)
@@ -873,15 +966,21 @@ impl WallpapersPlugin {
     /// List all wallpapers
     async fn list_wallpapers(&self) -> Result<String> {
         if self.wallpapers.is_empty() {
-            return Ok("No wallpapers found. Run 'wallpapers scan' to search for images.".to_string());
+            return Ok(
+                "No wallpapers found. Run 'wallpapers scan' to search for images.".to_string(),
+            );
         }
 
         let mut output = format!("🖼️  Found {} wallpapers:\n\n", self.wallpapers.len());
 
         for (i, wallpaper) in self.wallpapers.iter().enumerate() {
             let size_mb = wallpaper.size_bytes as f64 / (1024.0 * 1024.0);
-            let thumbnail_status = if wallpaper.thumbnail_path.is_some() { "📷" } else { "  " };
-            
+            let thumbnail_status = if wallpaper.thumbnail_path.is_some() {
+                "📷"
+            } else {
+                "  "
+            };
+
             output.push_str(&format!(
                 "{} [{}] {} ({:.1}MB)\n    {}\n",
                 thumbnail_status,
@@ -910,12 +1009,7 @@ impl Plugin for WallpapersPlugin {
         if let Some(plugin_config) = config.get("wallpapers") {
             match plugin_config.clone().try_into() {
                 Ok(config) => self.config = config,
-                Err(e) => {
-                    return Err(anyhow::anyhow!(
-                        "Invalid wallpapers configuration: {}",
-                        e
-                    ))
-                }
+                Err(e) => return Err(anyhow::anyhow!("Invalid wallpapers configuration: {}", e)),
             }
         }
 
@@ -943,7 +1037,8 @@ impl Plugin for WallpapersPlugin {
 
     async fn handle_event(&mut self, event: &HyprlandEvent) -> Result<()> {
         // Update monitor state when monitors change
-        if matches!(event, HyprlandEvent::Other(data) if data.starts_with("monitoradded>>") || data.starts_with("monitorremoved>>")) {
+        if matches!(event, HyprlandEvent::Other(data) if data.starts_with("monitoradded>>") || data.starts_with("monitorremoved>>"))
+        {
             self.update_monitors().await?;
         }
 
@@ -968,7 +1063,7 @@ impl Plugin for WallpapersPlugin {
                             let wallpaper = &self.wallpapers[index - 1];
                             let mut command = self.config.command.clone();
                             command = command.replace("[file]", &wallpaper.path.to_string_lossy());
-                            
+
                             self.execute_wallpaper_command(&command).await?;
                             return Ok(format!("Set wallpaper: {}", wallpaper.filename));
                         } else {
@@ -981,7 +1076,7 @@ impl Plugin for WallpapersPlugin {
                             .find(|w| w.filename.to_lowercase().contains(&identifier.to_lowercase())) {
                             let mut command = self.config.command.clone();
                             command = command.replace("[file]", &wallpaper.path.to_string_lossy());
-                            
+
                             self.execute_wallpaper_command(&command).await?;
                             return Ok(format!("Set wallpaper: {}", wallpaper.filename));
                         } else {
@@ -1113,7 +1208,7 @@ mod tests {
         // Test serialization
         let h_json = serde_json::to_string(&horizontal).unwrap();
         let v_json = serde_json::to_string(&vertical).unwrap();
-        
+
         assert!(h_json.contains("horizontal"));
         assert!(v_json.contains("vertical"));
     }
@@ -1121,7 +1216,7 @@ mod tests {
     #[test]
     fn test_wallpaper_info() {
         let wallpaper = create_test_wallpaper("test.jpg");
-        
+
         assert_eq!(wallpaper.filename, "test.jpg");
         assert_eq!(wallpaper.size_bytes, 1024 * 1024);
         assert_eq!(wallpaper.dimensions, Some((1920, 1080)));
@@ -1160,7 +1255,7 @@ mod tests {
     #[test]
     fn test_expand_path() {
         let plugin = create_test_plugin();
-        
+
         // Test absolute path
         let abs_path = PathBuf::from("/absolute/path");
         let expanded = plugin.expand_path(&abs_path).unwrap();
@@ -1175,10 +1270,12 @@ mod tests {
     #[test]
     fn test_visible_wallpapers() {
         let mut plugin = create_test_plugin();
-        
+
         // Add test wallpapers
         for i in 1..=10 {
-            plugin.wallpapers.push(create_test_wallpaper(&format!("test{}.jpg", i)));
+            plugin
+                .wallpapers
+                .push(create_test_wallpaper(&format!("test{}.jpg", i)));
         }
 
         plugin.carousel_state.visible_start = 2;
@@ -1208,11 +1305,11 @@ mod tests {
     #[test]
     fn test_command_substitution() {
         let plugin = create_test_plugin();
-        
+
         let mut command = "swaybg -i \"[file]\" -o [output]".to_string();
         command = command.replace("[file]", "/path/to/wallpaper.jpg");
         command = command.replace("[output]", "DP-1");
-        
+
         assert_eq!(command, "swaybg -i \"/path/to/wallpaper.jpg\" -o DP-1");
     }
 
@@ -1225,14 +1322,17 @@ mod tests {
         assert_eq!(default_thumbnail_size(), 200);
         assert_eq!(default_transition_duration(), 300);
         assert_eq!(default_preload_count(), 3);
-        assert!(matches!(default_carousel_orientation(), CarouselOrientation::Horizontal));
+        assert!(matches!(
+            default_carousel_orientation(),
+            CarouselOrientation::Horizontal
+        ));
     }
 
     #[test]
     fn test_preload_cache_management() {
         let mut plugin = create_test_plugin();
         plugin.config.preload_count = 2;
-        
+
         // Test cache limit enforcement logic
         let max_cache_size = plugin.config.preload_count * 2;
         assert_eq!(max_cache_size, 4);
@@ -1241,10 +1341,10 @@ mod tests {
     #[test]
     fn test_extensions_matching() {
         let config = create_test_config();
-        
+
         let test_files = vec![
             "image.jpg",
-            "photo.jpeg", 
+            "photo.jpeg",
             "graphic.png",
             "animation.webp",
             "document.pdf", // Should not match
@@ -1253,8 +1353,11 @@ mod tests {
         for file in test_files {
             if let Some(ext) = Path::new(file).extension() {
                 let ext_str = ext.to_string_lossy().to_lowercase();
-                let matches = config.extensions.iter().any(|e| e.to_lowercase() == ext_str);
-                
+                let matches = config
+                    .extensions
+                    .iter()
+                    .any(|e| e.to_lowercase() == ext_str);
+
                 match file {
                     "document.pdf" => assert!(!matches),
                     _ => assert!(matches),
@@ -1266,10 +1369,12 @@ mod tests {
     #[test]
     fn test_carousel_navigation_bounds() {
         let mut plugin = create_test_plugin();
-        
+
         // Add test wallpapers
         for i in 1..=5 {
-            plugin.wallpapers.push(create_test_wallpaper(&format!("test{}.jpg", i)));
+            plugin
+                .wallpapers
+                .push(create_test_wallpaper(&format!("test{}.jpg", i)));
         }
 
         // Test wrapping at bounds

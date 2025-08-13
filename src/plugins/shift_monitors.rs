@@ -121,10 +121,7 @@ impl ShiftMonitorsPlugin {
         }
 
         if self.config.debug_logging {
-            debug!(
-                "🖥️  Updated {} monitors",
-                self.monitors.len()
-            );
+            debug!("🖥️  Updated {} monitors", self.monitors.len());
         }
 
         Ok(())
@@ -188,9 +185,11 @@ impl ShiftMonitorsPlugin {
         self.update_workspaces().await?;
 
         let monitor_count = self.monitors.len();
-        
+
         if monitor_count < 2 {
-            return Err(anyhow::anyhow!("Need at least 2 monitors to shift workspaces"));
+            return Err(anyhow::anyhow!(
+                "Need at least 2 monitors to shift workspaces"
+            ));
         }
 
         if self.config.debug_logging {
@@ -210,10 +209,7 @@ impl ShiftMonitorsPlugin {
         };
 
         if self.config.debug_logging {
-            debug!(
-                "Current workspace mapping: {:?}",
-                monitor_workspaces
-            );
+            debug!("Current workspace mapping: {:?}", monitor_workspaces);
         }
 
         // Determine shift direction
@@ -232,10 +228,7 @@ impl ShiftMonitorsPlugin {
         }
 
         if self.config.debug_logging {
-            debug!(
-                "New workspace mapping: {:?}",
-                new_assignments
-            );
+            debug!("New workspace mapping: {:?}", new_assignments);
         }
 
         // Add transition animation delay if enabled
@@ -249,8 +242,9 @@ impl ShiftMonitorsPlugin {
 
             // Simple animation by adding a small delay
             let animation_steps = 5;
-            let step_duration = Duration::from_millis(self.config.animation_duration / animation_steps);
-            
+            let step_duration =
+                Duration::from_millis(self.config.animation_duration / animation_steps);
+
             for step in 0..animation_steps {
                 sleep(step_duration).await;
                 if self.config.debug_logging && step % 2 == 0 {
@@ -264,7 +258,7 @@ impl ShiftMonitorsPlugin {
         for (monitor_name, new_workspace) in new_assignments {
             let workspace_identifier = WorkspaceIdentifier::Id(new_workspace);
             let monitor_name_clone = monitor_name.clone();
-            
+
             tokio::task::spawn_blocking(move || {
                 let monitor_identifier = MonitorIdentifier::Name(&monitor_name_clone);
                 Dispatch::call(DispatchType::MoveWorkspaceToMonitor(
@@ -286,7 +280,7 @@ impl ShiftMonitorsPlugin {
         self.last_shift_time = Some(Instant::now());
 
         let direction_text = if direction > 0 { "forward" } else { "backward" };
-        
+
         info!(
             "🔄 Shifted workspaces {} across {} monitors",
             direction_text, monitor_count
@@ -305,7 +299,7 @@ impl ShiftMonitorsPlugin {
 
         let monitor_count = self.monitors.len();
         let workspace_count = self.workspaces.len();
-        
+
         let mut status = format!(
             "ShiftMonitors: {} monitors, {} workspaces\n",
             monitor_count, workspace_count
@@ -314,7 +308,7 @@ impl ShiftMonitorsPlugin {
         // Show current monitor-workspace mapping
         status.push_str("Current mapping:\n");
         let ordered_monitors = self.get_ordered_monitors();
-        
+
         for monitor in ordered_monitors {
             let focused_marker = if monitor.focused { "🎯" } else { "  " };
             status.push_str(&format!(
@@ -350,16 +344,17 @@ impl ShiftMonitorsPlugin {
         self.update_workspaces().await?;
 
         let mut output = String::from("🖥️  Monitors and Workspaces:\n");
-        
+
         let ordered_monitors = self.get_ordered_monitors();
-        
+
         for (index, monitor) in ordered_monitors.iter().enumerate() {
             let focused_marker = if monitor.focused { "🎯" } else { "  " };
-            let workspace_info = self.workspaces
+            let workspace_info = self
+                .workspaces
                 .get(&monitor.active_workspace)
                 .map(|w| format!("({} windows)", w.windows))
                 .unwrap_or_else(|| "(0 windows)".to_string());
-            
+
             output.push_str(&format!(
                 "{} [{}] {}: {}x{} @ ({},{}) - Workspace {} {}\n",
                 focused_marker,
@@ -459,14 +454,19 @@ impl Plugin for ShiftMonitorsPlugin {
 
             direction_str => {
                 // Parse direction from command
-                let direction: i32 = direction_str
-                    .parse()
-                    .map_err(|_| anyhow::anyhow!("Invalid direction: {}. Use +1 for forward, -1 for backward", direction_str))?;
-                
+                let direction: i32 = direction_str.parse().map_err(|_| {
+                    anyhow::anyhow!(
+                        "Invalid direction: {}. Use +1 for forward, -1 for backward",
+                        direction_str
+                    )
+                })?;
+
                 if direction == 0 {
-                    return Err(anyhow::anyhow!("Direction cannot be 0. Use +1 for forward, -1 for backward"));
+                    return Err(anyhow::anyhow!(
+                        "Direction cannot be 0. Use +1 for forward, -1 for backward"
+                    ));
                 }
-                
+
                 self.shift_workspaces(direction).await
             }
         }
@@ -527,32 +527,38 @@ mod tests {
     #[test]
     fn test_monitor_ordering() {
         let mut plugin = create_test_plugin();
-        
-        // Add test monitors in random order
-        plugin.monitors.insert("DP-2".to_string(), MonitorInfo {
-            id: 1,
-            name: "DP-2".to_string(),
-            focused: false,
-            active_workspace: 2,
-            width: 1920,
-            height: 1080,
-            x: 1920, // Second monitor position
-            y: 0,
-        });
 
-        plugin.monitors.insert("DP-1".to_string(), MonitorInfo {
-            id: 0,
-            name: "DP-1".to_string(),
-            focused: true,
-            active_workspace: 1,
-            width: 1920,
-            height: 1080,
-            x: 0, // First monitor position
-            y: 0,
-        });
+        // Add test monitors in random order
+        plugin.monitors.insert(
+            "DP-2".to_string(),
+            MonitorInfo {
+                id: 1,
+                name: "DP-2".to_string(),
+                focused: false,
+                active_workspace: 2,
+                width: 1920,
+                height: 1080,
+                x: 1920, // Second monitor position
+                y: 0,
+            },
+        );
+
+        plugin.monitors.insert(
+            "DP-1".to_string(),
+            MonitorInfo {
+                id: 0,
+                name: "DP-1".to_string(),
+                focused: true,
+                active_workspace: 1,
+                width: 1920,
+                height: 1080,
+                x: 0, // First monitor position
+                y: 0,
+            },
+        );
 
         let ordered = plugin.get_ordered_monitors();
-        
+
         // Should be ordered by x position
         assert_eq!(ordered.len(), 2);
         assert_eq!(ordered[0].name, "DP-1");
