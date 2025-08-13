@@ -116,7 +116,7 @@ async fn main() -> Result<()> {
 }
 
 async fn send_command(message: ClientMessage) -> Result<DaemonResponse> {
-    use tokio::time::{sleep, timeout, Duration};
+    use tokio::time::{sleep, Duration};
 
     const IPC_TIMEOUT: Duration = Duration::from_secs(10);
     const MAX_RETRIES: u32 = 3;
