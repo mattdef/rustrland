@@ -25,6 +25,12 @@ struct WindowAnimationState {
     is_showing: bool,
 }
 
+impl Default for WindowAnimator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WindowAnimator {
     pub fn new() -> Self {
         Self {

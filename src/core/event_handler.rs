@@ -8,6 +8,12 @@ pub struct EventHandler {
     // Could store event filtering, rate limiting, etc.
 }
 
+impl Default for EventHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EventHandler {
     pub fn new() -> Self {
         Self {}

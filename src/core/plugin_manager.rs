@@ -21,6 +21,12 @@ pub struct PluginManager {
     global_cache: Arc<GlobalStateCache>,
 }
 
+impl Default for PluginManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PluginManager {
     pub fn new() -> Self {
         Self {

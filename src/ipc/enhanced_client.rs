@@ -36,7 +36,7 @@ pub struct EnhancedHyprlandClient {
     event_filters: Arc<RwLock<Vec<String>>>, // Event types to filter for
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ConnectionState {
     pub is_connected: bool,
     pub last_connection_attempt: Option<Instant>,
@@ -63,14 +63,10 @@ impl Default for ReconnectConfig {
     }
 }
 
-impl Default for ConnectionState {
+
+impl Default for EnhancedHyprlandClient {
     fn default() -> Self {
-        Self {
-            is_connected: false,
-            last_connection_attempt: None,
-            connection_failures: 0,
-            hyprland_instance: None,
-        }
+        Self::new()
     }
 }
 

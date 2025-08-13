@@ -715,20 +715,18 @@ impl ScratchpadsPlugin {
             match enhanced_client.get_window_geometry(&window_address).await {
                 Ok(current_geometry) => {
                     // Check if geometry has changed
-                    let mut needs_update = false;
-
-                    {
+                    let needs_update = {
                         let cache = geometry_cache.read().await;
                         if let Some(cached_geometry) = cache.get(&window_address) {
-                            needs_update = cached_geometry.x != current_geometry.x
+                            cached_geometry.x != current_geometry.x
                                 || cached_geometry.y != current_geometry.y
                                 || cached_geometry.width != current_geometry.width
                                 || cached_geometry.height != current_geometry.height
-                                || cached_geometry.workspace != current_geometry.workspace;
+                                || cached_geometry.workspace != current_geometry.workspace
                         } else {
-                            needs_update = true; // First time caching
+                            true // First time caching
                         }
-                    }
+                    };
 
                     if needs_update {
                         debug!(
@@ -1311,9 +1309,6 @@ impl Plugin for ScratchpadsPlugin {
             HyprlandEvent::Other(msg) => {
                 debug!("Other event: {}", msg);
                 self.handle_other_event(msg).await;
-            }
-            _ => {
-                // Handle other events
             }
         }
 

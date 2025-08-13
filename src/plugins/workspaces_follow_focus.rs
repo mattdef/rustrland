@@ -300,7 +300,6 @@ impl WorkspacesFollowFocusPlugin {
     //     let duration = Duration::from_millis(self.config.animation_duration);
     //     Timeline::new(duration)
     // }
-
     /// Animate workspace transition if enabled
     async fn animate_workspace_switch(
         &mut self,

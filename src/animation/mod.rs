@@ -122,6 +122,12 @@ struct PerformanceMonitor {
     adaptive_quality: bool,
 }
 
+impl Default for AnimationEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AnimationEngine {
     pub fn new() -> Self {
         Self {
