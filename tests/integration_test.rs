@@ -6,8 +6,10 @@ use tempfile::NamedTempFile;
 #[tokio::test]
 async fn test_config_default() {
     let config = Config::default();
-    assert!(!config.pyprland.plugins.is_empty());
-    assert!(config.pyprland.plugins.contains(&"scratchpads".to_string()));
+    assert!(config.pyprland.is_some());
+    let pyprland_config = config.pyprland.as_ref().unwrap();
+    assert!(!pyprland_config.plugins.is_empty());
+    assert!(pyprland_config.plugins.contains(&"scratchpads".to_string()));
     assert!(config.plugins.is_empty());
 }
 
@@ -37,9 +39,11 @@ animation = "fromTop"
         .expect("Failed to load config");
 
     // Verify basic structure
-    assert_eq!(config.pyprland.plugins.len(), 2);
-    assert!(config.pyprland.plugins.contains(&"scratchpads".to_string()));
-    assert!(config.pyprland.plugins.contains(&"expose".to_string()));
+    assert!(config.pyprland.is_some());
+    let pyprland_config = config.pyprland.as_ref().unwrap();
+    assert_eq!(pyprland_config.plugins.len(), 2);
+    assert!(pyprland_config.plugins.contains(&"scratchpads".to_string()));
+    assert!(pyprland_config.plugins.contains(&"expose".to_string()));
 
     // Verify scratchpad config is parsed
     assert!(config.plugins.contains_key("scratchpads"));

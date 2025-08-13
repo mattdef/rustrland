@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 // =====================================================
 
 // Configuration: Arc-shared (read-mostly after init)
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspacesConfig {
     pub follow_window_focus: bool,
     pub allow_cross_monitor_switch: bool,
