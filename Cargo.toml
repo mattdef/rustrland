@@ -1,6 +1,6 @@
 [package]
 name = "rustrland"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 authors = ["Rustrland Contributors"]
 license = "MIT"
@@ -49,6 +49,8 @@ uuid = { version = "1.0", features = ["v4"] }
 shellexpand = "3.1"
 futures = "0.3"
 serde_json = "1.0.142"
+rand = "0.8"
+dirs = "5.0"
 
 # Hot reload
 notify = "6.1"
@@ -69,3 +71,21 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[package.metadata.deb]
+maintainer = "Mattdef <mattdef@gmail.com>"
+license-file = ["LICENSE"]
+depends = "hyprland"
+extended-description = "Drop-in replacement for Pyprland with better performance, written in Rust."
+assets = [
+    [
+        "target/release/rustrland",
+        "usr/bin/",
+        "755",
+    ],
+    [
+        "target/release/rustr",
+        "usr/bin/",
+        "755",
+    ],
+]

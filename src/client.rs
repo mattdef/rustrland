@@ -53,6 +53,36 @@ enum Commands {
         #[arg()]
         arg: Option<String>,
     },
+    /// Shift workspaces between monitors
+    ShiftMonitors {
+        /// Direction to shift (+1 for forward, -1 for backward)
+        #[arg(default_value = "+1")]
+        direction: String,
+    },
+    /// Toggle special workspace
+    ToggleSpecial {
+        /// Special workspace name (default: "special")
+        #[arg(default_value = "special")]
+        workspace_name: String,
+        /// Sub-command (toggle, show, move, list, status)
+        #[arg()]
+        command: Option<String>,
+    },
+    /// Monitor management
+    Monitors {
+        /// Monitor command (relayout, list, status, test, reload)
+        #[arg(default_value = "relayout")]
+        command: String,
+    },
+    /// Wallpaper management
+    Wallpapers {
+        /// Wallpaper command (next, set, carousel, scan, list, status, clear, start, stop)
+        #[arg(default_value = "next")]
+        command: String,
+        /// Additional arguments for the command
+        #[arg()]
+        args: Vec<String>,
+    },
 }
 
 #[tokio::main]
@@ -67,6 +97,10 @@ async fn main() -> Result<()> {
         Commands::List => ClientMessage::List,
         Commands::Workspace { action, arg } => ClientMessage::WorkspaceAction { action, arg },
         Commands::Magnify { action, arg } => ClientMessage::MagnifyAction { action, arg },
+        Commands::ShiftMonitors { direction } => ClientMessage::ShiftMonitors { direction: Some(direction) },
+        Commands::ToggleSpecial { workspace_name, command } => ClientMessage::ToggleSpecial { workspace_name: Some(workspace_name), command },
+        Commands::Monitors { command } => ClientMessage::Monitors { command: Some(command) },
+        Commands::Wallpapers { command, args } => ClientMessage::Wallpapers { command: Some(command), args },
     };
 
     match send_command(message).await {

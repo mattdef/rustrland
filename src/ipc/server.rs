@@ -187,6 +187,67 @@ impl IpcServer {
                 }
             }
 
+            ClientMessage::ShiftMonitors { direction } => {
+                debug!("🔄 Processing shift monitors: {:?}", direction);
+                let mut pm = plugin_manager.write().await;
+
+                let direction_str = direction.as_deref().unwrap_or("+1");
+                match pm.handle_command("shift_monitors", direction_str, &[]).await {
+                    Ok(result) => DaemonResponse::Success { message: result },
+                    Err(e) => DaemonResponse::Error {
+                        message: e.to_string(),
+                    },
+                }
+            }
+
+            ClientMessage::ToggleSpecial { workspace_name, command } => {
+                debug!("🎯 Processing toggle special: {:?} {:?}", workspace_name, command);
+                let mut pm = plugin_manager.write().await;
+
+                let workspace = workspace_name.as_deref().unwrap_or("special");
+                let cmd = command.as_deref().unwrap_or("");
+                
+                let args: Vec<&str> = if workspace != "special" {
+                    vec![workspace]
+                } else {
+                    vec![]
+                };
+                
+                match pm.handle_command("toggle_special", cmd, &args).await {
+                    Ok(result) => DaemonResponse::Success { message: result },
+                    Err(e) => DaemonResponse::Error {
+                        message: e.to_string(),
+                    },
+                }
+            }
+
+            ClientMessage::Monitors { command } => {
+                debug!("🖥️  Processing monitors command: {:?}", command);
+                let mut pm = plugin_manager.write().await;
+
+                let cmd = command.as_deref().unwrap_or("relayout");
+                match pm.handle_command("monitors", cmd, &[]).await {
+                    Ok(result) => DaemonResponse::Success { message: result },
+                    Err(e) => DaemonResponse::Error {
+                        message: e.to_string(),
+                    },
+                }
+            }
+
+            ClientMessage::Wallpapers { command, args } => {
+                debug!("🖼️  Processing wallpapers command: {:?} {:?}", command, args);
+                let mut pm = plugin_manager.write().await;
+
+                let cmd = command.as_deref().unwrap_or("next");
+                let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+                match pm.handle_command("wallpapers", cmd, &args_refs).await {
+                    Ok(result) => DaemonResponse::Success { message: result },
+                    Err(e) => DaemonResponse::Error {
+                        message: e.to_string(),
+                    },
+                }
+            }
+
             ClientMessage::Reload => {
                 debug!("⚡ Processing reload command");
                 let mut pm = plugin_manager.write().await;

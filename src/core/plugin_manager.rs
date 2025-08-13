@@ -8,7 +8,11 @@ use crate::core::global_cache::GlobalStateCache;
 use crate::ipc::{HyprlandClient, HyprlandEvent};
 use crate::plugins::expose::ExposePlugin;
 use crate::plugins::magnify::MagnifyPlugin;
+use crate::plugins::monitors::MonitorsPlugin;
 use crate::plugins::scratchpads::ScratchpadsPlugin;
+use crate::plugins::shift_monitors::ShiftMonitorsPlugin;
+use crate::plugins::toggle_special::ToggleSpecialPlugin;
+use crate::plugins::wallpapers::WallpapersPlugin;
 use crate::plugins::workspaces_follow_focus::WorkspacesFollowFocusPlugin;
 use crate::plugins::{Plugin, PluginBox};
 
@@ -65,6 +69,10 @@ impl PluginManager {
             "expose" => Box::new(ExposePlugin::new()),
             "workspaces_follow_focus" => Box::new(WorkspacesFollowFocusPlugin::new()),
             "magnify" => Box::new(MagnifyPlugin::new()),
+            "shift_monitors" => Box::new(ShiftMonitorsPlugin::new()),
+            "toggle_special" => Box::new(ToggleSpecialPlugin::new()),
+            "monitors" => Box::new(MonitorsPlugin::new()),
+            "wallpapers" => Box::new(WallpapersPlugin::new()),
             // Add more plugins here as they're implemented
             _ => {
                 warn!("⚠️  Unknown plugin: {}", plugin_name);

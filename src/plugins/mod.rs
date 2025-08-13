@@ -5,7 +5,11 @@ use crate::ipc::HyprlandEvent;
 
 pub mod expose;
 pub mod magnify;
+pub mod monitors;
 pub mod scratchpads;
+pub mod shift_monitors;
+pub mod toggle_special;
+pub mod wallpapers;
 pub mod workspaces_follow_focus;
 
 #[async_trait]

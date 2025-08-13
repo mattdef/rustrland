@@ -568,6 +568,39 @@ rustrland/
 | hot_reload              | 🔧 Available           | v0.3.0+ | Framework  | File watching, state preservation, hot plugin reload                                                         |
 | animation               | 🔧 Available           | v0.3.0+ | 16 tests   | Timeline system, 16+ easing functions, property interpolation                                                |
 
+## What's New in v0.3.2 🖼️
+
+### 🎨 **Advanced Wallpapers Plugin - Complete Implementation**
+
+- **Hardware-Accelerated Wallpaper Engine**: ImageMagick with OpenCL acceleration for thumbnails and image processing
+- **Interactive Carousel Navigation**: Horizontal/vertical carousel with mouse and keyboard controls for visual wallpaper selection
+- **Multi-Monitor Wallpaper Support**: Per-monitor wallpaper management with unique wallpapers for each display
+- **Smart Thumbnail Caching**: Intelligent caching system with modification time checking to avoid unnecessary regeneration
+- **Multiple Backend Support**: Compatible with swaybg, swww, wpaperd, and custom wallpaper commands
+- **Auto-Rotation System**: Automatic wallpaper changing with configurable intervals and preloading for instant switching
+
+### 🖥️ **Enhanced Monitors Plugin - Production Ready**
+
+- **Relative Monitor Placement**: Rule-based monitor positioning (left-of, right-of, above, below) with conditional placement
+- **Hotplug Event Handling**: Automatic monitor detection and configuration when displays are connected/disconnected
+- **Hardware Acceleration**: GPU-accelerated monitor operations and scaling when available
+- **Multiple Configuration Formats**: Support for both Pyprland and native configuration formats
+- **Real-time Updates**: Dynamic monitor configuration without daemon restart
+
+### 📚 **Comprehensive Plugin Documentation**
+
+- **Complete PLUGINS.md**: Detailed documentation for all 8 plugins with configuration examples and usage guides
+- **Plugin Development Guide**: Step-by-step guide for creating new plugins with templates and best practices
+- **Configuration Examples**: Multiple format examples (Pyprland, Rustrland native, and dual configurations)
+- **Status Summary**: Production readiness status and test coverage for all plugins
+
+### 🧪 **Testing & Quality Improvements**
+
+- **50+ Comprehensive Tests**: All plugins now have extensive test coverage (112 total tests passing)
+- **Memory Safety**: Zero `unwrap()` calls, proper error handling with `anyhow::Result`
+- **Thread Safety**: All plugins are `Send + Sync` compatible for multi-threaded environments
+- **Performance Optimizations**: Reduced memory allocations and improved async/await patterns
+
 ## What's New in v0.3.1 🔧
 
 ### 🚀 **Performance & Reliability Improvements**

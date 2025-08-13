@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,15 +18,6 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: rustrland-linux-x86_64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact_name: rustrland-windows-x86_64
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact_name: rustrland-macos-x86_64
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact_name: rustrland-macos-aarch64
 
     steps:
       - name: Checkout sources
@@ -56,29 +47,12 @@ jobs:
           cp LICENSE release/
           tar -czf ${{ matrix.artifact_name }}.tar.gz -C release .
 
-      - name: Create release package (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          mkdir release
-          cp target/${{ matrix.target }}/release/rustrland.exe release/
-          cp target/${{ matrix.target }}/release/rustr.exe release/
-          cp README.md release/
-          cp LICENSE release/
-          7z a ${{ matrix.artifact_name }}.zip ./release/*
-
       - name: Upload release artifact (Unix)
         if: matrix.os != 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_name }}.tar.gz
-
-      - name: Upload release artifact (Windows)
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_name }}.zip
 
   create-release:
     name: Create Release
@@ -130,4 +104,4 @@ jobs:
 
       - name: Publish to crates.io
         run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        continue-on-error: true  # Don't fail if already published
+        continue-on-error: true # Don't fail if already published
