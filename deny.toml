@@ -46,6 +46,7 @@ allow = [
     "GPL-3.0",           # hyprland dependency
     "CC0-1.0",           # notify dependency  
     "MPL-2.0",           # option-ext dependency
+    "Unicode-3.0",       # unicode-ident dependency
 ]
 # Note: with version = 2, all licenses not in allow list are denied by default
 # The confidence threshold for detecting a license from a license text.
