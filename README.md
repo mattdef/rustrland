@@ -5,7 +5,7 @@
 **Rust-powered window management for Hyprland**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.81+-orange.svg)](https://www.rust-lang.org)
 <img src="https://camo.githubusercontent.com/a008fee23e5878dc3caecb71839846a9b3a44afb006a2bcc2eae5fa7dcb6ade6/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f4d616465253230666f722d487970726c616e642d626c7565" alt="Hyprland" data-canonical-src="https://img.shields.io/badge/Made%20for-Hyprland-blue" style="max-width: 100%;">
 
 </div>
@@ -27,7 +27,7 @@
 
 ### Prerequisites
 
-- **Rust**: Version 1.70 or newer ([Install Rust](https://rustup.rs/))
+- **Rust**: Version 1.81 or newer ([Install Rust](https://rustup.rs/))
 - **Hyprland**: Compatible window manager ([Install Hyprland](https://hyprland.org/))
 - **Environment**: `HYPRLAND_INSTANCE_SIGNATURE` must be set (usually automatic)
 

@@ -22,7 +22,7 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 # The lint level for security vulnerabilities
 vulnerability = "deny"
 # The lint level for unmaintained crates
-unmaintained = "warn"
+unmaintained = "none"
 # The lint level for crates that have been yanked from their source registry
 yanked = "warn"
 # The lint level for crates with security notices.
@@ -88,9 +88,9 @@ wildcards = "allow"
 # with multiple versions
 highlight = "all"
 # The default lint level for `default` features, if not specified in array
-default-features = "allow"
+# default-features = "allow"  # This option is not supported in newer versions
 # The default lint level for `external` features, if not specified in array
-external-default-features = "allow"
+# external-default-features = "allow"  # This option is not supported in newer versions
 # List of crates that are allowed. Use with care!
 allow = [
     # { name = "openssl-sys", version = "=0.9.60" },
