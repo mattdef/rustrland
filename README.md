@@ -606,6 +606,29 @@ rustrland/
 
 **Total**: 9 production-ready plugins with 60+ comprehensive tests passing across all functionality.
 
+## What's New in v0.3.3 🔍
+
+### 🔍 **Lost Windows Plugin - Complete Implementation**
+
+- **Lost Window Detection**: Advanced detection system that identifies windows that have lost their proper workspace assignment or become invisible
+- **Smart Recovery System**: Intelligent recovery mechanisms to restore lost windows to their intended workspaces or make them visible again
+- **Multi-Monitor Compatibility**: Full support for multi-monitor setups with per-monitor lost window detection and recovery
+- **Comprehensive Logging**: Detailed logging system that tracks window states, recovery attempts, and success rates for debugging
+- **Configurable Detection**: Customizable detection criteria and recovery strategies through configuration options
+- **Integration with Expose**: Seamless integration with the expose plugin to show lost windows in the overview grid
+
+### 📚 **Documentation Improvements**
+
+- **Comprehensive Uninstall Guide**: Added detailed uninstall instructions in README with step-by-step removal process
+- **Enhanced Plugin Documentation**: Updated PLUGINS.md with complete lost_windows plugin documentation and usage examples
+- **Configuration Examples**: Added lost_windows plugin configuration examples for both Pyprland and Rustrland formats
+
+### 🧪 **Quality & Reliability**
+
+- **Enhanced Error Handling**: Improved error handling throughout the lost_windows plugin with proper anyhow::Result usage
+- **Memory Safety**: Zero unwrap() calls in new plugin code, following project safety standards
+- **Thread Safety**: Lost windows plugin is fully Send + Sync compatible for multi-threaded environments
+
 ## What's New in v0.3.2 🖼️
 
 ### 🎨 **Advanced Wallpapers Plugin - Complete Implementation**

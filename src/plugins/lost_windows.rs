@@ -609,7 +609,7 @@ impl LostWindowsPlugin {
         let now = Instant::now();
         let should_check = self
             .last_check
-            .map_or(true, |last| now.duration_since(last).as_secs() >= self.config.check_interval);
+            .is_none_or(|last| now.duration_since(last).as_secs() >= self.config.check_interval);
 
         if !should_check {
             return Ok(());
