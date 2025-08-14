@@ -143,7 +143,8 @@ impl SystemNotifier {
                     })
                     .with_context(|| format!("Failed to parse parser config for '{name}'"))?;
 
-                let compiled = self.compile_parser(&notification_config)
+                let compiled = self
+                    .compile_parser(&notification_config)
                     .with_context(|| format!("Failed to compile parser '{name}'"))?;
 
                 self.parsers.insert(name.clone(), compiled);
@@ -172,7 +173,9 @@ impl SystemNotifier {
                     return Err(anyhow::anyhow!("Invalid filter format: {}", filter_str));
                 }
             } else {
-                return Err(anyhow::anyhow!("Filter must be in s/pattern/replacement/ format"));
+                return Err(anyhow::anyhow!(
+                    "Filter must be in s/pattern/replacement/ format"
+                ));
             }
         } else {
             (None, None)
@@ -204,28 +207,24 @@ impl SystemNotifier {
 
         // Collect the sources and parsers to avoid borrowing issues
         let mut monitor_tasks = Vec::new();
-        
+
         for (source_name, source_config) in &self.sources {
             let parser_name = &source_config.parser;
-            
+
             if let Some(parser) = self.parsers.get(parser_name) {
-                monitor_tasks.push((
-                    source_name.clone(),
-                    source_config.clone(),
-                    parser.clone(),
-                ));
+                monitor_tasks.push((source_name.clone(), source_config.clone(), parser.clone()));
             } else {
-                warn!("Parser '{}' not found for source '{}'", parser_name, source_name);
+                warn!(
+                    "Parser '{}' not found for source '{}'",
+                    parser_name, source_name
+                );
             }
         }
 
         // Now spawn all the monitoring tasks
         for (source_name, source_config, parser) in monitor_tasks {
-            let handle = Self::spawn_source_monitor_static(
-                source_name,
-                source_config,
-                parser,
-            ).await?;
+            let handle =
+                Self::spawn_source_monitor_static(source_name, source_config, parser).await?;
             self.handles.push(handle);
         }
 
@@ -277,19 +276,23 @@ impl SystemNotifier {
 
             while let Some(line) = lines.next_line().await? {
                 if let Some(captures) = parser.pattern.captures(&line) {
-                    let notification_text = if let (Some(filter), Some(replacement)) = 
-                        (&parser.filter, &parser.filter_replacement) {
+                    let notification_text = if let (Some(filter), Some(replacement)) =
+                        (&parser.filter, &parser.filter_replacement)
+                    {
                         filter.replace(&line, replacement).to_string()
                     } else {
                         // Use the first capture group if available, otherwise the full match
-                        captures.get(1)
+                        captures
+                            .get(1)
                             .or_else(|| captures.get(0))
                             .map(|m| m.as_str())
                             .unwrap_or(&line)
                             .to_string()
                     };
 
-                    if let Err(e) = Self::send_animated_notification(&notification_text, parser).await {
+                    if let Err(e) =
+                        Self::send_animated_notification(&notification_text, parser).await
+                    {
                         error!("Failed to send notification: {}", e);
                     }
                 }
@@ -324,29 +327,32 @@ impl SystemNotifier {
         // Handle animation if configured (Rustrland enhancement)
         if let Some(animation_config) = &parser.animation {
             debug!("🎬 Applying notification animations");
-            
+
             // For desktop notifications, we simulate animation by showing progressive notifications
             // with slight delays and opacity changes (this is a conceptual implementation)
             if let Some(appear_config) = &animation_config.appear {
                 // Apply appearance animation effects
                 Self::apply_appearance_animation(&mut notification, appear_config)?;
             }
-            
+
             // Show the notification
-            notification.show()
+            notification
+                .show()
                 .with_context(|| "Failed to display notification")?;
-            
+
             // Handle display duration and disappearance
             if let Some(display_duration) = animation_config.display_duration {
-                tokio::time::sleep(tokio::time::Duration::from_millis(display_duration as u64)).await;
-                
+                tokio::time::sleep(tokio::time::Duration::from_millis(display_duration as u64))
+                    .await;
+
                 if let Some(disappear_config) = &animation_config.disappear {
                     Self::apply_disappearance_animation(disappear_config).await?;
                 }
             }
         } else {
             // Standard notification without animation
-            notification.show()
+            notification
+                .show()
                 .with_context(|| "Failed to display notification")?;
         }
 
@@ -368,12 +374,14 @@ impl SystemNotifier {
     ) -> Result<()> {
         // Note: Desktop notification systems have limited animation support
         // This is where we'd apply hints or effects supported by the notification daemon
-        
+
         // For now, we can set hints that some notification daemons might support
         notification.hint(notify_rust::Hint::Category("system".to_owned()));
-        
-        debug!("Applied appearance animation: {} ({}ms, {})", 
-               config.animation_type, config.duration, config.easing);
+
+        debug!(
+            "Applied appearance animation: {} ({}ms, {})",
+            config.animation_type, config.duration, config.easing
+        );
         Ok(())
     }
 
@@ -383,9 +391,11 @@ impl SystemNotifier {
         // - Send fade-out commands to the notification daemon
         // - Use desktop environment specific APIs for smooth transitions
         // - Apply gradual opacity changes if supported
-        
-        debug!("Applied disappearance animation: {} ({}ms, {})", 
-               config.animation_type, config.duration, config.easing);
+
+        debug!(
+            "Applied disappearance animation: {} ({}ms, {})",
+            config.animation_type, config.duration, config.easing
+        );
         Ok(())
     }
 
@@ -393,7 +403,7 @@ impl SystemNotifier {
     async fn play_notification_sound(sound_path: &str) -> Result<()> {
         // Use system sound player (paplay, aplay, etc.)
         let sound_players = ["paplay", "aplay", "ossplay"];
-        
+
         for player in &sound_players {
             if let Ok(mut cmd) = Command::new(player)
                 .arg(sound_path)
@@ -405,7 +415,7 @@ impl SystemNotifier {
                 return Ok(());
             }
         }
-        
+
         Err(anyhow::anyhow!("No compatible sound player found"))
     }
 
@@ -418,7 +428,7 @@ impl SystemNotifier {
         with_animation: bool,
     ) -> Result<()> {
         self.notification_counter += 1;
-        
+
         let mut notification = Notification::new();
         notification
             .summary("Rustrland")
@@ -429,7 +439,7 @@ impl SystemNotifier {
         if with_animation {
             // Apply default animation for manual notifications
             let animation_id = format!("manual_notification_{}", self.notification_counter);
-            
+
             // Create a simple fade-in animation
             let _animation_config = SimpleAnimationConfig {
                 animation_type: "fade".to_string(),
@@ -439,13 +449,17 @@ impl SystemNotifier {
                 scale_from: 1.0,
             };
 
-            debug!("🎬 Applying manual notification animation: {}", animation_id);
-            
+            debug!(
+                "🎬 Applying manual notification animation: {}",
+                animation_id
+            );
+
             // Note: In a full implementation, we'd integrate with the window manager
             // to apply actual visual effects to notification windows
         }
 
-        notification.show()
+        notification
+            .show()
             .with_context(|| "Failed to send manual notification")?;
 
         Ok(())
@@ -485,15 +499,16 @@ impl Plugin for SystemNotifier {
             .with_context(|| "Failed to parse system_notifier configuration")?;
 
         if !self.sources.is_empty() {
-            self.start_monitoring().await
+            self.start_monitoring()
+                .await
                 .with_context(|| "Failed to start log monitoring")?;
         } else {
             warn!("No sources configured for system_notifier");
         }
 
         info!(
-            "✅ system_notifier plugin initialized with {} sources, {} parsers (animation support: enabled)", 
-            self.sources.len(), 
+            "✅ system_notifier plugin initialized with {} sources, {} parsers (animation support: enabled)",
+            self.sources.len(),
             self.parsers.len()
         );
         Ok(())
@@ -620,7 +635,7 @@ mod tests {
 
         let compiled = plugin.compile_parser(&notification_config);
         assert!(compiled.is_ok());
-        
+
         let compiled = compiled.unwrap();
         assert!(compiled.animation.is_some());
     }
@@ -639,12 +654,12 @@ color = "#00aa00"
 urgency = "normal"
 timeout = 5000
         "##;
-        
+
         let config: toml::Value = toml::from_str(config_str).unwrap();
         assert!(plugin.parse_config(&config).is_ok());
         assert_eq!(plugin.sources.len(), 1);
         assert_eq!(plugin.parsers.len(), 1);
-        
+
         // Check that parser was created without animation (Pyprland compatible)
         let parser = plugin.parsers.get("test").unwrap();
         assert!(parser.animation.is_none());
@@ -681,10 +696,10 @@ easing = "easeIn"
 opacity_from = 1.0
 scale_from = 0.8
         "##;
-        
+
         let config: toml::Value = toml::from_str(config_str).unwrap();
         assert!(plugin.parse_config(&config).is_ok());
-        
+
         // Check that parser was created with animation
         let parser = plugin.parsers.get("enhanced_test").unwrap();
         assert!(parser.animation.is_some());
@@ -697,7 +712,9 @@ scale_from = 0.8
         let config = toml::from_str("").unwrap();
         plugin.init(&config).await.unwrap();
 
-        let result = plugin.handle_command("notify", &["Test message", "normal", "1000"]).await;
+        let result = plugin
+            .handle_command("notify", &["Test message", "normal", "1000"])
+            .await;
         assert!(result.is_ok());
     }
 
@@ -707,7 +724,9 @@ scale_from = 0.8
         let config = toml::from_str("").unwrap();
         plugin.init(&config).await.unwrap();
 
-        let result = plugin.handle_command("notify", &["Animated test", "normal", "1000", "--animated"]).await;
+        let result = plugin
+            .handle_command("notify", &["Animated test", "normal", "1000", "--animated"])
+            .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("animated"));
     }
@@ -744,10 +763,13 @@ scale_from = 0.8
 
         let compiled = plugin.compile_parser(&notification_config).unwrap();
         let test_line = "ERROR: Database connection failed";
-        
+
         assert!(compiled.pattern.is_match(test_line));
         if let Some(captures) = compiled.pattern.captures(test_line) {
-            assert_eq!(captures.get(1).unwrap().as_str(), "Database connection failed");
+            assert_eq!(
+                captures.get(1).unwrap().as_str(),
+                "Database connection failed"
+            );
         }
     }
 
@@ -757,7 +779,9 @@ scale_from = 0.8
         let config = toml::from_str("").unwrap();
         plugin.init(&config).await.unwrap();
 
-        let result = plugin.handle_command("test-animation", &["Custom test message"]).await;
+        let result = plugin
+            .handle_command("test-animation", &["Custom test message"])
+            .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("Custom test message"));
     }

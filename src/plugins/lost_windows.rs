@@ -207,7 +207,7 @@ impl WindowPositioner {
 
         let usable_width = monitor.width - (margin * 2);
         let usable_height = monitor.height - (margin * 2);
-        
+
         let interval_x = usable_width / (count + 1);
         let interval_y = usable_height / (count + 1);
 
@@ -236,7 +236,7 @@ impl WindowPositioner {
 
         let usable_width = monitor.width - (margin * 2);
         let usable_height = monitor.height - (margin * 2);
-        
+
         let cell_width = usable_width / cols;
         let cell_height = usable_height / rows;
 
@@ -246,7 +246,7 @@ impl WindowPositioner {
             .map(|(i, _)| {
                 let row = i as i32 / cols;
                 let col = i as i32 % cols;
-                
+
                 let x = monitor.x + margin + (cell_width * col) + (cell_width / 4);
                 let y = monitor.y + margin + (cell_height * row) + (cell_height / 4);
                 (x, y)
@@ -274,7 +274,7 @@ impl WindowPositioner {
     fn center_positions(windows: &[WindowInfo], monitor: &MonitorInfo) -> Vec<(i32, i32)> {
         let center_x = monitor.x + monitor.width / 2;
         let center_y = monitor.y + monitor.height / 2;
-        
+
         windows.iter().map(|_| (center_x, center_y)).collect()
     }
 
@@ -303,14 +303,19 @@ impl WindowPositioner {
 
             // Try different positions and find the one with minimal overlap
             let step = 50;
-            for y in (monitor.y + margin..=monitor.y + monitor.height - height - margin).step_by(step) {
-                for x in (monitor.x + margin..=monitor.x + monitor.width - width - margin).step_by(step) {
-                    let overlap_area = Self::calculate_overlap_area(x, y, width, height, &used_positions);
-                    
+            for y in
+                (monitor.y + margin..=monitor.y + monitor.height - height - margin).step_by(step)
+            {
+                for x in
+                    (monitor.x + margin..=monitor.x + monitor.width - width - margin).step_by(step)
+                {
+                    let overlap_area =
+                        Self::calculate_overlap_area(x, y, width, height, &used_positions);
+
                     if overlap_area < min_overlap_area {
                         min_overlap_area = overlap_area;
                         best_position = Some((x, y));
-                        
+
                         if overlap_area == 0 {
                             break; // Found non-overlapping position
                         }
@@ -321,11 +326,8 @@ impl WindowPositioner {
                 }
             }
 
-            let position = best_position.unwrap_or((
-                monitor.x + margin,
-                monitor.y + margin,
-            ));
-            
+            let position = best_position.unwrap_or((monitor.x + margin, monitor.y + margin));
+
             positions.push(position);
             used_positions.push((position.0, position.1, width, height));
         }
@@ -345,7 +347,7 @@ impl WindowPositioner {
         for &(used_x, used_y, used_width, used_height) in used_positions {
             let overlap_width = (x + width).min(used_x + used_width) - x.max(used_x);
             let overlap_height = (y + height).min(used_y + used_height) - y.max(used_y);
-            
+
             if overlap_width > 0 && overlap_height > 0 {
                 total_overlap += overlap_width * overlap_height;
             }
@@ -450,9 +452,11 @@ impl LostWindowsPlugin {
 
         for monitor in monitors {
             // Check if window overlaps with monitor bounds
-            let overlap_x = (win_x + win_width).min(monitor.x + monitor.width) - win_x.max(monitor.x);
-            let overlap_y = (win_y + win_height).min(monitor.y + monitor.height) - win_y.max(monitor.y);
-            
+            let overlap_x =
+                (win_x + win_width).min(monitor.x + monitor.width) - win_x.max(monitor.x);
+            let overlap_y =
+                (win_y + win_height).min(monitor.y + monitor.height) - win_y.max(monitor.y);
+
             // Consider window contained if there's significant overlap
             if overlap_x > win_width / 4 && overlap_y > win_height / 4 {
                 return true;
@@ -593,7 +597,10 @@ impl LostWindowsPlugin {
 
             // Add smooth animation if enabled
             if self.config.enable_animations {
-                tokio::time::sleep(Duration::from_millis(self.config.animation_duration / recovered_count as u64)).await;
+                tokio::time::sleep(Duration::from_millis(
+                    self.config.animation_duration / recovered_count as u64,
+                ))
+                .await;
             }
         }
 
@@ -607,9 +614,10 @@ impl LostWindowsPlugin {
         }
 
         let now = Instant::now();
-        let should_check = self
-            .last_check
-            .is_none_or(|last| now.duration_since(last).as_secs() >= self.config.check_interval);
+        #[allow(clippy::unnecessary_map_or)]
+        let should_check = self.last_check.map_or(true, |last| {
+            now.duration_since(last).as_secs() >= self.config.check_interval
+        });
 
         if !should_check {
             return Ok(());
@@ -621,7 +629,7 @@ impl LostWindowsPlugin {
         if !lost_windows.is_empty() {
             info!("🔍 Auto-recovery found {} lost windows", lost_windows.len());
             self.create_recovery_session(lost_windows).await?;
-            
+
             if !self.config.require_confirmation {
                 self.execute_recovery().await?;
             }
@@ -692,7 +700,10 @@ impl LostWindowsPlugin {
 
         if let Some(last_check) = self.last_check {
             let elapsed = last_check.elapsed();
-            status.push_str(&format!("  - Last check: {:.1}s ago\n", elapsed.as_secs_f64()));
+            status.push_str(&format!(
+                "  - Last check: {:.1}s ago\n",
+                elapsed.as_secs_f64()
+            ));
         }
 
         if !self.recovery_sessions.is_empty() {
@@ -759,7 +770,7 @@ impl Plugin for LostWindowsPlugin {
     async fn handle_command(&mut self, command: &str, args: &[&str]) -> Result<String> {
         match command {
             "list" => self.list_lost_windows().await,
-            
+
             "recover" | "rescue" => {
                 let lost_windows = self.find_lost_windows().await?;
                 if lost_windows.is_empty() {
@@ -873,12 +884,8 @@ mod tests {
             4
         ];
 
-        let positions = WindowPositioner::calculate_positions(
-            &RescueStrategy::Grid,
-            &windows,
-            &monitor,
-            50,
-        );
+        let positions =
+            WindowPositioner::calculate_positions(&RescueStrategy::Grid, &windows, &monitor, 50);
 
         assert_eq!(positions.len(), 4);
         // Positions should be distributed in a 2x2 grid
@@ -888,10 +895,13 @@ mod tests {
     #[test]
     fn test_overlap_calculation() {
         let overlap = WindowPositioner::calculate_overlap_area(
-            100, 100, 200, 200, // New window
+            100,
+            100,
+            200,
+            200,                     // New window
             &[(150, 150, 200, 200)], // Existing window
         );
-        
+
         // Should have 150x150 = 22500 overlap
         assert_eq!(overlap, 22500);
     }
@@ -923,16 +933,19 @@ mod tests {
         };
 
         let monitors = vec![monitor];
-        
+
         // Window partially outside should still be considered contained if enough overlap
         assert!(LostWindowsPlugin::is_window_contained(&window, &monitors));
-        
+
         // Completely outside window
         let lost_window = WindowInfo {
             position: (-300, -300),
             ..window
         };
-        
-        assert!(!LostWindowsPlugin::is_window_contained(&lost_window, &monitors));
+
+        assert!(!LostWindowsPlugin::is_window_contained(
+            &lost_window,
+            &monitors
+        ));
     }
 }

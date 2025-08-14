@@ -17,5 +17,5 @@ pub use core::daemon::Daemon;
 
 // Re-export animation types for plugin usage
 pub use animation::{AnimationConfig, AnimationEngine, AnimationPropertyConfig, SpringConfig};
-pub use animation::{EasingFunction, PropertyValue, Color, Transform};
-pub use animation::{Timeline, TimelineBuilder, AnimationDirection, Keyframe};
+pub use animation::{AnimationDirection, Keyframe, Timeline, TimelineBuilder};
+pub use animation::{Color, EasingFunction, PropertyValue, Transform};

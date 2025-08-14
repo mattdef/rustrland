@@ -346,8 +346,9 @@ impl HyprlandClient {
 
         let address = address.to_string();
         let workspace = workspace.to_string();
-        
-        let window_id = WindowIdentifier::Address(Address::new(Box::leak(address.into_boxed_str())));
+
+        let window_id =
+            WindowIdentifier::Address(Address::new(Box::leak(address.into_boxed_str())));
         let workspace_id = if workspace.starts_with("special:") {
             let special_name = workspace.strip_prefix("special:").unwrap_or("").to_string();
             WorkspaceIdentifierWithSpecial::Special(Some(Box::leak(special_name.into_boxed_str())))
@@ -355,8 +356,11 @@ impl HyprlandClient {
             WorkspaceIdentifierWithSpecial::Id(workspace.parse().unwrap_or(1))
         };
 
-        self.dispatch(DispatchType::MoveToWorkspaceSilent(workspace_id, Some(window_id)))
-            .await?;
+        self.dispatch(DispatchType::MoveToWorkspaceSilent(
+            workspace_id,
+            Some(window_id),
+        ))
+        .await?;
 
         Ok(())
     }

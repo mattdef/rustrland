@@ -292,7 +292,10 @@ impl IpcServer {
             }
 
             ClientMessage::LostWindows { command, args } => {
-                debug!("🔍 Processing lost_windows command: {:?} {:?}", command, args);
+                debug!(
+                    "🔍 Processing lost_windows command: {:?} {:?}",
+                    command, args
+                );
                 let mut pm = plugin_manager.write().await;
 
                 let cmd = command.as_deref().unwrap_or("status");
