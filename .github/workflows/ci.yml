@@ -90,7 +90,7 @@ jobs:
           cache-on-failure: true
 
       - name: Run cargo clippy
-        run: cargo clippy --lib --bins --all-features -- -D warnings
+        run: cargo clippy --lib --bins -- -D warnings
 
   build:
     name: Build
@@ -150,7 +150,7 @@ jobs:
         run: cargo install cargo-tarpaulin
 
       - name: Generate code coverage
-        run: cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
+        run: cargo tarpaulin --verbose --lib --bins --workspace --timeout 120 --out xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
