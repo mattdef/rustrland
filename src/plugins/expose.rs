@@ -285,7 +285,7 @@ impl ExposePlugin {
 
         // Update cache if it's older than 5 seconds
         if now.duration_since(last_update) > Duration::from_secs(5) {
-            let monitors = tokio::task::spawn_blocking(|| Monitors::get()).await??;
+            let monitors = tokio::task::spawn_blocking(Monitors::get).await??;
             let monitor_vec = monitors.to_vec();
 
             let mut layouts = Vec::new();
@@ -373,7 +373,7 @@ impl ExposePlugin {
 
     /// Get all windows that should be included in expose with performance optimization
     async fn get_expose_windows(&self, target_monitor: &MonitorLayout) -> Result<Vec<Client>> {
-        let clients = tokio::task::spawn_blocking(|| Clients::get()).await??;
+        let clients = tokio::task::spawn_blocking(Clients::get).await??;
         let client_vec = clients.to_vec();
 
         debug!("📱 Found {} total windows", client_vec.len());
@@ -382,7 +382,7 @@ impl ExposePlugin {
 
         // Get current workspace if filtering by it
         let current_workspace = if self.config.current_workspace_only {
-            let workspaces = tokio::task::spawn_blocking(|| Workspaces::get()).await??;
+            let workspaces = tokio::task::spawn_blocking(Workspaces::get).await??;
             workspaces
                 .to_vec()
                 .iter()
@@ -423,7 +423,7 @@ impl ExposePlugin {
             }
 
             // Skip minimized windows if not included (check window mapped state)
-            if !self.config.include_minimized && client.mapped == false {
+            if !self.config.include_minimized && !client.mapped {
                 debug!("Skipping minimized window: {}", client.title);
                 continue;
             }
@@ -657,11 +657,7 @@ impl ExposePlugin {
 
             // Restore floating state if needed
             if tile.original_floating != tile.client.floating {
-                let float_cmd = if tile.original_floating {
-                    DispatchType::ToggleFloating(Some(WindowIdentifier::Address(
-                        tile.client.address.clone(),
-                    )))
-                } else {
+                let float_cmd = {
                     DispatchType::ToggleFloating(Some(WindowIdentifier::Address(
                         tile.client.address.clone(),
                     )))
@@ -718,7 +714,7 @@ impl ExposePlugin {
         );
 
         // Get current workspace
-        let workspaces = tokio::task::spawn_blocking(|| Workspaces::get()).await??;
+        let workspaces = tokio::task::spawn_blocking(Workspaces::get).await??;
         let workspace_vec = workspaces.to_vec();
 
         // Find current workspace on target monitor
@@ -988,6 +984,12 @@ impl ExposePlugin {
     }
 }
 
+impl Default for ExposePlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl Plugin for ExposePlugin {
     fn name(&self) -> &str {
@@ -1062,7 +1064,7 @@ impl Plugin for ExposePlugin {
                 }
             },
             "status" => self.get_status().await,
-            _ => Ok(format!("Unknown expose command: {}. Available: toggle, next, prev, up, down, left, right, home, end, select [x y], status", command)),
+            _ => Ok(format!("Unknown expose command: {command}. Available: toggle, next, prev, up, down, left, right, home, end, select [x y], status")),
         }
     }
 }

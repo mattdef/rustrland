@@ -118,7 +118,7 @@ impl EnhancedHyprlandClient {
             .ok_or_else(|| anyhow::anyhow!("HYPRLAND_INSTANCE_SIGNATURE not set"))?;
 
         // Test basic connectivity
-        let _monitors = with_hyprland_timeout(|| Monitors::get()).await?;
+        let _monitors = with_hyprland_timeout(Monitors::get).await?;
 
         // Update connection state
         {
@@ -174,7 +174,7 @@ impl EnhancedHyprlandClient {
             "focusedmon" => {
                 // Format: "monitorname,workspacename"
                 let parts: Vec<&str> = event_data.splitn(2, ',').collect();
-                if parts.len() >= 1 {
+                if !parts.is_empty() {
                     Some(HyprlandEvent::MonitorChanged {
                         monitor: parts[0].to_string(),
                     })
@@ -185,7 +185,7 @@ impl EnhancedHyprlandClient {
             "openwindow" => {
                 // Format: "windowaddress,workspacename,windowclass,windowtitle"
                 let parts: Vec<&str> = event_data.splitn(4, ',').collect();
-                if parts.len() >= 1 {
+                if !parts.is_empty() {
                     Some(HyprlandEvent::WindowOpened {
                         window: parts[0].to_string(), // window address
                     })
@@ -202,7 +202,7 @@ impl EnhancedHyprlandClient {
             "movewindow" => {
                 // Format: "windowaddress,workspacename" or "windowaddress,workspaceid"
                 let parts: Vec<&str> = event_data.splitn(2, ',').collect();
-                if parts.len() >= 1 {
+                if !parts.is_empty() {
                     Some(HyprlandEvent::WindowMoved {
                         window: parts[0].to_string(),
                     })
@@ -213,7 +213,7 @@ impl EnhancedHyprlandClient {
             "activewindow" => {
                 // Format: "windowclass,windowtitle" - need to handle comma in title
                 let parts: Vec<&str> = event_data.splitn(2, ',').collect();
-                if parts.len() >= 1 {
+                if !parts.is_empty() {
                     Some(HyprlandEvent::WindowFocusChanged {
                         window: parts[0].to_string(), // We'll use class for now
                     })
@@ -236,7 +236,7 @@ impl EnhancedHyprlandClient {
             "resizewindow" => {
                 // Format: "windowaddress,newsize"
                 let parts: Vec<&str> = event_data.splitn(2, ',').collect();
-                if parts.len() >= 1 {
+                if !parts.is_empty() {
                     Some(HyprlandEvent::Other(format!("resizewindow>>{}", parts[0])))
                 } else {
                     None
@@ -254,7 +254,7 @@ impl EnhancedHyprlandClient {
         debug!("📐 Getting geometry for window: {}", window_address);
 
         let address = window_address.to_string();
-        let clients = with_hyprland_timeout(|| Clients::get()).await?;
+        let clients = with_hyprland_timeout(Clients::get).await?;
 
         // Find the specific window
         for client in clients.iter() {
@@ -282,7 +282,7 @@ impl EnhancedHyprlandClient {
         debug!("📐 Getting geometries for {} windows", addresses.len());
 
         let address_set: std::collections::HashSet<String> = addresses.iter().cloned().collect();
-        let clients = with_hyprland_timeout(|| Clients::get()).await?;
+        let clients = with_hyprland_timeout(Clients::get).await?;
 
         let mut geometries = HashMap::new();
 
@@ -494,7 +494,7 @@ mod tests {
         client.set_event_filters(custom_filters.clone()).await;
 
         // Verify filters were set (indirectly by ensuring no panic)
-        assert!(true); // Filter setting should complete successfully
+        //assert!(true); // Filter setting should complete successfully
     }
 
     #[test]

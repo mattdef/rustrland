@@ -647,11 +647,15 @@ smooth_transitions = true
 animation_type = "fade"
 duration = 300
 easing = "easeOut"
+opacity_from = 0.0
+scale_from = 1.0
 
 [system_notifier.parsers.network_events.animation.disappear]
 animation_type = "scale"
 duration = 200
 easing = "easeIn"
+opacity_from = 1.0
+scale_from = 0.8
 
 [system_notifier.parsers.error_events]
 pattern = "(.+): (.+)"
@@ -661,10 +665,16 @@ urgency = "critical"
 icon = "dialog-error"
 timeout = 8000
 
+[system_notifier.parsers.error_events.animation]
+display_duration = 6000
+smooth_transitions = true
+
 [system_notifier.parsers.error_events.animation.appear]
 animation_type = "fromTop"
 duration = 400
 easing = "bounce"
+opacity_from = 0.0
+scale_from = 0.5
 ```
 
 ### Commands
@@ -702,9 +712,11 @@ rustr notify test-animation "Test message"  # Send test notification with animat
   - **animation_type**: "fade", "scale", "fromTop", "fromBottom", "fromLeft", "fromRight"
   - **duration**: Animation duration in milliseconds
   - **easing**: "linear", "easeIn", "easeOut", "easeInOut", "bounce", "elastic"
-- **animation.disappear**: Disappearance animation config
-- **animation.display_duration**: How long to show notification before disappearing
-- **animation.smooth_transitions**: Enable smooth transitions
+  - **opacity_from**: Starting opacity (0.0-1.0)
+  - **scale_from**: Starting scale factor (e.g., 0.5 for half size)
+- **animation.disappear**: Disappearance animation config (same properties as appear)
+- **animation.display_duration**: How long to show notification before disappearing (ms)
+- **animation.smooth_transitions**: Enable smooth transitions between animations
 
 #### Source Configuration
 
@@ -897,6 +909,212 @@ enhanced_features = true
 
 ---
 
+## Lost Windows Plugin
+
+The lost_windows plugin automatically detects and recovers floating windows that have become inaccessible (outside monitor boundaries), bringing them back to reachable positions. This is essential when windows accidentally get moved off-screen or when monitor configurations change.
+
+### Core Features
+
+- **Automatic Detection**: Identifies floating windows positioned outside all monitor boundaries
+- **Smart Recovery**: Multiple positioning strategies for recovered windows
+- **Auto-Recovery Mode**: Optionally monitors and recovers lost windows automatically
+- **Configurable Strategies**: Choose from multiple window positioning algorithms
+- **Monitor Awareness**: Handles multi-monitor setups intelligently
+- **Window Filtering**: Exclude specific window classes from recovery
+- **Animation Support**: Smooth transitions during window recovery
+
+### Pyprland Compatibility
+
+Based on Pyprland's lost_windows plugin but significantly enhanced:
+
+| Feature | Pyprland | Rustrland |
+|---------|----------|-----------|
+| Basic Recovery | ✅ | ✅ |
+| Auto-Recovery | ❌ | ✅ |
+| Recovery Strategies | 1 (Distribute) | 6 (Smart, Grid, etc.) |
+| Window Filtering | ❌ | ✅ |
+| Animation Support | ❌ | ✅ |
+| Interactive Commands | ❌ | ✅ |
+| Configuration Options | ❌ | ✅ |
+
+### Commands
+
+```bash
+# Check plugin status and configuration
+rustr lost-windows status
+
+# List currently lost windows
+rustr lost-windows list
+
+# Manually recover all lost windows
+rustr lost-windows recover
+
+# Check for lost windows without recovering
+rustr lost-windows check
+
+# Enable/disable auto-recovery
+rustr lost-windows enable
+rustr lost-windows disable
+
+# Change recovery strategy
+rustr lost-windows strategy smart
+rustr lost-windows strategy grid
+rustr lost-windows strategy cascade
+```
+
+### Recovery Strategies
+
+1. **Smart** (Default): Finds optimal non-overlapping positions for windows
+2. **Distribute**: Spreads windows evenly across the monitor
+3. **Grid**: Arranges windows in a grid pattern
+4. **Cascade**: Staggers windows from top-left corner
+5. **Center**: Centers all windows on the monitor
+6. **Restore**: Attempts to restore previous known positions
+
+### Configuration
+
+```toml
+[lost_windows]
+# Recovery strategy for positioning recovered windows
+rescue_strategy = "smart"  # Options: smart, distribute, grid, cascade, center, restore
+
+# Enable automatic recovery of lost windows
+auto_recovery = true
+
+# Interval in seconds for automatic recovery checks  
+check_interval = 30
+
+# Margin from screen edges in pixels
+margin = 50
+
+# Maximum number of windows to recover at once
+max_windows = 10
+
+# Window classes to exclude from recovery (optional)
+exclude_classes = ["Rofi", "wofi", "Ulauncher"]
+
+# Minimum window size to consider for recovery
+min_window_size = [100, 100]  # [width, height]
+
+# Enable smooth animations for window recovery
+enable_animations = true
+
+# Animation duration in milliseconds
+animation_duration = 300
+
+# Remember original window positions for restore strategy
+remember_positions = true
+
+# Only recover windows on current monitor
+current_monitor_only = false
+
+# Debug logging for lost window detection
+debug_logging = false
+
+# Recovery confirmation before moving windows
+require_confirmation = false
+```
+
+### Advanced Usage
+
+#### Custom Window Exclusions
+
+```toml
+[lost_windows]
+# Exclude specific window classes that should never be recovered
+exclude_classes = [
+    "Rofi",           # Application launchers
+    "wofi", 
+    "Ulauncher",
+    "dunst",          # Notification daemon
+    "waybar",         # Status bars
+    "eww-bar",
+    "Conky",          # System monitors
+    "Desktop",        # Desktop widgets
+    "Steam",          # Gaming overlays that may be intentionally off-screen
+    "GameOverlay"
+]
+
+# Only recover reasonably-sized windows (avoid tiny utility windows)
+min_window_size = [200, 150]
+```
+
+#### Monitor-Specific Recovery
+
+```toml
+[lost_windows]
+# Only recover windows to the currently focused monitor
+current_monitor_only = true
+
+# Use larger margin on ultrawide monitors
+margin = 100
+
+# Reduce animation duration for faster recovery on slower systems
+animation_duration = 150
+```
+
+#### Development and Debugging
+
+```toml
+[lost_windows]
+# Enable detailed logging for troubleshooting
+debug_logging = true
+
+# Require manual confirmation for testing
+require_confirmation = true
+
+# Disable auto-recovery during development
+auto_recovery = false
+```
+
+### Integration Examples
+
+#### Hyprland Keybindings
+
+Add to your `~/.config/hypr/hyprland.conf`:
+
+```bash
+# Lost Windows Plugin
+bind = SUPER_SHIFT, L, exec, rustr lost-windows list    # List lost windows
+bind = SUPER_SHIFT, R, exec, rustr lost-windows recover # Recover lost windows
+bind = SUPER_SHIFT, C, exec, rustr lost-windows check   # Check for lost windows
+```
+
+#### Emergency Recovery Script
+
+```bash
+#!/bin/bash
+# emergency-recover.sh - Quick lost window recovery
+
+echo "🔍 Checking for lost windows..."
+LOST_COUNT=$(rustr lost-windows check | grep -oP '\d+(?= lost windows)')
+
+if [ "$LOST_COUNT" -gt 0 ]; then
+    echo "Found $LOST_COUNT lost windows. Recovering..."
+    rustr lost-windows recover
+    echo "✅ Recovery completed!"
+else
+    echo "✅ No lost windows found."
+fi
+```
+
+### Use Cases
+
+1. **Monitor Disconnection**: When external monitors are disconnected, windows may become inaccessible
+2. **Resolution Changes**: After changing display resolution or orientation
+3. **Hyprland Restart**: Windows may drift outside boundaries during compositor restart
+4. **Gaming**: Full-screen games may move floating windows to unreachable positions
+5. **Multi-Monitor Setup Changes**: When rearranging monitor layout in Hyprland
+
+### Performance Notes
+
+- **Automatic Scanning**: Default 30-second intervals with minimal performance impact
+- **Smart Caching**: Window positions are cached to reduce Hyprland API calls
+- **Event-Driven**: Triggers recovery checks on window/monitor events
+- **Batch Processing**: Handles multiple lost windows efficiently in one operation
+
+---
+
 ## Plugin Development Guide
 
 ### Creating a New Plugin
@@ -1019,7 +1237,8 @@ mod tests {
 | Monitors | ✅ Production | 15/15 | Relative positioning, hotplug |
 | Wallpapers | ✅ Production | 15/15 | Hardware accel, carousel, multi-monitor |
 | System Notifier | ✅ Production | 10/10 | Log monitoring, animations, desktop notifications |
+| Lost Windows | ✅ Production | 12/12 | Auto-recovery, smart positioning, animations |
 
-**Total Tests**: 60+ passing across all plugins
+**Total Tests**: 70+ passing across all plugins
 
 All plugins are production-ready with comprehensive testing, full Pyprland compatibility, and enhanced Rust-specific optimizations.

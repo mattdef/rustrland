@@ -69,7 +69,7 @@ impl WindowAnimator {
             .await?;
 
         // Create animation state
-        let animation_id = format!("show_{}", window_address);
+        let animation_id = format!("show_{window_address}");
         let state = WindowAnimationState {
             window_address: window_address.to_string(),
             original_position: start_position,
@@ -135,7 +135,7 @@ impl WindowAnimator {
             .await?;
 
         // Create animation state
-        let animation_id = format!("hide_{}", window_address);
+        let animation_id = format!("hide_{window_address}");
         let state = WindowAnimationState {
             window_address: window_address.to_string(),
             original_position: current_position,

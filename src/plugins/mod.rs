@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use crate::ipc::HyprlandEvent;
 
 pub mod expose;
+pub mod lost_windows;
 pub mod magnify;
 pub mod monitors;
 pub mod scratchpads;

@@ -100,7 +100,7 @@ impl ShiftMonitorsPlugin {
 
     /// Update monitor information from Hyprland
     async fn update_monitors(&mut self) -> Result<()> {
-        let monitors = tokio::task::spawn_blocking(|| Monitors::get()).await??;
+        let monitors = tokio::task::spawn_blocking(Monitors::get).await??;
         let monitor_vec = monitors.to_vec();
 
         self.monitors.clear();
@@ -129,7 +129,7 @@ impl ShiftMonitorsPlugin {
 
     /// Update workspace information from Hyprland  
     async fn update_workspaces(&mut self) -> Result<()> {
-        let workspaces = tokio::task::spawn_blocking(|| Workspaces::get()).await??;
+        let workspaces = tokio::task::spawn_blocking(Workspaces::get).await??;
         let workspace_vec = workspaces.to_vec();
 
         self.workspaces.clear();
@@ -287,8 +287,7 @@ impl ShiftMonitorsPlugin {
         );
 
         Ok(format!(
-            "Shifted workspaces {} across {} monitors",
-            direction_text, monitor_count
+            "Shifted workspaces {direction_text} across {monitor_count} monitors"
         ))
     }
 
@@ -300,10 +299,8 @@ impl ShiftMonitorsPlugin {
         let monitor_count = self.monitors.len();
         let workspace_count = self.workspaces.len();
 
-        let mut status = format!(
-            "ShiftMonitors: {} monitors, {} workspaces\n",
-            monitor_count, workspace_count
-        );
+        let mut status =
+            format!("ShiftMonitors: {monitor_count} monitors, {workspace_count} workspaces\n");
 
         // Show current monitor-workspace mapping
         status.push_str("Current mapping:\n");
@@ -369,11 +366,15 @@ impl ShiftMonitorsPlugin {
             ));
         }
 
-        output.push_str(&format!(
-            "\nUse 'shift_monitors +1' to shift workspaces forward or 'shift_monitors -1' to shift backward.\n"
-        ));
+        output.push_str("\nUse 'shift_monitors +1' to shift workspaces forward or 'shift_monitors -1' to shift backward.\n");
 
         Ok(output)
+    }
+}
+
+impl Default for ShiftMonitorsPlugin {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -645,6 +646,6 @@ mod tests {
     fn test_default_functions() {
         assert_eq!(default_shift_delay(), 200);
         assert_eq!(default_animation_duration(), 300);
-        assert_eq!(default_true(), true);
+        assert!(default_true());
     }
 }

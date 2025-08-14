@@ -2,15 +2,10 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
-use crate::ipc::{HyprlandClient, HyprlandEvent};
+use crate::ipc::HyprlandEvent;
 use crate::plugins::Plugin;
-
-// Arc-optimized configuration type
-pub type MagnifyConfigRef = Arc<MagnifyConfig>;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct MagnifyConfig {
@@ -114,7 +109,6 @@ impl Default for MagnifyState {
 pub struct MagnifyPlugin {
     config: MagnifyConfig,
     state: MagnifyState,
-    hyprland_client: Arc<Mutex<Option<Arc<HyprlandClient>>>>,
     external_tool_available: bool,
 }
 
@@ -123,7 +117,6 @@ impl MagnifyPlugin {
         Self {
             config: MagnifyConfig::default(),
             state: MagnifyState::default(),
-            hyprland_client: Arc::new(Mutex::new(None)),
             external_tool_available: false,
         }
     }
@@ -132,9 +125,9 @@ impl MagnifyPlugin {
     async fn check_external_tools(&mut self) -> bool {
         debug!("🔍 Checking for external zoom tools...");
 
-        // Check for hypr-zoom
-        let hypr_zoom_check = tokio::task::spawn_blocking(|| {
-            Command::new("hypr-zoom")
+        // Check for magnus (GNOME magnifier)
+        let magnus_check = tokio::task::spawn_blocking(|| {
+            Command::new("magnus")
                 .arg("--help")
                 .output()
                 .map(|output| output.status.success())
@@ -143,33 +136,48 @@ impl MagnifyPlugin {
         .await
         .unwrap_or(false);
 
-        if hypr_zoom_check {
-            info!("✅ Found hypr-zoom tool");
+        if magnus_check {
+            info!("✅ Found magnus (GNOME magnifier)");
             self.external_tool_available = true;
             return true;
         }
 
-        // Check for direct hyprctl zoom support
-        let hyprctl_check = tokio::task::spawn_blocking(|| {
-            Command::new("hyprctl")
-                .args(["getoption", "misc:cursor_zoom_factor"])
+        // Check for kmag (KDE magnifier)
+        let kmag_check = tokio::task::spawn_blocking(|| {
+            Command::new("kmag")
+                .arg("--help")
                 .output()
-                .map(|output| {
-                    !output.stdout.is_empty()
-                        && !String::from_utf8_lossy(&output.stdout).contains("no such option")
-                })
+                .map(|output| output.status.success())
                 .unwrap_or(false)
         })
         .await
         .unwrap_or(false);
 
-        if hyprctl_check {
-            info!("✅ Found hyprctl zoom support");
+        if kmag_check {
+            info!("✅ Found kmag (KDE magnifier)");
             self.external_tool_available = true;
             return true;
         }
 
-        warn!("⚠️  No external zoom tools or hyprctl zoom support found");
+        // Check for swappy or other screenshot tools that could help with zoom
+        let wl_magnifier_check = tokio::task::spawn_blocking(|| {
+            Command::new("wl-magnifier")
+                .arg("--help")
+                .output()
+                .map(|output| output.status.success())
+                .unwrap_or(false)
+        })
+        .await
+        .unwrap_or(false);
+
+        if wl_magnifier_check {
+            info!("✅ Found wl-magnifier (Wayland magnifier)");
+            self.external_tool_available = true;
+            return true;
+        }
+
+        warn!("⚠️  No external magnification tools found (magnus, kmag, wl-magnifier)");
+        warn!("⚠️  Install magnus (GNOME), kmag (KDE), or wl-magnifier for screen magnification");
         false
     }
 
@@ -184,27 +192,93 @@ impl MagnifyPlugin {
         }
     }
 
-    /// Set zoom using external hypr-zoom tool
+    /// Set zoom using external magnification tool
     async fn set_zoom_external(&mut self, target_zoom: f32) -> Result<()> {
-        debug!("🔍 Setting zoom to {} using hypr-zoom", target_zoom);
+        debug!(
+            "🔍 Setting zoom to {} using external magnification tool",
+            target_zoom
+        );
 
-        let duration = if self.config.smooth_animation {
-            self.config.duration
+        if target_zoom > 1.0 {
+            // Enable magnification
+            self.start_magnification_tool().await?;
         } else {
-            1 // Near-instant
-        };
+            // Disable magnification
+            self.stop_magnification_tool().await?;
+        }
 
-        let steps = if self.config.smooth_animation {
-            self.config.steps
-        } else {
-            1
-        };
+        self.state.current_zoom = target_zoom;
+        self.state.target_zoom = target_zoom;
+        self.state.is_zoomed = target_zoom > 1.0;
+        Ok(())
+    }
+
+    /// Start external magnification tool
+    async fn start_magnification_tool(&mut self) -> Result<()> {
+        debug!("🔍 Starting external magnification tool");
+
+        // Try different magnification tools in order of preference
+        let tools = [
+            ("magnus", vec!["--no-notifications"]),
+            ("kmag", vec![]),
+            ("wl-magnifier", vec!["--zoom", "2.0"]),
+        ];
+
+        for (tool, args) in &tools {
+            let tool_name = tool.to_string();
+            let tool_args = args.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                Command::new(&tool_name).args(&tool_args).spawn()
+            })
+            .await?;
+
+            match result {
+                Ok(_child) => {
+                    info!("✅ Started magnification tool: {}", tool);
+                    // Let the tool start properly
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    return Ok(());
+                }
+                Err(e) => {
+                    debug!("Failed to start {}: {}", tool, e);
+                    continue;
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!("No working magnification tool found"))
+    }
+
+    /// Stop external magnification tool
+    async fn stop_magnification_tool(&mut self) -> Result<()> {
+        debug!("🔍 Stopping external magnification tool");
+
+        // Kill running magnification tools
+        let tools = ["magnus", "kmag", "wl-magnifier"];
+
+        for tool in &tools {
+            let tool_name = tool.to_string();
+            tokio::task::spawn_blocking(move || Command::new("pkill").arg(&tool_name).output())
+                .await??;
+        }
+
+        info!("✅ Stopped magnification tools");
+        Ok(())
+    }
+
+    /// Set zoom using hyprctl directly (fallback method - cursor zoom only)
+    async fn set_zoom_hyprctl(&mut self, target_zoom: f32) -> Result<()> {
+        debug!(
+            "🔍 Setting cursor zoom to {} using hyprctl (note: only affects cursor, not screen)",
+            target_zoom
+        );
+
+        // Note: This only affects cursor size, not screen magnification
+        // For real screen zoom, external tools are needed
 
         let result = tokio::task::spawn_blocking(move || {
-            Command::new("hypr-zoom")
-                .arg(format!("-target={}", target_zoom))
-                .arg(format!("-duration={}", duration))
-                .arg(format!("-steps={}", steps))
+            Command::new("hyprctl")
+                .args(["keyword", "cursor:zoom_factor", &target_zoom.to_string()])
                 .output()
         })
         .await??;
@@ -213,85 +287,15 @@ impl MagnifyPlugin {
             self.state.current_zoom = target_zoom;
             self.state.target_zoom = target_zoom;
             self.state.is_zoomed = target_zoom > 1.0;
+            info!(
+                "✅ Cursor zoom set to {:.1}x (note: this only affects cursor size)",
+                target_zoom
+            );
             Ok(())
         } else {
             let error_msg = String::from_utf8_lossy(&result.stderr);
-            Err(anyhow::anyhow!("hypr-zoom failed: {}", error_msg))
+            Err(anyhow::anyhow!("Failed to set cursor zoom: {}", error_msg))
         }
-    }
-
-    /// Set zoom using hyprctl directly
-    async fn set_zoom_hyprctl(&mut self, target_zoom: f32) -> Result<()> {
-        debug!("🔍 Setting zoom to {} using hyprctl", target_zoom);
-
-        if self.config.smooth_animation && (target_zoom - self.state.current_zoom).abs() > 0.1 {
-            // Smooth animation by stepping through intermediate values
-            let start_zoom = self.state.current_zoom;
-            let steps = self.config.steps as f32;
-            let step_duration = self.config.duration / self.config.steps;
-
-            self.state.animating = true;
-
-            for i in 1..=self.config.steps {
-                let progress = i as f32 / steps;
-                let eased_progress = self.apply_easing(progress);
-                let current_zoom = start_zoom + (target_zoom - start_zoom) * eased_progress;
-
-                let result = tokio::task::spawn_blocking(move || {
-                    Command::new("hyprctl")
-                        .args([
-                            "keyword",
-                            "misc:cursor_zoom_factor",
-                            &current_zoom.to_string(),
-                        ])
-                        .output()
-                })
-                .await??;
-
-                if !result.status.success() {
-                    // Fallback: try without the misc: prefix
-                    tokio::task::spawn_blocking(move || {
-                        Command::new("hyprctl")
-                            .args(["keyword", "cursor_zoom_factor", &current_zoom.to_string()])
-                            .output()
-                    })
-                    .await??;
-                }
-
-                self.state.current_zoom = current_zoom;
-                tokio::time::sleep(tokio::time::Duration::from_millis(step_duration as u64)).await;
-            }
-
-            self.state.animating = false;
-        } else {
-            // Direct zoom change
-            let result = tokio::task::spawn_blocking(move || {
-                Command::new("hyprctl")
-                    .args([
-                        "keyword",
-                        "misc:cursor_zoom_factor",
-                        &target_zoom.to_string(),
-                    ])
-                    .output()
-            })
-            .await??;
-
-            if !result.status.success() {
-                // Fallback: try without the misc: prefix
-                tokio::task::spawn_blocking(move || {
-                    Command::new("hyprctl")
-                        .args(["keyword", "cursor_zoom_factor", &target_zoom.to_string()])
-                        .output()
-                })
-                .await??;
-            }
-
-            self.state.current_zoom = target_zoom;
-        }
-
-        self.state.target_zoom = target_zoom;
-        self.state.is_zoomed = target_zoom > 1.0;
-        Ok(())
     }
 
     /// Apply easing function to animation progress
@@ -327,7 +331,7 @@ impl MagnifyPlugin {
         self.set_zoom_level(target_zoom).await?;
 
         let action = if target_zoom > 1.0 { "in" } else { "out" };
-        Ok(format!("Zoomed {} to {:.1}x", action, target_zoom))
+        Ok(format!("Zoomed {action} to {target_zoom:.1}x"))
     }
 
     /// Set absolute zoom level
@@ -345,7 +349,7 @@ impl MagnifyPlugin {
 
         self.set_zoom_level(zoom).await?;
 
-        Ok(format!("Zoom set to {:.1}x", zoom))
+        Ok(format!("Zoom set to {zoom:.1}x"))
     }
 
     /// Change zoom relatively (+ or -)
@@ -434,6 +438,12 @@ impl MagnifyPlugin {
     }
 }
 
+impl Default for MagnifyPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl Plugin for MagnifyPlugin {
     fn name(&self) -> &str {
@@ -469,12 +479,9 @@ impl Plugin for MagnifyPlugin {
 
     async fn handle_event(&mut self, event: &HyprlandEvent) -> Result<()> {
         // Handle events that might affect zoom state
-        match event {
-            HyprlandEvent::WorkspaceChanged { .. } => {
-                // Could reset zoom on workspace change if configured
-                debug!("Workspace changed during magnify");
-            }
-            _ => {}
+        if let HyprlandEvent::WorkspaceChanged { .. } = event {
+            // Could reset zoom on workspace change if configured
+            debug!("Workspace changed during magnify");
         }
 
         Ok(())
@@ -509,7 +516,7 @@ impl Plugin for MagnifyPlugin {
             "out" => self.zoom_out().await,
             "reset" => self.reset_zoom().await,
             "status" => self.get_status().await,
-            _ => Ok(format!("Unknown magnify command: {}", command)),
+            _ => Ok(format!("Unknown magnify command: {command}")),
         }
     }
 }

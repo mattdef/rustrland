@@ -79,6 +79,34 @@ rustr status
 echo $HYPRLAND_INSTANCE_SIGNATURE  # Should show instance ID
 ```
 
+### Uninstall
+
+To completely remove Rustrland from your system:
+
+```bash
+# Remove binaries (if installed via cargo)
+cargo uninstall rustrland
+
+# Or manually remove binaries (if copied to /usr/local/bin/)
+sudo rm /usr/local/bin/rustrland
+sudo rm /usr/local/bin/rustr
+
+# Remove configuration files (optional - keeps your settings)
+rm -rf ~/.config/hypr/rustrland.toml
+rm -rf ~/.config/rustrland.toml
+rm -rf ~/.cache/rustrland/  # Remove any cached data
+
+# Remove from Hyprland autostart (if added)
+# Edit ~/.config/hypr/hyprland.conf and remove:
+# exec-once = rustrland --config ~/.config/hypr/rustrland.toml
+
+# Kill any running daemon
+pkill rustrland
+
+# Clean up socket files
+rm -f /tmp/rustrland-*.sock
+```
+
 ## Configuration
 
 ### Overview
@@ -552,21 +580,31 @@ rustrland/
 
 ## Supported Plugins
 
-- ✅ **scratchpads**: Production-ready dropdown terminals and applications with multi-monitor support
-- ✅ **expose**: Mission Control-style window overview with grid layout and navigation
-- ✅ **workspaces_follow_focus**: Multi-monitor workspace management with cross-monitor switching
-- ✅ **magnify**: Viewport zooming and magnification with smooth animations
+- ✅ **scratchpads**: Production-ready dropdown terminals and applications with multi-monitor support (20/20 tests)
+- ✅ **expose**: Mission Control-style window overview with grid layout and navigation (Integrated tests)
+- ✅ **workspaces_follow_focus**: Multi-monitor workspace management with cross-monitor switching (Integrated tests)
+- ✅ **magnify**: Viewport zooming and magnification with smooth animations (Integrated tests)
+- ✅ **shift_monitors**: Shift workspaces between monitors with configurable direction (Integrated tests)
+- ✅ **toggle_special**: Manage Hyprland special workspaces with multi-workspace support (Integrated tests)
+- ✅ **monitors**: Advanced monitor management with relative positioning and hotplug support (15/15 tests)
+- ✅ **wallpapers**: Hardware-accelerated wallpaper management with interactive carousel navigation (15/15 tests)
+- ✅ **system_notifier**: Log monitoring with animated desktop notifications and Pyprland compatibility (10/10 tests)
 
-### Plugin Status
+### Plugin Status Summary
 
-| Plugin                  | Status                 | Version | Tests      | Key Features                                                                                                 |
-| ----------------------- | ---------------------- | ------- | ---------- | ------------------------------------------------------------------------------------------------------------ |
-| scratchpads             | ✅ Production          | v0.2.0+ | 20 tests   | Multi-monitor, caching, reconnection, Arc optimization                                                       |
-| expose                  | ✅ **Enhanced v0.3.0** | v0.3.0+ | Integrated | **Dynamic multi-monitor, thumbnail caching, mouse selection, advanced navigation, performance optimization** |
-| workspaces_follow_focus | ✅ Stable              | v0.2.0+ | Integrated | Cross-monitor switching, workspace rules, animations                                                         |
-| magnify                 | ✅ Stable              | v0.2.0+ | Integrated | Smooth animations, external tool integration                                                                 |
-| hot_reload              | 🔧 Available           | v0.3.0+ | Framework  | File watching, state preservation, hot plugin reload                                                         |
-| animation               | 🔧 Available           | v0.3.0+ | 16 tests   | Timeline system, 16+ easing functions, property interpolation                                                |
+| Plugin | Status | Tests | Key Features |
+|--------|--------|-------|-------------|
+| **Scratchpads** | ✅ Production | 20/20 | Multi-monitor, caching, events, Pyprland compatible |
+| **Expose** | ✅ Production | Integrated | Grid layout, navigation, Mission Control experience |
+| **Workspaces Follow Focus** | ✅ Production | Integrated | Cross-monitor, focus following, workspace rules |
+| **Magnify** | ✅ Production | Integrated | Zoom, animations, accessibility support |
+| **Shift Monitors** | ✅ Production | Integrated | Workspace shifting between monitors |
+| **Toggle Special** | ✅ Production | Integrated | Special workspace management |
+| **Monitors** | ✅ Production | 15/15 | Relative positioning, hotplug, hardware acceleration |
+| **Wallpapers** | ✅ Production | 15/15 | Hardware accel, carousel, multi-monitor support |
+| **System Notifier** | ✅ Production | 10/10 | Log monitoring, animations, desktop notifications |
+
+**Total**: 9 production-ready plugins with 60+ comprehensive tests passing across all functionality.
 
 ## What's New in v0.3.2 🖼️
 

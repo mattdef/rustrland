@@ -60,7 +60,7 @@ impl HyprlandClient {
         debug!("🧪 Testing Hyprland connection");
 
         // Test basic connectivity with timeout
-        let _monitors = with_hyprland_timeout(|| hyprland::data::Monitors::get()).await?;
+        let _monitors = with_hyprland_timeout(hyprland::data::Monitors::get).await?;
 
         info!("✅ Hyprland connection test successful");
         Ok(())
@@ -114,7 +114,7 @@ impl HyprlandClient {
     pub async fn find_window_by_class(&self, class: &str) -> Result<Option<Client>> {
         debug!("🔍 Looking for window with class: {}", class);
 
-        let clients = with_hyprland_timeout(|| Clients::get()).await?;
+        let clients = with_hyprland_timeout(Clients::get).await?;
 
         for client in clients.iter() {
             if client.class == class {
@@ -209,8 +209,8 @@ impl HyprlandClient {
             std::process::Command::new("hyprctl")
                 .arg("dispatch")
                 .arg("movewindow")
-                .arg(format!("address:{}", address))
-                .arg(format!("{} {}", x, y))
+                .arg(format!("address:{address}"))
+                .arg(format!("{x} {y}"))
                 .output()
         })
         .await??;
@@ -231,8 +231,8 @@ impl HyprlandClient {
             std::process::Command::new("hyprctl")
                 .arg("dispatch")
                 .arg("resizewindow")
-                .arg(format!("address:{}", address))
-                .arg(format!("{} {}", width, height))
+                .arg(format!("address:{address}"))
+                .arg(format!("{width} {height}"))
                 .output()
         })
         .await??;
@@ -251,9 +251,9 @@ impl HyprlandClient {
             std::process::Command::new("hyprctl")
                 .arg("dispatch")
                 .arg("setprop")
-                .arg(format!("address:{}", address))
+                .arg(format!("address:{address}"))
                 .arg("alpha")
-                .arg(format!("{}", opacity_value))
+                .arg(format!("{opacity_value}"))
                 .output()
         })
         .await??;
@@ -265,7 +265,7 @@ impl HyprlandClient {
     pub async fn get_window_properties(&self, address: &str) -> Result<WindowProperties> {
         debug!("🔍 Getting properties for window {}", address);
 
-        let clients = with_hyprland_timeout(|| Clients::get()).await?;
+        let clients = with_hyprland_timeout(Clients::get).await?;
 
         for client in clients.iter() {
             if client.address.to_string() == address {
@@ -286,7 +286,7 @@ impl HyprlandClient {
     pub async fn get_monitors(&self) -> Result<Vec<Monitor>> {
         debug!("🖥️ Getting monitors information");
 
-        let monitors = with_hyprland_timeout(|| Monitors::get()).await?;
+        let monitors = with_hyprland_timeout(Monitors::get).await?;
 
         use hyprland::shared::HyprDataVec;
         Ok(monitors.to_vec())
@@ -297,7 +297,7 @@ impl HyprlandClient {
         debug!("🔍 Finding windows with class: {}", class);
 
         let target_class = class.to_string();
-        let clients = with_hyprland_timeout(|| Clients::get()).await?;
+        let clients = with_hyprland_timeout(Clients::get).await?;
 
         let matching_windows: Vec<Client> = clients
             .into_iter()
@@ -317,7 +317,7 @@ impl HyprlandClient {
         debug!("🔍 Getting window info for: {}", address);
 
         let target_address = address.to_string();
-        let clients = tokio::task::spawn_blocking(move || Clients::get()).await??;
+        let clients = tokio::task::spawn_blocking(Clients::get).await??;
 
         for client in clients {
             if client.address.to_string() == target_address {
@@ -326,6 +326,58 @@ impl HyprlandClient {
         }
 
         Err(anyhow::anyhow!("Window not found: {}", address))
+    }
+
+    /// Get all windows/clients
+    pub async fn get_windows(&self) -> Result<Vec<Client>> {
+        debug!("🪟 Getting all windows");
+
+        let clients = with_hyprland_timeout(Clients::get).await?;
+        use hyprland::shared::HyprDataVec;
+        Ok(clients.to_vec())
+    }
+
+    /// Move window to workspace
+    pub async fn move_window_to_workspace(&self, address: &str, workspace: &str) -> Result<()> {
+        debug!("📍 Moving window {} to workspace {}", address, workspace);
+
+        use hyprland::dispatch::{WindowIdentifier, WorkspaceIdentifierWithSpecial};
+        use hyprland::shared::Address;
+
+        let address = address.to_string();
+        let workspace = workspace.to_string();
+        
+        let window_id = WindowIdentifier::Address(Address::new(Box::leak(address.into_boxed_str())));
+        let workspace_id = if workspace.starts_with("special:") {
+            let special_name = workspace.strip_prefix("special:").unwrap_or("").to_string();
+            WorkspaceIdentifierWithSpecial::Special(Some(Box::leak(special_name.into_boxed_str())))
+        } else {
+            WorkspaceIdentifierWithSpecial::Id(workspace.parse().unwrap_or(1))
+        };
+
+        self.dispatch(DispatchType::MoveToWorkspaceSilent(workspace_id, Some(window_id)))
+            .await?;
+
+        Ok(())
+    }
+
+    /// Move window to specific position
+    pub async fn move_window_to_position(&self, address: &str, x: i32, y: i32) -> Result<()> {
+        debug!("📍 Moving window {} to position ({}, {})", address, x, y);
+
+        // Use hyprctl movewindowpixel for exact positioning
+        let address = address.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            std::process::Command::new("hyprctl")
+                .arg("dispatch")
+                .arg("movewindowpixel")
+                .arg(format!("exact {x} {y},address:{address}"))
+                .output()
+        })
+        .await??;
+
+        Ok(())
     }
 
     /// Show a window
@@ -338,7 +390,7 @@ impl HyprlandClient {
                 .arg("dispatch")
                 .arg("movetoworkspace")
                 .arg("e+0")
-                .arg(format!("address:{}", address))
+                .arg(format!("address:{address}"))
                 .output()
         })
         .await??;
@@ -356,7 +408,7 @@ impl HyprlandClient {
                 .arg("dispatch")
                 .arg("movetoworkspace")
                 .arg("special:hidden")
-                .arg(format!("address:{}", address))
+                .arg(format!("address:{address}"))
                 .output()
         })
         .await??;
@@ -373,7 +425,7 @@ impl HyprlandClient {
             std::process::Command::new("hyprctl")
                 .arg("dispatch")
                 .arg("closewindow")
-                .arg(format!("address:{}", address))
+                .arg(format!("address:{address}"))
                 .output()
         })
         .await??;

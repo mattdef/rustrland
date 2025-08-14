@@ -7,6 +7,7 @@ use crate::config::Config;
 use crate::core::global_cache::GlobalStateCache;
 use crate::ipc::{HyprlandClient, HyprlandEvent};
 use crate::plugins::expose::ExposePlugin;
+use crate::plugins::lost_windows::LostWindowsPlugin;
 use crate::plugins::magnify::MagnifyPlugin;
 use crate::plugins::monitors::MonitorsPlugin;
 use crate::plugins::scratchpads::ScratchpadsPlugin;
@@ -81,6 +82,13 @@ impl PluginManager {
             "toggle_special" => Box::new(ToggleSpecialPlugin::new()),
             "monitors" => Box::new(MonitorsPlugin::new()),
             "wallpapers" => Box::new(WallpapersPlugin::new()),
+            "lost_windows" => {
+                let lost_windows_plugin = LostWindowsPlugin::new();
+                lost_windows_plugin
+                    .set_hyprland_client(Arc::clone(&hyprland_client))
+                    .await;
+                Box::new(lost_windows_plugin)
+            }
             // Add more plugins here as they're implemented
             _ => {
                 warn!("⚠️  Unknown plugin: {}", plugin_name);
@@ -127,7 +135,7 @@ impl PluginManager {
 
             // Store combined config in cache and initialize
             self.global_cache
-                .store_config(format!("{}_combined", plugin_name), combined_arc.clone())
+                .store_config(format!("{plugin_name}_combined"), combined_arc.clone())
                 .await;
             plugin.init(&combined).await?;
         } else {

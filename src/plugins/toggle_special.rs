@@ -121,7 +121,7 @@ impl ToggleSpecialPlugin {
 
     /// Update window information from Hyprland
     async fn update_windows(&mut self) -> Result<()> {
-        let clients = tokio::task::spawn_blocking(|| Clients::get()).await??;
+        let clients = tokio::task::spawn_blocking(Clients::get).await??;
         let client_vec = clients.to_vec();
 
         self.current_windows.clear();
@@ -170,7 +170,7 @@ impl ToggleSpecialPlugin {
     /// Update special workspace states based on current windows
     async fn update_special_workspace_states(&mut self) -> Result<()> {
         // Get all workspaces to determine which special ones are visible
-        let workspaces = tokio::task::spawn_blocking(|| Workspaces::get()).await??;
+        let workspaces = tokio::task::spawn_blocking(Workspaces::get).await??;
         let workspace_vec = workspaces.to_vec();
 
         // Track visible special workspaces
@@ -182,7 +182,7 @@ impl ToggleSpecialPlugin {
         }
 
         // Update special workspace states
-        for (_, window) in &self.current_windows {
+        for window in self.current_windows.values() {
             if window.workspace_name.starts_with("special") {
                 let workspace_name = window.workspace_name.clone();
 
@@ -323,7 +323,7 @@ impl ToggleSpecialPlugin {
         }
 
         // Move window to special workspace
-        let special_workspace = format!("special:{}", special_name);
+        let special_workspace = format!("special:{special_name}");
 
         tokio::task::spawn_blocking(move || {
             let workspace_identifier = WorkspaceIdentifierWithSpecial::Name(&special_workspace);
@@ -411,7 +411,7 @@ impl ToggleSpecialPlugin {
         let special_workspace = if special_name == "special" {
             "special".to_string()
         } else {
-            format!("special:{}", special_name)
+            format!("special:{special_name}")
         };
 
         tokio::task::spawn_blocking(move || {
@@ -428,8 +428,7 @@ impl ToggleSpecialPlugin {
         self.last_operation_time = Some(Instant::now());
 
         Ok(format!(
-            "Toggled visibility of special workspace '{}'",
-            special_name
+            "Toggled visibility of special workspace '{special_name}'"
         ))
     }
 
@@ -481,7 +480,7 @@ impl ToggleSpecialPlugin {
                     name,
                     visibility,
                     state.windows.len(),
-                    if state.windows.len() > 0 { ":" } else { "" }
+                    if !state.windows.is_empty() { ":" } else { "" }
                 ));
 
                 for window_addr in &state.windows {
@@ -531,11 +530,10 @@ impl ToggleSpecialPlugin {
         };
 
         let mut status = format!(
-            "ToggleSpecial: {} total windows, {} special workspaces, {} windows in special\n",
-            total_windows, special_workspaces_count, special_windows_count
+            "ToggleSpecial: {total_windows} total windows, {special_workspaces_count} special workspaces, {special_windows_count} windows in special\n"
         );
 
-        status.push_str(&format!("Focused window: {}\n", focused_status));
+        status.push_str(&format!("Focused window: {focused_status}\n"));
 
         status.push_str(&format!(
             "Config:\n  - Default special: '{}'\n  - Animations: {} ({}ms)\n  - Operation delay: {}ms\n",
@@ -551,6 +549,12 @@ impl ToggleSpecialPlugin {
         ));
 
         Ok(status)
+    }
+}
+
+impl Default for ToggleSpecialPlugin {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -649,7 +653,7 @@ impl Plugin for ToggleSpecialPlugin {
             "list" => self.list_special_workspaces().await,
             "status" => self.get_status().await,
 
-            _ => Ok(format!("Unknown toggle_special command: {}", command)),
+            _ => Ok(format!("Unknown toggle_special command: {command}")),
         }
     }
 }
@@ -862,7 +866,7 @@ mod tests {
         assert_eq!(default_special_name(), "special");
         assert_eq!(default_animation_duration(), 250);
         assert_eq!(default_operation_delay(), 100);
-        assert_eq!(default_true(), true);
+        assert!(default_true());
     }
 
     #[test]

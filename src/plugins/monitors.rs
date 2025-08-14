@@ -40,10 +40,10 @@ pub struct PlacementRule {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum PlacementDirection {
-    LeftOf,
-    RightOf,
-    TopOf,
-    BottomOf,
+    Left,
+    Right,
+    Top,
+    Bottom,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -98,7 +98,7 @@ pub enum PlacementRuleConfig {
     Complex {
         /// Direction relative to target
         #[serde(flatten)]
-        direction_target: DirectionTarget,
+        direction_target: Box<DirectionTarget>,
         /// Optional alignment
         alignment: Option<PlacementAlignment>,
     },
@@ -203,7 +203,7 @@ impl MonitorsPlugin {
 
     /// Update monitor information from Hyprland
     async fn update_monitors(&mut self) -> Result<()> {
-        let monitors = tokio::task::spawn_blocking(|| Monitors::get()).await??;
+        let monitors = tokio::task::spawn_blocking(Monitors::get).await??;
         let monitor_vec = monitors.to_vec();
 
         let mut monitor_map = HashMap::new();
@@ -280,7 +280,7 @@ impl MonitorsPlugin {
                     rules.push(ResolvedPlacementRule {
                         source_monitor: source_monitor.to_string(),
                         target_monitor: target.clone(),
-                        direction: PlacementDirection::LeftOf,
+                        direction: PlacementDirection::Left,
                         alignment: None,
                     });
                 }
@@ -309,33 +309,27 @@ impl MonitorsPlugin {
             } => {
                 // Handle complex direction-target combinations
                 let direction_mappings = [
-                    (&direction_target.left_of, PlacementDirection::LeftOf),
-                    (&direction_target.right_of, PlacementDirection::RightOf),
-                    (&direction_target.top_of, PlacementDirection::TopOf),
-                    (&direction_target.bottom_of, PlacementDirection::BottomOf),
-                    (&direction_target.left_center_of, PlacementDirection::LeftOf),
-                    (
-                        &direction_target.right_center_of,
-                        PlacementDirection::RightOf,
-                    ),
-                    (&direction_target.top_center_of, PlacementDirection::TopOf),
+                    (&direction_target.left_of, PlacementDirection::Left),
+                    (&direction_target.right_of, PlacementDirection::Right),
+                    (&direction_target.top_of, PlacementDirection::Top),
+                    (&direction_target.bottom_of, PlacementDirection::Bottom),
+                    (&direction_target.left_center_of, PlacementDirection::Left),
+                    (&direction_target.right_center_of, PlacementDirection::Right),
+                    (&direction_target.top_center_of, PlacementDirection::Top),
                     (
                         &direction_target.bottom_center_of,
-                        PlacementDirection::BottomOf,
+                        PlacementDirection::Bottom,
                     ),
-                    (&direction_target.left_end_of, PlacementDirection::LeftOf),
-                    (&direction_target.right_end_of, PlacementDirection::RightOf),
-                    (&direction_target.top_end_of, PlacementDirection::TopOf),
-                    (
-                        &direction_target.bottom_end_of,
-                        PlacementDirection::BottomOf,
-                    ),
+                    (&direction_target.left_end_of, PlacementDirection::Left),
+                    (&direction_target.right_end_of, PlacementDirection::Right),
+                    (&direction_target.top_end_of, PlacementDirection::Top),
+                    (&direction_target.bottom_end_of, PlacementDirection::Bottom),
                 ];
 
                 for (targets_option, direction) in direction_mappings {
                     if let Some(targets) = targets_option {
                         let rule_alignment =
-                            self.extract_alignment_from_direction_key(&format!("{:?}", direction));
+                            self.extract_alignment_from_direction_key(&format!("{direction:?}"));
 
                         for target in targets {
                             if self.monitor_exists(target, monitors) {
@@ -368,15 +362,15 @@ impl MonitorsPlugin {
         };
 
         let direction = if key_lower.contains("left") {
-            PlacementDirection::LeftOf
+            PlacementDirection::Left
         } else if key_lower.contains("right") {
-            PlacementDirection::RightOf
+            PlacementDirection::Right
         } else if key_lower.contains("top") {
-            PlacementDirection::TopOf
+            PlacementDirection::Top
         } else if key_lower.contains("bottom") {
-            PlacementDirection::BottomOf
+            PlacementDirection::Bottom
         } else {
-            PlacementDirection::LeftOf // Default
+            PlacementDirection::Left // Default
         };
 
         (direction, alignment)
@@ -439,14 +433,13 @@ impl MonitorsPlugin {
 
         // Try description/model/make matching
         monitors.values().find(|m| {
-            let matches = if self.config.case_insensitive {
+            if self.config.case_insensitive {
                 m.description.to_lowercase().contains(&name.to_lowercase())
                     || m.model.to_lowercase() == name.to_lowercase()
                     || m.make.to_lowercase() == name.to_lowercase()
             } else {
                 m.description.contains(name) || m.model == name || m.make == name
-            };
-            matches
+            }
         })
     }
 
@@ -500,8 +493,7 @@ impl MonitorsPlugin {
                         }
                     }
                     Err(e) => {
-                        let error_msg =
-                            format!("Failed to apply settings for {}: {}", monitor_name, e);
+                        let error_msg = format!("Failed to apply settings for {monitor_name}: {e}");
                         errors.push(error_msg.clone());
                         warn!("{}", error_msg);
                     }
@@ -532,7 +524,7 @@ impl MonitorsPlugin {
             }
         }
 
-        let mut result = format!("Applied {} monitor layout commands", commands_applied);
+        let mut result = format!("Applied {commands_applied} monitor layout commands");
 
         if !errors.is_empty() {
             result.push_str(&format!(
@@ -646,16 +638,16 @@ impl MonitorsPlugin {
         rule: &ResolvedPlacementRule,
     ) -> Result<(i32, i32)> {
         let (mut new_x, mut new_y) = match rule.direction {
-            PlacementDirection::LeftOf => (target.x - source.width as i32, target.y),
-            PlacementDirection::RightOf => (target.x + target.width as i32, target.y),
-            PlacementDirection::TopOf => (target.x, target.y - source.height as i32),
-            PlacementDirection::BottomOf => (target.x, target.y + target.height as i32),
+            PlacementDirection::Left => (target.x - source.width as i32, target.y),
+            PlacementDirection::Right => (target.x + target.width as i32, target.y),
+            PlacementDirection::Top => (target.x, target.y - source.height as i32),
+            PlacementDirection::Bottom => (target.x, target.y + target.height as i32),
         };
 
         // Apply alignment
         if let Some(alignment) = &rule.alignment {
             match rule.direction {
-                PlacementDirection::LeftOf | PlacementDirection::RightOf => {
+                PlacementDirection::Left | PlacementDirection::Right => {
                     // Vertical alignment for horizontal placement
                     match alignment {
                         PlacementAlignment::Center | PlacementAlignment::Middle => {
@@ -669,7 +661,7 @@ impl MonitorsPlugin {
                         }
                     }
                 }
-                PlacementDirection::TopOf | PlacementDirection::BottomOf => {
+                PlacementDirection::Top | PlacementDirection::Bottom => {
                     // Horizontal alignment for vertical placement
                     match alignment {
                         PlacementAlignment::Center | PlacementAlignment::Middle => {
@@ -772,16 +764,16 @@ impl MonitorsPlugin {
             if let Some(settings) = self.config.settings.get(name) {
                 output.push_str("    Configured settings:");
                 if let Some(res) = &settings.resolution {
-                    output.push_str(&format!(" res={}", res));
+                    output.push_str(&format!(" res={res}"));
                 }
                 if let Some(rate) = settings.rate {
-                    output.push_str(&format!(" rate={}Hz", rate));
+                    output.push_str(&format!(" rate={rate}Hz"));
                 }
                 if let Some(scale) = settings.scale {
-                    output.push_str(&format!(" scale={:.1}x", scale));
+                    output.push_str(&format!(" scale={scale:.1}x"));
                 }
                 if let Some(transform) = settings.transform {
-                    output.push_str(&format!(" transform={}", transform));
+                    output.push_str(&format!(" transform={transform}"));
                 }
                 output.push('\n');
             }
@@ -792,7 +784,7 @@ impl MonitorsPlugin {
             output.push_str("\n📐 Placement Rules:\n");
             for rule in &layout.placement_rules {
                 let alignment_str = match &rule.alignment {
-                    Some(align) => format!(" ({})", format!("{:?}", align).to_lowercase()),
+                    Some(align) => format!(" ({})", format!("{align:?}").to_lowercase()),
                     None => String::new(),
                 };
                 output.push_str(&format!(
@@ -820,7 +812,7 @@ impl MonitorsPlugin {
         // Test monitor settings
         for (monitor_name, monitor_info) in &layout.monitors {
             if let Some(settings) = self.config.settings.get(monitor_name) {
-                output.push_str(&format!("📝 Settings for {}:\n", monitor_name));
+                output.push_str(&format!("📝 Settings for {monitor_name}:\n"));
 
                 if let Some(resolution) = &settings.resolution {
                     output.push_str(&format!(
@@ -876,19 +868,19 @@ impl MonitorsPlugin {
                                 rule.source_monitor, e
                             );
                             errors.push(error_msg.clone());
-                            output.push_str(&format!("  ❌ {}\n", error_msg));
+                            output.push_str(&format!("  ❌ {error_msg}\n"));
                         }
                     }
                 }
                 (None, _) => {
                     let error_msg = format!("Source monitor '{}' not found", rule.source_monitor);
                     errors.push(error_msg.clone());
-                    output.push_str(&format!("  ❌ {}\n", error_msg));
+                    output.push_str(&format!("  ❌ {error_msg}\n"));
                 }
                 (_, None) => {
                     let error_msg = format!("Target monitor '{}' not found", rule.target_monitor);
                     errors.push(error_msg.clone());
-                    output.push_str(&format!("  ❌ {}\n", error_msg));
+                    output.push_str(&format!("  ❌ {error_msg}\n"));
                 }
             }
         }
@@ -916,8 +908,7 @@ impl MonitorsPlugin {
         };
 
         let mut status = format!(
-            "Monitors Plugin Status:\n  {} monitors detected, {} placement rules configured\n",
-            monitor_count, rule_count
+            "Monitors Plugin Status:\n  {monitor_count} monitors detected, {rule_count} placement rules configured\n"
         );
 
         if let Some(last_time) = self.last_layout_time {
@@ -954,20 +945,24 @@ impl MonitorsPlugin {
             };
         if hotplug_commands > 0 {
             status.push_str(&format!(
-                "  - Hotplug commands: {} configured\n",
-                hotplug_commands
+                "  - Hotplug commands: {hotplug_commands} configured\n"
             ));
         }
 
         let settings_count = self.config.settings.len();
         if settings_count > 0 {
             status.push_str(&format!(
-                "  - Monitor settings: {} configured\n",
-                settings_count
+                "  - Monitor settings: {settings_count} configured\n"
             ));
         }
 
         Ok(status)
+    }
+}
+
+impl Default for MonitorsPlugin {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1086,8 +1081,7 @@ impl Plugin for MonitorsPlugin {
             }
 
             _ => Ok(format!(
-                "Unknown monitors command: {}. Available: relayout, list, status, test, reload",
-                command
+                "Unknown monitors command: {command}. Available: relayout, list, status, test, reload"  
             )),
         }
     }
@@ -1114,7 +1108,7 @@ mod tests {
         MonitorInfo {
             id: 0,
             name: name.to_string(),
-            description: format!("{} Description", name),
+            description: format!("{name} Description"),
             make: "TestMake".to_string(),
             model: "TestModel".to_string(),
             serial: "12345".to_string(),
@@ -1185,10 +1179,10 @@ mod tests {
     #[test]
     fn test_placement_direction() {
         let directions = vec![
-            PlacementDirection::LeftOf,
-            PlacementDirection::RightOf,
-            PlacementDirection::TopOf,
-            PlacementDirection::BottomOf,
+            PlacementDirection::Left,
+            PlacementDirection::Right,
+            PlacementDirection::Top,
+            PlacementDirection::Bottom,
         ];
 
         // Test serialization/deserialization
@@ -1218,15 +1212,15 @@ mod tests {
         let plugin = create_test_plugin();
 
         let (direction, alignment) = plugin.parse_direction_key("leftOf");
-        assert!(matches!(direction, PlacementDirection::LeftOf));
+        assert!(matches!(direction, PlacementDirection::Left));
         assert!(alignment.is_none());
 
         let (direction, alignment) = plugin.parse_direction_key("topCenterOf");
-        assert!(matches!(direction, PlacementDirection::TopOf));
+        assert!(matches!(direction, PlacementDirection::Top));
         assert!(matches!(alignment, Some(PlacementAlignment::Center)));
 
         let (direction, alignment) = plugin.parse_direction_key("rightEndOf");
-        assert!(matches!(direction, PlacementDirection::RightOf));
+        assert!(matches!(direction, PlacementDirection::Right));
         assert!(matches!(alignment, Some(PlacementAlignment::End)));
     }
 
@@ -1240,7 +1234,7 @@ mod tests {
         let rule = ResolvedPlacementRule {
             source_monitor: "DP-1".to_string(),
             target_monitor: "DP-2".to_string(),
-            direction: PlacementDirection::LeftOf,
+            direction: PlacementDirection::Left,
             alignment: None,
         };
 
@@ -1251,7 +1245,7 @@ mod tests {
         let rule_right = ResolvedPlacementRule {
             source_monitor: "DP-1".to_string(),
             target_monitor: "DP-2".to_string(),
-            direction: PlacementDirection::RightOf,
+            direction: PlacementDirection::Right,
             alignment: None,
         };
 
@@ -1321,13 +1315,13 @@ mod tests {
         let rule = ResolvedPlacementRule {
             source_monitor: "DP-1".to_string(),
             target_monitor: "DP-2".to_string(),
-            direction: PlacementDirection::TopOf,
+            direction: PlacementDirection::Top,
             alignment: Some(PlacementAlignment::Center),
         };
 
         assert_eq!(rule.source_monitor, "DP-1");
         assert_eq!(rule.target_monitor, "DP-2");
-        assert!(matches!(rule.direction, PlacementDirection::TopOf));
+        assert!(matches!(rule.direction, PlacementDirection::Top));
         assert!(matches!(rule.alignment, Some(PlacementAlignment::Center)));
     }
 
@@ -1342,7 +1336,7 @@ mod tests {
         let placement_rules = vec![ResolvedPlacementRule {
             source_monitor: "DP-2".to_string(),
             target_monitor: "DP-1".to_string(),
-            direction: PlacementDirection::RightOf,
+            direction: PlacementDirection::Right,
             alignment: None,
         }];
 
@@ -1358,7 +1352,7 @@ mod tests {
 
     #[test]
     fn test_default_functions() {
-        assert_eq!(default_true(), true);
+        assert!(default_true());
         assert_eq!(default_monitor_delay(), 1000);
     }
 

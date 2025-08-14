@@ -261,15 +261,43 @@ impl IpcServer {
             }
 
             ClientMessage::Notify { command, args } => {
-                debug!(
-                    "🔔 Processing notify command: {:?} {:?}",
-                    command, args
-                );
+                debug!("🔔 Processing notify command: {:?} {:?}", command, args);
                 let mut pm = plugin_manager.write().await;
 
-                let cmd = command.as_deref().unwrap_or("notify");
+                // Handle the command structure correctly
+                let (cmd, final_args): (&str, Vec<&str>) = if let Some(ref cmd_str) = command {
+                    // Check if this looks like a system_notifier command
+                    if ["status", "list-sources", "list-parsers", "test-animation"]
+                        .contains(&cmd_str.as_str())
+                    {
+                        // This is a system_notifier subcommand
+                        (cmd_str.as_str(), args.iter().map(|s| s.as_str()).collect())
+                    } else {
+                        // This is a notification message, treat as "notify" command
+                        let mut notify_args = vec![cmd_str.as_str()];
+                        notify_args.extend(args.iter().map(|s| s.as_str()));
+                        ("notify", notify_args)
+                    }
+                } else {
+                    // Default to notify command
+                    ("notify", args.iter().map(|s| s.as_str()).collect())
+                };
+
+                match pm.handle_command("system_notifier", cmd, &final_args).await {
+                    Ok(result) => DaemonResponse::Success { message: result },
+                    Err(e) => DaemonResponse::Error {
+                        message: e.to_string(),
+                    },
+                }
+            }
+
+            ClientMessage::LostWindows { command, args } => {
+                debug!("🔍 Processing lost_windows command: {:?} {:?}", command, args);
+                let mut pm = plugin_manager.write().await;
+
+                let cmd = command.as_deref().unwrap_or("status");
                 let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-                match pm.handle_command("system_notifier", cmd, &args_refs).await {
+                match pm.handle_command("lost_windows", cmd, &args_refs).await {
                     Ok(result) => DaemonResponse::Success { message: result },
                     Err(e) => DaemonResponse::Error {
                         message: e.to_string(),
@@ -336,7 +364,7 @@ impl IpcServer {
 
         // Find config file path (simplified - in real implementation would use the daemon's config path)
         let config_path = std::env::var("HOME")
-            .map(|home| format!("{}/.config/hypr/rustrland.toml", home))
+            .map(|home| format!("{home}/.config/hypr/rustrland.toml"))
             .unwrap_or_else(|_| "rustrland.toml".to_string());
 
         // Read and parse new configuration

@@ -10,8 +10,20 @@ use tracing::{debug, error, info, warn};
 
 use crate::ipc::{HyprlandClient, HyprlandEvent};
 use crate::plugins::Plugin;
-// TODO: Re-enable after fixing circular dependency
-// use crate::animation::{Timeline, AnimationDirection};
+// Simplified animation types to avoid circular dependency
+#[derive(Debug, Clone)]
+pub enum SimpleAnimationDirection {
+    Forward,
+    Reverse,
+}
+
+// Simple animation config for workspace transitions
+#[derive(Debug, Clone)]
+pub struct WorkspaceAnimationConfig {
+    pub enabled: bool,
+    pub duration_ms: u64,
+    pub easing: String,
+}
 
 // Arc-optimized configuration and state types
 pub type WorkspacesFollowFocusConfigRef = Arc<WorkspacesFollowFocusConfig>;
@@ -146,7 +158,7 @@ impl WorkspacesFollowFocusPlugin {
 
     /// Update monitor information from Hyprland
     async fn update_monitors(&mut self) -> Result<()> {
-        let monitors = tokio::task::spawn_blocking(|| Monitors::get()).await??;
+        let monitors = tokio::task::spawn_blocking(Monitors::get).await??;
         let monitor_vec = monitors.to_vec();
 
         self.monitors.clear();
@@ -183,7 +195,7 @@ impl WorkspacesFollowFocusPlugin {
 
     /// Update workspace information from Hyprland  
     async fn update_workspaces(&mut self) -> Result<()> {
-        let workspaces = tokio::task::spawn_blocking(|| Workspaces::get()).await??;
+        let workspaces = tokio::task::spawn_blocking(Workspaces::get).await??;
         let workspace_vec = workspaces.to_vec();
 
         self.workspaces.clear();
@@ -460,8 +472,7 @@ impl WorkspacesFollowFocusPlugin {
             .unwrap_or(focused_monitor);
 
         Ok(format!(
-            "Switched to workspace {} on monitor {}",
-            workspace_id, final_monitor
+            "Switched to workspace {workspace_id} on monitor {final_monitor}"
         ))
     }
 
@@ -486,7 +497,7 @@ impl WorkspacesFollowFocusPlugin {
         let target_workspace = current_workspace + offset;
 
         // Ensure target workspace exists (create if needed in range 1-10)
-        if target_workspace < 1 || target_workspace > 10 {
+        if !(1..=10).contains(&target_workspace) {
             return Err(anyhow::anyhow!(
                 "Workspace {} out of range (1-10)",
                 target_workspace
@@ -562,8 +573,7 @@ impl WorkspacesFollowFocusPlugin {
         let workspace_rules_count = self.config.workspace_rules.len();
 
         let mut status = format!(
-            "WorkspacesFollowFocus: {} monitors, {} workspaces\nFocused: {}\nAnimation: {}\n",
-            monitor_count, workspace_count, focused_monitor, animation_status
+            "WorkspacesFollowFocus: {monitor_count} monitors, {workspace_count} workspaces\nFocused: {focused_monitor}\nAnimation: {animation_status}\n"
         );
 
         status.push_str(&format!(
@@ -583,20 +593,22 @@ impl WorkspacesFollowFocusPlugin {
 
         if workspace_rules_count > 0 {
             status.push_str(&format!(
-                "  - Workspace rules: {} configured\n",
-                workspace_rules_count
+                "  - Workspace rules: {workspace_rules_count} configured\n"
             ));
             for (workspace, monitor) in &self.config.workspace_rules {
-                status.push_str(&format!(
-                    "    Workspace {} → Monitor {}\n",
-                    workspace, monitor
-                ));
+                status.push_str(&format!("    Workspace {workspace} → Monitor {monitor}\n"));
             }
         } else {
             status.push_str("  - Workspace rules: None configured\n");
         }
 
         Ok(status)
+    }
+}
+
+impl Default for WorkspacesFollowFocusPlugin {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -728,8 +740,7 @@ impl Plugin for WorkspacesFollowFocusPlugin {
             "status" => self.get_status().await,
 
             _ => Ok(format!(
-                "Unknown workspaces_follow_focus command: {}",
-                command
+                "Unknown workspaces_follow_focus command: {command}"
             )),
         }
     }
@@ -951,7 +962,7 @@ mod tests {
 
     #[test]
     fn test_animation_system_integration() {
-        let plugin = create_test_plugin();
+        let _plugin = create_test_plugin();
 
         // TODO: Re-enable after fixing circular dependency
         // // Test that we can create animation timelines
@@ -988,7 +999,7 @@ mod tests {
 
     #[test]
     fn test_default_functions() {
-        assert_eq!(default_true(), true);
+        assert!(default_true());
         assert_eq!(default_animation_duration(), 300);
         assert_eq!(default_animation_easing(), "ease-out");
         assert_eq!(default_switching_delay(), 100);

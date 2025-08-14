@@ -32,6 +32,11 @@ pub enum ClientMessage {
         command: Option<String>,
         args: Vec<String>,
     },
+    /// Lost window recovery
+    LostWindows {
+        command: Option<String>,
+        args: Vec<String>,
+    },
     /// Reload configuration
     Reload,
     /// Get daemon status
@@ -127,5 +132,5 @@ impl ClientMessage {
 /// IPC socket path - uses runtime directory or falls back to /tmp
 pub fn get_socket_path() -> String {
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
-    format!("{}/rustrland.sock", runtime_dir)
+    format!("{runtime_dir}/rustrland.sock")
 }

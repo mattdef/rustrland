@@ -163,25 +163,13 @@ pub struct WindowState {
     pub last_focus: Option<Instant>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ScratchpadState {
     pub windows: Vec<WindowState>,
     pub is_spawned: bool,
     pub last_used: Option<Instant>,
     pub excluded_by: HashSet<String>, // Which scratchpads excluded this one
     pub cached_position: Option<(String, i32, i32, i32, i32)>, // monitor, x, y, w, h
-}
-
-impl Default for ScratchpadState {
-    fn default() -> Self {
-        Self {
-            windows: Vec::new(),
-            is_spawned: false,
-            last_used: None,
-            excluded_by: HashSet::new(),
-            cached_position: None,
-        }
-    }
 }
 
 // ============================================================================
@@ -322,17 +310,16 @@ impl ConfigValidator {
 
         // First pass: basic validation and template resolution
         for (name, config) in configs {
-            let mut validated_config = Self::convert_to_validated(&**config);
+            let mut validated_config = Self::convert_to_validated(config);
 
             // Resolve template inheritance
             if let Some(template_name) = &config.r#use {
                 if let Some(template_config) = configs.get(template_name) {
-                    validated_config =
-                        Self::merge_with_template(validated_config, &**template_config);
+                    validated_config = Self::merge_with_template(validated_config, template_config);
                 } else {
                     validated_config
                         .validation_errors
-                        .push(format!("Template '{}' not found", template_name));
+                        .push(format!("Template '{template_name}' not found"));
                 }
             }
 
@@ -418,7 +405,7 @@ impl ConfigValidator {
                 Err(e) => {
                     config
                         .validation_errors
-                        .push(format!("Invalid size format: {}", e));
+                        .push(format!("Invalid size format: {e}"));
                 }
             }
 
@@ -443,8 +430,7 @@ impl ConfigValidator {
         if let Some(monitor_name) = &config.force_monitor {
             if !monitors.iter().any(|m| m.name == *monitor_name) {
                 config.validation_warnings.push(format!(
-                    "Monitor '{}' not found, will use focused monitor",
-                    monitor_name
+                    "Monitor '{monitor_name}' not found, will use focused monitor"
                 ));
             }
         }
@@ -454,7 +440,7 @@ impl ConfigValidator {
             if exclude != "*" && !all_configs.contains_key(exclude) {
                 config
                     .validation_warnings
-                    .push(format!("Excluded scratchpad '{}' not found", exclude));
+                    .push(format!("Excluded scratchpad '{exclude}' not found"));
             }
         }
 
@@ -621,8 +607,8 @@ impl ScratchpadsPlugin {
                 name: m.name.clone(),
                 width: m.width as i32,
                 height: m.height as i32,
-                x: m.x as i32,
-                y: m.y as i32,
+                x: m.x,
+                y: m.y,
                 scale: m.scale,
                 is_focused: m.focused,
             })
@@ -671,7 +657,7 @@ impl ScratchpadsPlugin {
 
         // Replace variables in [variable] format
         for (key, value) in variables {
-            let pattern = format!("[{}]", key);
+            let pattern = format!("[{key}]");
             result = result.replace(&pattern, value);
         }
 
@@ -869,7 +855,7 @@ impl ScratchpadsPlugin {
         state.is_spawned = true;
         state.last_used = Some(Instant::now());
 
-        Ok(format!("Scratchpad '{}' spawned", name))
+        Ok(format!("Scratchpad '{name}' spawned"))
     }
 
     /// Toggle visibility of existing windows
@@ -936,7 +922,7 @@ impl ScratchpadsPlugin {
         // Update state
         self.mark_window_visible(name, &window.address.to_string());
 
-        Ok(format!("Scratchpad '{}' shown", name))
+        Ok(format!("Scratchpad '{name}' shown"))
     }
 
     /// Hide scratchpad with delay if configured
@@ -951,10 +937,10 @@ impl ScratchpadsPlugin {
         if let Some(delay_ms) = config.hide_delay {
             self.schedule_hide_delay(name, config, windows, delay_ms)
                 .await?;
-            Ok(format!("Scratchpad '{}' will hide in {}ms", name, delay_ms))
+            Ok(format!("Scratchpad '{name}' will hide in {delay_ms}ms"))
         } else {
             self.perform_hide(name, config, windows).await?;
-            Ok(format!("Scratchpad '{}' hidden", name))
+            Ok(format!("Scratchpad '{name}' hidden"))
         }
     }
 
@@ -1149,6 +1135,12 @@ impl ScratchpadsPlugin {
     fn mark_scratchpad_excluded_by(&mut self, scratchpad_name: &str, excluded_by: &str) {
         let state = self.states.entry(scratchpad_name.to_string()).or_default();
         state.excluded_by.insert(excluded_by.to_string());
+    }
+}
+
+impl Default for ScratchpadsPlugin {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1348,7 +1340,7 @@ impl Plugin for ScratchpadsPlugin {
             }
             "list" => {
                 let mut status_list = Vec::new();
-                for (name, _config) in &self.scratchpads {
+                for name in self.scratchpads.keys() {
                     let state = self.states.get(name);
                     let visible_count = state
                         .map(|s| s.windows.iter().filter(|w| w.is_visible).count())
@@ -1357,11 +1349,11 @@ impl Plugin for ScratchpadsPlugin {
                     let spawned = state.map(|s| s.is_spawned).unwrap_or(false);
 
                     let status = if visible_count > 0 {
-                        format!("{} (visible: {}/{})", name, visible_count, total_count)
+                        format!("{name} (visible: {visible_count}/{total_count})")
                     } else if spawned {
-                        format!("{} (hidden: {})", name, total_count)
+                        format!("{name} (hidden: {total_count})")
                     } else {
-                        format!("{} (not spawned)", name)
+                        format!("{name} (not spawned)")
                     };
                     status_list.push(status);
                 }
@@ -1487,7 +1479,7 @@ impl ScratchpadsPlugin {
             let parts: Vec<&str> = event_msg.splitn(2, ">>").collect();
             if parts.len() == 2 {
                 let data_parts: Vec<&str> = parts[1].splitn(2, ',').collect();
-                if data_parts.len() >= 1 {
+                if !data_parts.is_empty() {
                     let window_address = data_parts[0];
                     debug!("📝 Title changed for window: {}", window_address);
 
@@ -1957,7 +1949,7 @@ mod tests {
         let plugin = ScratchpadsPlugin::new();
 
         // Verify enhanced client is initialized
-        assert!(plugin.enhanced_client.is_connected().await == false); // Not connected in test environment
+        assert!(!(plugin.enhanced_client.is_connected().await)); // Not connected in test environment
 
         // Test connection stats
         let stats = plugin.enhanced_client.get_connection_stats().await;

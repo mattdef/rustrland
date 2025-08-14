@@ -416,7 +416,7 @@ impl WallpapersPlugin {
     async fn generate_thumbnail(&self, source: &Path, dest: &Path, size: u32) -> Result<()> {
         let source_str = source.to_string_lossy().to_string();
         let dest_str = dest.to_string_lossy().to_string();
-        let resize_arg = format!("{}x{}>", size, size);
+        let resize_arg = format!("{size}x{size}>");
 
         // Try hardware-accelerated thumbnail generation first (if available)
         if self.config.hardware_acceleration {
@@ -500,7 +500,7 @@ impl WallpapersPlugin {
 
     /// Update monitor information
     async fn update_monitors(&mut self) -> Result<()> {
-        let monitors = tokio::task::spawn_blocking(|| Monitors::get()).await??;
+        let monitors = tokio::task::spawn_blocking(Monitors::get).await??;
         let monitor_vec = monitors.to_vec();
 
         for monitor in &monitor_vec {
@@ -542,7 +542,7 @@ impl WallpapersPlugin {
             for monitor_name in self.monitors.keys().cloned().collect::<Vec<_>>() {
                 match self.set_wallpaper_for_monitor(&monitor_name).await {
                     Ok(msg) => results.push(msg),
-                    Err(e) => results.push(format!("Error for {}: {}", monitor_name, e)),
+                    Err(e) => results.push(format!("Error for {monitor_name}: {e}")),
                 }
             }
             Ok(results.join(", "))
@@ -581,7 +581,7 @@ impl WallpapersPlugin {
         }
 
         // Execute command with hardware acceleration if available
-        let _result = self.execute_wallpaper_command(&command).await?;
+        self.execute_wallpaper_command(&command).await?;
 
         // Update monitor state
         let monitor_state = self
@@ -599,8 +599,7 @@ impl WallpapersPlugin {
         }
 
         Ok(format!(
-            "Set wallpaper '{}' for monitor {}",
-            wallpaper_filename, monitor_name
+            "Set wallpaper '{wallpaper_filename}' for monitor {monitor_name}"
         ))
     }
 
@@ -623,7 +622,7 @@ impl WallpapersPlugin {
 
         // Update all monitor states
         let now = Instant::now();
-        for (_, monitor_state) in &mut self.monitors {
+        for monitor_state in self.monitors.values_mut() {
             monitor_state.current_wallpaper = Some(wallpaper.path.clone());
             monitor_state.last_change = now;
         }
@@ -947,7 +946,7 @@ impl WallpapersPlugin {
                         elapsed.as_secs_f64()
                     ));
                 } else {
-                    status.push_str(&format!("  {} -> (none set)\n", monitor_name));
+                    status.push_str(&format!("  {monitor_name} -> (none set)\n"));
                 }
             }
         }
@@ -955,8 +954,7 @@ impl WallpapersPlugin {
         let preloaded_count = self.preloaded_images.len();
         if preloaded_count > 0 {
             status.push_str(&format!(
-                "\nPerformance: {} images preloaded\n",
-                preloaded_count
+                "\nPerformance: {preloaded_count} images preloaded\n"
             ));
         }
 
@@ -991,9 +989,15 @@ impl WallpapersPlugin {
             ));
         }
 
-        output.push_str(&format!("\nUse 'wall carousel' to browse interactively\n"));
+        output.push_str("\nUse 'wall carousel' to browse interactively\n");
 
         Ok(output)
+    }
+}
+
+impl Default for WallpapersPlugin {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1122,7 +1126,7 @@ impl Plugin for WallpapersPlugin {
                 Ok("Stopped wallpaper rotation".to_string())
             }
 
-            _ => Ok(format!("Unknown wallpapers command: {}. Available: next, set, carousel, scan, list, status, clear, start, stop", command)),
+            _ => Ok(format!("Unknown wallpapers command: {command}. Available: next, set, carousel, scan, list, status, clear, start, stop")),
         }
     }
 }
@@ -1147,7 +1151,7 @@ mod tests {
 
     fn create_test_wallpaper(filename: &str) -> WallpaperInfo {
         WallpaperInfo {
-            path: PathBuf::from(format!("/test/path/{}", filename)),
+            path: PathBuf::from(format!("/test/path/{filename}")),
             filename: filename.to_string(),
             size_bytes: 1024 * 1024, // 1MB
             last_modified: std::time::SystemTime::now(),
@@ -1275,7 +1279,7 @@ mod tests {
         for i in 1..=10 {
             plugin
                 .wallpapers
-                .push(create_test_wallpaper(&format!("test{}.jpg", i)));
+                .push(create_test_wallpaper(&format!("test{i}.jpg")));
         }
 
         plugin.carousel_state.visible_start = 2;
@@ -1304,7 +1308,7 @@ mod tests {
 
     #[test]
     fn test_command_substitution() {
-        let plugin = create_test_plugin();
+        let _plugin = create_test_plugin();
 
         let mut command = "swaybg -i \"[file]\" -o [output]".to_string();
         command = command.replace("[file]", "/path/to/wallpaper.jpg");
@@ -1318,7 +1322,7 @@ mod tests {
         assert_eq!(default_interval(), 600);
         assert_eq!(default_extensions(), vec!["png", "jpg", "jpeg", "webp"]);
         assert_eq!(default_command(), "swaybg -i \"[file]\" -m fill");
-        assert_eq!(default_true(), true);
+        assert!(default_true());
         assert_eq!(default_thumbnail_size(), 200);
         assert_eq!(default_transition_duration(), 300);
         assert_eq!(default_preload_count(), 3);
@@ -1374,7 +1378,7 @@ mod tests {
         for i in 1..=5 {
             plugin
                 .wallpapers
-                .push(create_test_wallpaper(&format!("test{}.jpg", i)));
+                .push(create_test_wallpaper(&format!("test{i}.jpg")));
         }
 
         // Test wrapping at bounds

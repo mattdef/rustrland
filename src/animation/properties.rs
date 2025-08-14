@@ -121,11 +121,11 @@ impl PropertyValue {
     pub fn to_css_transform(&self) -> String {
         match self {
             PropertyValue::Transform(transform) => transform.to_css_string(),
-            PropertyValue::Vector2D { x, y } => format!("translate({}px, {}px)", x, y),
+            PropertyValue::Vector2D { x, y } => format!("translate({x}px, {y}px)"),
             PropertyValue::Vector3D { x, y, z } => {
-                format!("translate3d({}px, {}px, {}px)", x, y, z)
+                format!("translate3d({x}px, {y}px, {z}px)")
             }
-            PropertyValue::Float(scale) => format!("scale({})", scale),
+            PropertyValue::Float(scale) => format!("scale({scale})"),
             _ => String::new(),
         }
     }

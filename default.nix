@@ -26,7 +26,7 @@ pkgs.rustPlatform.buildRustPackage rec {
     description = "A Rust-powered window management for Hyprland - Fast, reliable plugin system";
     homepage = "https://github.com/mattdef/rustrland";
     license = licenses.mit;
-    maintainers = with maintainers; [ ];
+    maintainers = with maintainers; [ "mattdef" ];
     platforms = platforms.linux;
   };
 }

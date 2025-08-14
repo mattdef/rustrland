@@ -92,6 +92,15 @@ enum Commands {
         #[arg()]
         args: Vec<String>,
     },
+    /// Lost window recovery
+    LostWindows {
+        /// Lost windows command (list, recover, status, enable, disable, strategy, check)
+        #[arg(default_value = "status")]
+        command: String,
+        /// Additional arguments for the command
+        #[arg()]
+        args: Vec<String>,
+    },
 }
 
 #[tokio::main]
@@ -127,12 +136,16 @@ async fn main() -> Result<()> {
             command: Some(command),
             args,
         },
+        Commands::LostWindows { command, args } => ClientMessage::LostWindows {
+            command: Some(command),
+            args,
+        },
     };
 
     match send_command(message).await {
         Ok(response) => handle_response(response),
         Err(e) => {
-            eprintln!("❌ Failed to communicate with daemon: {}", e);
+            eprintln!("❌ Failed to communicate with daemon: {e}");
             eprintln!("💡 Make sure the rustrland daemon is running");
             std::process::exit(1);
         }
@@ -240,10 +253,10 @@ async fn send_command_once(
 fn handle_response(response: DaemonResponse) {
     match response {
         DaemonResponse::Success { message } => {
-            println!("✅ {}", message);
+            println!("✅ {message}");
         }
         DaemonResponse::Error { message } => {
-            eprintln!("❌ Error: {}", message);
+            eprintln!("❌ Error: {message}");
             std::process::exit(1);
         }
         DaemonResponse::Status {
@@ -252,9 +265,9 @@ fn handle_response(response: DaemonResponse) {
             plugins_loaded,
         } => {
             println!("📊 Rustrland Status");
-            println!("   Version: {}", version);
-            println!("   Uptime: {} seconds", uptime_seconds);
-            println!("   Plugins loaded: {}", plugins_loaded);
+            println!("   Version: {version}");
+            println!("   Uptime: {uptime_seconds} seconds");
+            println!("   Plugins loaded: {plugins_loaded}");
         }
         DaemonResponse::List { items } => {
             if items.is_empty() {
@@ -262,7 +275,7 @@ fn handle_response(response: DaemonResponse) {
             } else {
                 println!("📋 Available items:");
                 for item in items {
-                    println!("   • {}", item);
+                    println!("   • {item}");
                 }
             }
         }
