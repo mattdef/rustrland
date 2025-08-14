@@ -533,19 +533,21 @@ impl WallpapersPlugin {
 
         self.update_monitors().await?;
 
-        if self.config.unique && monitor_name.is_some() {
-            // Set wallpaper for specific monitor
-            self.set_wallpaper_for_monitor(monitor_name.unwrap()).await
-        } else if self.config.unique {
-            // Set different wallpaper for each monitor
-            let mut results = Vec::new();
-            for monitor_name in self.monitors.keys().cloned().collect::<Vec<_>>() {
-                match self.set_wallpaper_for_monitor(&monitor_name).await {
-                    Ok(msg) => results.push(msg),
-                    Err(e) => results.push(format!("Error for {monitor_name}: {e}")),
+        if self.config.unique {
+            if let Some(monitor) = monitor_name {
+                // Set wallpaper for specific monitor
+                self.set_wallpaper_for_monitor(monitor).await
+            } else {
+                // Set different wallpaper for each monitor
+                let mut results = Vec::new();
+                for monitor_name in self.monitors.keys().cloned().collect::<Vec<_>>() {
+                    match self.set_wallpaper_for_monitor(&monitor_name).await {
+                        Ok(msg) => results.push(msg),
+                        Err(e) => results.push(format!("❌ {monitor_name}: {e}")),
+                    }
                 }
+                Ok(results.join("\n"))
             }
-            Ok(results.join(", "))
         } else {
             // Set same wallpaper for all monitors
             self.set_wallpaper_global().await
