@@ -44,10 +44,10 @@ echo -e "${YELLOW}Running cargo clippy --lib --bins -- -D warnings...${NC}"
 cargo clippy --lib --bins -- -D warnings
 print_status $? "Clippy linting"
 
-print_section "Unit Tests"
-echo -e "${YELLOW}Running cargo test --lib...${NC}"
-cargo test --lib
-print_status $? "Unit tests"
+print_section "All Tests"
+echo -e "${YELLOW}Running cargo test --all-features --workspace...${NC}"
+cargo test --all-features --workspace
+print_status $? "All tests"
 
 print_section "Release Build"
 echo -e "${YELLOW}Running cargo build --release --lib --bins...${NC}"

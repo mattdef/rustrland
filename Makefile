@@ -10,7 +10,7 @@ build-release:
 
 # Run tests (matches CI exactly)
 test:
-	cargo test --lib
+	cargo test --all-features --workspace
 
 # Run in development mode
 run:
