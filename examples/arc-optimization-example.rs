@@ -1,3 +1,4 @@
+#![allow(warnings)]
 // Arc Memory Optimization Example for Rustrland Plugin System
 // This demonstrates how to use Arc to optimize memory usage in plugins
 

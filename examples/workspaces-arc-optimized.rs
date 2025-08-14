@@ -1,3 +1,4 @@
+#![allow(warnings)]
 // Arc-Optimized Workspaces Follow Focus Plugin
 // This demonstrates practical Arc usage for memory optimization
 

@@ -1,3 +1,4 @@
+#![allow(warnings)]
 use rustrland::animation::{
     easing::EasingFunction,
     properties::PropertyValue,
