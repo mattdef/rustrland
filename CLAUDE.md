@@ -80,13 +80,43 @@ cargo check
 make fmt
 cargo fmt
 
+# Check format without changing files
+make fmt-check
+cargo fmt --check
+
 # Lint with clippy (fails on warnings)
 make lint
-cargo clippy -- -D warnings
+cargo clippy --lib --bins -- -D warnings
 
-# Full CI pipeline
-make ci  # Equivalent to: fmt lint test build
+# Full CI pipeline (matches GitHub CI exactly)
+make ci  # Equivalent to: fmt-check lint test build-release
+
+# Pre-push validation (run before every push)
+./scripts/pre-push.sh
 ```
+
+### **IMPORTANT: Pre-Push Validation**
+
+**Always run pre-push validation before pushing to GitHub:**
+
+```bash
+# Option 1: Use the make target
+make ci
+
+# Option 2: Use the dedicated script  
+./scripts/pre-push.sh
+
+# Option 3: Git pre-push hook (automatic)
+# Hook is already installed and runs automatically on git push
+```
+
+**The pre-push hook will automatically run these checks:**
+- ✅ Code formatting (`cargo fmt --check`)
+- ✅ Clippy linting (`cargo clippy --lib --bins -- -D warnings`) 
+- ✅ Unit tests (`cargo test --lib`)
+- ✅ Release build (`cargo build --release`)
+
+**If any check fails, the push is blocked.** This ensures professional code quality.
 
 ### Installation
 ```bash

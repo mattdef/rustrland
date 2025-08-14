@@ -8,9 +8,9 @@ build:
 build-release:
 	cargo build --release
 
-# Run tests
+# Run tests (matches CI exactly)
 test:
-	cargo test
+	cargo test --lib
 
 # Run in development mode
 run:
@@ -24,9 +24,9 @@ dev:
 fmt:
 	cargo fmt
 
-# Lint code
+# Lint code (matches CI exactly)
 lint:
-	cargo clippy -- -D warnings
+	cargo clippy --lib --bins -- -D warnings
 
 # Install locally
 install:
@@ -44,8 +44,12 @@ check:
 run-example:
 	cargo run --bin rustrland -- --config examples/rustrland.toml --debug --foreground
 
-# Full CI check
-ci: fmt lint test build
+# Full CI check (exactly matches GitHub CI)
+ci: fmt-check lint test build-release
+
+# Check format without fixing
+fmt-check:
+	cargo fmt --check
 
 # Help
 help:
