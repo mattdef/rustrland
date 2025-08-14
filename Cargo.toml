@@ -56,6 +56,10 @@ dirs = "5.0"
 notify = "6.1"
 tokio-stream = { version = "0.1", features = ["sync"] }
 
+# Desktop notifications
+notify-rust = "4.11"
+regex = "1.10"
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.8"

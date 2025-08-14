@@ -260,6 +260,23 @@ impl IpcServer {
                 }
             }
 
+            ClientMessage::Notify { command, args } => {
+                debug!(
+                    "🔔 Processing notify command: {:?} {:?}",
+                    command, args
+                );
+                let mut pm = plugin_manager.write().await;
+
+                let cmd = command.as_deref().unwrap_or("notify");
+                let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+                match pm.handle_command("system_notifier", cmd, &args_refs).await {
+                    Ok(result) => DaemonResponse::Success { message: result },
+                    Err(e) => DaemonResponse::Error {
+                        message: e.to_string(),
+                    },
+                }
+            }
+
             ClientMessage::Reload => {
                 debug!("⚡ Processing reload command");
                 let mut pm = plugin_manager.write().await;

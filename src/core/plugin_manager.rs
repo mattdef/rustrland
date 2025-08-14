@@ -11,6 +11,7 @@ use crate::plugins::magnify::MagnifyPlugin;
 use crate::plugins::monitors::MonitorsPlugin;
 use crate::plugins::scratchpads::ScratchpadsPlugin;
 use crate::plugins::shift_monitors::ShiftMonitorsPlugin;
+use crate::plugins::system_notifier::SystemNotifier;
 use crate::plugins::toggle_special::ToggleSpecialPlugin;
 use crate::plugins::wallpapers::WallpapersPlugin;
 use crate::plugins::workspaces_follow_focus::WorkspacesFollowFocusPlugin;
@@ -76,6 +77,7 @@ impl PluginManager {
             "workspaces_follow_focus" => Box::new(WorkspacesFollowFocusPlugin::new()),
             "magnify" => Box::new(MagnifyPlugin::new()),
             "shift_monitors" => Box::new(ShiftMonitorsPlugin::new()),
+            "system_notifier" => Box::new(SystemNotifier::new()),
             "toggle_special" => Box::new(ToggleSpecialPlugin::new()),
             "monitors" => Box::new(MonitorsPlugin::new()),
             "wallpapers" => Box::new(WallpapersPlugin::new()),

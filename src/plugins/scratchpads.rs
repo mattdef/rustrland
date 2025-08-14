@@ -2073,7 +2073,7 @@ mod tests {
         }
 
         // Should complete without performance issues
-        assert!(plugin.states.len() >= 0); // Basic validation
+        //assert!(plugin.states.len() >= 0); // Basic validation
     }
 
     #[test]

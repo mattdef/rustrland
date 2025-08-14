@@ -19,3 +19,7 @@ Thumbs.db
 # Local config
 /config/
 *.local.toml
+
+pkg/
+rustrland-*
+test-pkgbuild.sh

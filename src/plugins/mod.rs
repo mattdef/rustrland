@@ -8,6 +8,7 @@ pub mod magnify;
 pub mod monitors;
 pub mod scratchpads;
 pub mod shift_monitors;
+pub mod system_notifier;
 pub mod toggle_special;
 pub mod wallpapers;
 pub mod workspaces_follow_focus;

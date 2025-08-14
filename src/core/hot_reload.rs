@@ -436,19 +436,39 @@ pub struct HotReloadStats {
 
 // Extension trait for PluginManager to support hot reload
 pub trait HotReloadable {
-    async fn get_plugin_state(&self, plugin_name: &str) -> Result<serde_json::Value>;
-    async fn preserve_plugin_state(
+    fn get_plugin_state(
+        &self,
+        plugin_name: &str,
+    ) -> impl std::future::Future<Output = Result<serde_json::Value>> + Send;
+    fn preserve_plugin_state(
         &self,
         plugin_name: &str,
         state: serde_json::Value,
-    ) -> Result<()>;
-    async fn restore_plugin_state(&self, plugin_name: &str, state: serde_json::Value)
-        -> Result<()>;
-    async fn reload_plugin(&mut self, plugin_name: &str, config: &RustrlandConfig) -> Result<()>;
-    async fn unload_plugin(&mut self, plugin_name: &str) -> Result<()>;
-    async fn unload_all_plugins(&mut self) -> Result<()>;
-    async fn load_plugin(&mut self, plugin_name: &str, config: &RustrlandConfig) -> Result<()>;
-    async fn load_from_config(&mut self, config: &RustrlandConfig) -> Result<()>;
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn restore_plugin_state(
+        &self,
+        plugin_name: &str,
+        state: serde_json::Value,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn reload_plugin(
+        &mut self,
+        plugin_name: &str,
+        config: &RustrlandConfig,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn unload_plugin(
+        &mut self,
+        plugin_name: &str,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn unload_all_plugins(&mut self) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn load_plugin(
+        &mut self,
+        plugin_name: &str,
+        config: &RustrlandConfig,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn load_from_config(
+        &mut self,
+        config: &RustrlandConfig,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
     fn get_loaded_plugins(&self) -> Vec<String>;
     fn get_plugin_config(&self, plugin_name: &str) -> Result<toml::Value>;
 }

@@ -83,6 +83,15 @@ enum Commands {
         #[arg()]
         args: Vec<String>,
     },
+    /// System notifications
+    Notify {
+        /// Notification command (notify, status, list-sources, list-parsers, test-animation)
+        #[arg(default_value = "notify")]
+        command: String,
+        /// Additional arguments for the command
+        #[arg()]
+        args: Vec<String>,
+    },
 }
 
 #[tokio::main]
@@ -111,6 +120,10 @@ async fn main() -> Result<()> {
             command: Some(command),
         },
         Commands::Wallpapers { command, args } => ClientMessage::Wallpapers {
+            command: Some(command),
+            args,
+        },
+        Commands::Notify { command, args } => ClientMessage::Notify {
             command: Some(command),
             args,
         },

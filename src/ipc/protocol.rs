@@ -27,6 +27,11 @@ pub enum ClientMessage {
         command: Option<String>,
         args: Vec<String>,
     },
+    /// System notifications
+    Notify {
+        command: Option<String>,
+        args: Vec<String>,
+    },
     /// Reload configuration
     Reload,
     /// Get daemon status

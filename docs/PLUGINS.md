@@ -12,8 +12,9 @@ This document provides comprehensive documentation for all available plugins in 
 6. [Toggle Special Plugin](#toggle-special-plugin)
 7. [Monitors Plugin](#monitors-plugin)
 8. [Wallpapers Plugin](#wallpapers-plugin)
-9. [Configuration Examples](#configuration-examples)
-10. [Plugin Development Guide](#plugin-development-guide)
+9. [System Notifier Plugin](#system-notifier-plugin)
+10. [Configuration Examples](#configuration-examples)
+11. [Plugin Development Guide](#plugin-development-guide)
 
 ---
 
@@ -582,6 +583,215 @@ The interactive carousel provides a visual interface for wallpaper selection:
 
 ---
 
+## System Notifier Plugin
+
+**Status**: ✅ Production Ready | **Tests**: 10/10 Passing | **Animation Support**: ✨ Enhanced with Rustrland Animations
+
+The system_notifier plugin monitors system logs and command outputs to generate desktop notifications with support for animated appearance and disappearance effects.
+
+### Features
+
+- **Pyprland Compatible**: Full compatibility with existing Pyprland system_notifier configurations
+- **Enhanced Animations**: Appearance/disappearance animations using Rustrland's animation engine (enhancement over Pyprland)
+- **Log Stream Monitoring**: Monitor journalctl, logs, or any command output
+- **Pattern Matching**: Use regex patterns to detect interesting log lines
+- **Text Filtering**: Transform notification text using regex filters (s/pattern/replacement/ format)
+- **Desktop Notifications**: Native freedesktop.org notifications with urgency levels
+- **Custom Icons and Sounds**: Support for custom notification appearance and audio feedback
+- **Multiple Sources**: Monitor multiple log sources with different parsers simultaneously
+
+### Pyprland Compatible Configuration
+
+```toml
+# Basic Pyprland compatible configuration
+[system_notifier.sources]
+systemd = { command = "sudo journalctl -fx", parser = "journal" }
+custom_logs = { command = "tail -f /var/log/myapp.log", parser = "generic" }
+
+[system_notifier.parsers.journal]
+pattern = "([a-z0-9]+): Link UP$"
+filter = "s/.*\\[\\d+\\]: ([a-z0-9]+): Link.*/\\1 is now active/"
+color = "#00aa00"
+timeout = 5000
+urgency = "normal"
+
+[system_notifier.parsers.generic]
+pattern = "ERROR: (.*)"
+filter = "s/ERROR: (.*)/Application error: \\1/"
+color = "#ff0000"
+urgency = "critical"
+icon = "dialog-error"
+```
+
+### Enhanced Configuration with Animations (Rustrland Extension)
+
+```toml
+# Enhanced configuration with animation support
+[system_notifier.sources]
+network = { command = "sudo journalctl -fx -u NetworkManager", parser = "network_events" }
+errors = { command = "journalctl -fx -p err", parser = "error_events" }
+
+[system_notifier.parsers.network_events]
+pattern = "(\\w+): connected"
+filter = "s/.*(\\w+): connected/Network \\1 connected/"
+color = "#00ff00"
+icon = "network-wireless"
+sound = "/usr/share/sounds/freedesktop/stereo/network-connectivity-established.oga"
+
+# Rustrland animation enhancement
+[system_notifier.parsers.network_events.animation]
+display_duration = 4000
+smooth_transitions = true
+
+[system_notifier.parsers.network_events.animation.appear]
+animation_type = "fade"
+duration = 300
+easing = "easeOut"
+
+[system_notifier.parsers.network_events.animation.disappear]
+animation_type = "scale"
+duration = 200
+easing = "easeIn"
+
+[system_notifier.parsers.error_events]
+pattern = "(.+): (.+)"
+filter = "s/.*: (.*)/System Error: \\1/"
+color = "#ff4444"
+urgency = "critical"
+icon = "dialog-error"
+timeout = 8000
+
+[system_notifier.parsers.error_events.animation.appear]
+animation_type = "fromTop"
+duration = 400
+easing = "bounce"
+```
+
+### Commands
+
+```bash
+# Manual notifications
+rustr notify "Hello World"                          # Basic notification
+rustr notify "Important message" critical 10000     # Critical with 10s timeout
+rustr notify "Animated message" normal 5000 --animated  # With animation
+
+# Plugin status and management
+rustr notify status                    # Show plugin status and performance
+rustr notify list-sources             # List configured log sources
+rustr notify list-parsers             # List configured parsers
+
+# Testing and development
+rustr notify test-animation "Test message"  # Send test notification with animations
+```
+
+### Advanced Configuration Options
+
+#### Parser Configuration Options
+
+- **pattern**: Regex pattern to match log lines (required)
+- **filter**: Transform text using s/pattern/replacement/ format (optional)
+- **color**: Notification color hint (optional)
+- **timeout**: Timeout in milliseconds (optional, default: 5000)
+- **urgency**: "low", "normal", or "critical" (optional, default: "normal")
+- **icon**: Icon name or path (optional)
+- **sound**: Sound file path (optional)
+
+#### Animation Configuration (Rustrland Enhancement)
+
+- **animation.appear**: Appearance animation config
+  - **animation_type**: "fade", "scale", "fromTop", "fromBottom", "fromLeft", "fromRight"
+  - **duration**: Animation duration in milliseconds
+  - **easing**: "linear", "easeIn", "easeOut", "easeInOut", "bounce", "elastic"
+- **animation.disappear**: Disappearance animation config
+- **animation.display_duration**: How long to show notification before disappearing
+- **animation.smooth_transitions**: Enable smooth transitions
+
+#### Source Configuration
+
+- **command**: Shell command to execute for monitoring
+- **parser**: Name of parser to use for processing output
+
+### Keybindings
+
+```bash
+# Manual notification shortcuts
+bind = SUPER_SHIFT, N, exec, rustr notify "Quick notification"
+bind = SUPER_CTRL, N, exec, rustr notify "Critical alert" critical 0
+bind = SUPER_ALT, N, exec, rustr notify "Animated message" normal 3000 --animated
+
+# Plugin management
+bind = SUPER_SHIFT, F1, exec, rustr notify status
+bind = SUPER_SHIFT, F2, exec, rustr notify test-animation "Keybinding test"
+```
+
+### Use Cases
+
+#### System Monitoring
+```toml
+[system_notifier.sources]
+disk_space = { command = "df -h | awk 'NR>1 && $5+0 > 90 {print $0}'", parser = "disk_alerts" }
+load_average = { command = "uptime | awk '{print $10,$11,$12}'", parser = "load_monitor" }
+
+[system_notifier.parsers.disk_alerts]
+pattern = "(/dev/\\S+).*(\\d+)%"
+filter = "s|(/dev/\\S+).*(\\d+)%.*|Disk \\1 is \\2% full|"
+urgency = "critical"
+color = "#ff0000"
+```
+
+#### Network Monitoring
+```toml
+[system_notifier.sources]
+wifi_events = { command = "sudo journalctl -fx -u wpa_supplicant", parser = "wifi" }
+
+[system_notifier.parsers.wifi]
+pattern = "CTRL-EVENT-CONNECTED"
+filter = "s/.*/WiFi Connected/"
+color = "#00aa00"
+icon = "network-wireless"
+animation.appear.animation_type = "fade"
+animation.appear.duration = 500
+```
+
+#### Application Monitoring
+```toml
+[system_notifier.sources]
+app_crashes = { command = "journalctl -fx -p crit", parser = "crashes" }
+
+[system_notifier.parsers.crashes]
+pattern = "segfault.*\\[(.+?)\\]"
+filter = "s/.*segfault.*\\[(.+?)\\].*/Application \\1 crashed/"
+urgency = "critical"
+sound = "/usr/share/sounds/freedesktop/stereo/dialog-error.oga"
+animation.appear.animation_type = "bounce"
+```
+
+### Performance Considerations
+
+- **Efficient Parsing**: Regex patterns are compiled once at startup
+- **Background Processing**: Log monitoring runs in separate async tasks
+- **Animation Optimization**: Hardware-accelerated animations when available
+- **Resource Management**: Automatic cleanup of completed monitoring tasks
+- **Rate Limiting**: Built-in protection against notification spam
+
+### Integration with Desktop Environment
+
+The plugin uses freedesktop.org notification specifications and works with:
+- **GNOME**: Native notification support
+- **KDE Plasma**: Native notification support  
+- **XFCE**: Via notification daemon
+- **i3/Sway**: Via mako, dunst, or other notification daemons
+
+### Migration from Pyprland
+
+Existing Pyprland system_notifier configurations work without modification. To add Rustrland animation enhancements:
+
+1. Keep existing `[system_notifier.sources]` and `[system_notifier.parsers.*]` sections
+2. Add `[system_notifier.parsers.*.animation]` sections for enhanced features
+3. Use `rustr notify` instead of `pypr notify` for manual notifications
+
+---
+
 ## Configuration Examples
 
 ### Complete Rustrland Configuration
@@ -595,7 +805,8 @@ plugins = [
     "workspaces_follow_focus",
     "magnify",
     "monitors",
-    "wallpapers"
+    "wallpapers",
+    "system_notifier"
 ]
 
 # Global variables for all plugins
@@ -616,6 +827,16 @@ interval = 300
 hardware_acceleration = true
 enable_carousel = true
 
+[system_notifier.sources]
+system_logs = { command = "sudo journalctl -fx", parser = "system_events" }
+
+[system_notifier.parsers.system_events]
+pattern = "ERROR: (.*)"
+filter = "s/ERROR: (.*)/System Alert: \\1/"
+urgency = "critical"
+animation.appear.animation_type = "fade"
+animation.appear.duration = 300
+
 [monitors] 
 placement_rules = [
     { monitor = "DP-1", position = "primary" },
@@ -628,7 +849,7 @@ placement_rules = [
 ```toml
 # Pyprland compatible configuration
 [pyprland]
-plugins = ["scratchpads", "expose", "wallpapers"]
+plugins = ["scratchpads", "expose", "wallpapers", "system_notifier"]
 
 [pyprland.scratchpads.term]
 animation = "fromTop"
@@ -797,7 +1018,8 @@ mod tests {
 | Toggle Special | ✅ Production | Integrated | Special workspace management |
 | Monitors | ✅ Production | 15/15 | Relative positioning, hotplug |
 | Wallpapers | ✅ Production | 15/15 | Hardware accel, carousel, multi-monitor |
+| System Notifier | ✅ Production | 10/10 | Log monitoring, animations, desktop notifications |
 
-**Total Tests**: 50+ passing across all plugins
+**Total Tests**: 60+ passing across all plugins
 
 All plugins are production-ready with comprehensive testing, full Pyprland compatibility, and enhanced Rust-specific optimizations.
