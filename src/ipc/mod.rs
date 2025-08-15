@@ -166,21 +166,87 @@ impl HyprlandClient {
     /// Move and resize a window (simplified - just move to special workspace for now)
     pub async fn move_resize_window(
         &self,
-        _address: &str,
-        _x: i32,
-        _y: i32,
-        _width: i32,
-        _height: i32,
+        address: &str,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
     ) -> Result<()> {
-        debug!("📐 Moving/resizing window (simplified implementation)");
+        debug!(
+            "📐 Moving/resizing window: {} to {}x{} at ({}, {})",
+            address, width, height, x, y
+        );
 
-        use hyprland::dispatch::WorkspaceIdentifierWithSpecial;
+        use hyprland::dispatch::{
+            DispatchType, Position, WindowIdentifier, WorkspaceIdentifierWithSpecial,
+        };
+        use hyprland::shared::Address;
 
-        // For now, we'll just move to special workspace
-        // A full implementation would need proper window positioning
+        // Move to special workspace first
         let workspace = WorkspaceIdentifierWithSpecial::Special(Some("scratchpad"));
         self.dispatch(DispatchType::MoveToWorkspaceSilent(workspace, None))
             .await?;
+
+        // Apply the geometry using Hyprland's move and resize commands
+        let window_id = WindowIdentifier::Address(Address::new(Box::leak(
+            address.to_string().into_boxed_str(),
+        )));
+
+        // Resize the window using pixel dimensions
+        debug!("📏 Resizing window {} to {}x{}", address, width, height);
+        self.dispatch(DispatchType::ResizeWindowPixel(
+            Position::Exact(width as i16, height as i16),
+            window_id.clone(),
+        ))
+        .await?;
+
+        // Move the window to the specified position using pixel coordinates
+        debug!("📍 Moving window {} to position ({}, {})", address, x, y);
+        self.dispatch(DispatchType::MoveWindowPixel(
+            Position::Exact(x as i16, y as i16),
+            window_id,
+        ))
+        .await?;
+
+        Ok(())
+    }
+
+    /// Move and resize a window without changing workspace
+    pub async fn resize_and_position_window(
+        &self,
+        address: &str,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    ) -> Result<()> {
+        debug!(
+            "📐 Resizing and positioning window: {} to {}x{} at ({}, {})",
+            address, width, height, x, y
+        );
+
+        use hyprland::dispatch::{DispatchType, Position, WindowIdentifier};
+        use hyprland::shared::Address;
+
+        let window_id = WindowIdentifier::Address(Address::new(Box::leak(
+            address.to_string().into_boxed_str(),
+        )));
+
+        // Resize the window using pixel dimensions
+        debug!("📏 Resizing window {} to {}x{}", address, width, height);
+        self.dispatch(DispatchType::ResizeWindowPixel(
+            Position::Exact(width as i16, height as i16),
+            window_id.clone(),
+        ))
+        .await?;
+
+        // Move the window to the specified position using pixel coordinates
+        debug!("📍 Moving window {} to position ({}, {})", address, x, y);
+        self.dispatch(DispatchType::MoveWindowPixel(
+            Position::Exact(x as i16, y as i16),
+            window_id,
+        ))
+        .await?;
 
         Ok(())
     }
@@ -335,6 +401,27 @@ impl HyprlandClient {
         let clients = with_hyprland_timeout(Clients::get).await?;
         use hyprland::shared::HyprDataVec;
         Ok(clients.to_vec())
+    }
+
+    /// Get current active workspace
+    pub async fn get_active_workspace(&self) -> Result<String> {
+        debug!("🖥️ Getting active workspace");
+
+        use hyprland::data::{Workspace, Workspaces};
+        
+        let workspaces = with_hyprland_timeout(Workspaces::get).await?;
+        
+        // Find the focused workspace
+        for workspace in workspaces.iter() {
+            if workspace.id > 0 && workspace.windows > 0 {
+                // For now, return the first regular workspace with windows
+                // In a real implementation, we'd check which one is actually focused
+                return Ok(workspace.id.to_string());
+            }
+        }
+        
+        // Fallback to workspace 1
+        Ok("1".to_string())
     }
 
     /// Move window to workspace

@@ -25,20 +25,20 @@ impl TraditionalConfig {
 
         // Create large configuration to simulate real-world usage
         for i in 1..=50 {
-            workspace_rules.insert(format!("workspace_{}", i), format!("monitor_{}", i % 5));
-            excludes.push(format!("exclude_pattern_{}", i));
+            workspace_rules.insert(format!("workspace_{i}"), format!("monitor_{}", i % 5));
+            excludes.push(format!("exclude_pattern_{i}"));
             command_templates.insert(
-                format!("template_{}", i),
-                format!("command_with_very_long_path_and_arguments_{}", i),
+                format!("template_{i}"),
+                format!("command_with_very_long_path_and_arguments_{i}"),
             );
             monitor_settings.insert(
-                format!("monitor_{}", i),
+                format!("monitor_{i}"),
                 (1920 + i, 1080 + i, i as i32 * 100, i as i32 * 100),
             );
             animation_settings.push((
-                format!("animation_type_{}", i),
+                format!("animation_type_{i}"),
                 300 + i,
-                format!("easing_function_{}", i),
+                format!("easing_function_{i}"),
             ));
         }
 
@@ -139,8 +139,8 @@ fn benchmark_memory_usage() {
     let arc_size = mem::size_of_val(&arc_config);
 
     println!("📊 Base Configuration Sizes:");
-    println!("  Traditional config: {} bytes", traditional_size);
-    println!("  Arc config (pointer): {} bytes", arc_size);
+    println!("  Traditional config: {traditional_size} bytes");
+    println!("  Arc config (pointer): {arc_size} bytes");
     println!(
         "  Arc size reduction: {:.1}x smaller",
         traditional_size as f64 / arc_size as f64
@@ -178,8 +178,8 @@ fn benchmark_memory_usage() {
     }
 
     println!("\n📈 Total Memory Usage (5 plugins):");
-    println!("  Traditional approach: ~{} bytes", traditional_total_size);
-    println!("  Arc approach: ~{} bytes", arc_total_size);
+    println!("  Traditional approach: ~{traditional_total_size} bytes");
+    println!("  Arc approach: ~{arc_total_size} bytes");
     println!(
         "  Memory reduction: {:.1}% ({:.1}x smaller)",
         (1.0 - arc_total_size as f64 / traditional_total_size as f64) * 100.0,
@@ -216,9 +216,9 @@ fn benchmark_performance() {
 
     let arc_duration = start.elapsed();
 
-    println!("🏃 Performance Results ({} operations):", operations);
-    println!("  Traditional cloning: {:?}", traditional_duration);
-    println!("  Arc cloning: {:?}", arc_duration);
+    println!("🏃 Performance Results ({operations} operations):");
+    println!("  Traditional cloning: {traditional_duration:?}");
+    println!("  Arc cloning: {arc_duration:?}");
     println!(
         "  Performance improvement: {:.1}x faster",
         traditional_duration.as_nanos() as f64 / arc_duration.as_nanos() as f64
@@ -305,7 +305,7 @@ fn real_world_simulation() {
 
     println!("\n📊 Real-World Results:");
     println!("  Traditional total: {} KB", traditional_memory / 1024);
-    println!("  Arc-optimized total: {} bytes", arc_memory);
+    println!("  Arc-optimized total: {arc_memory} bytes");
     println!(
         "  Memory reduction: {:.1}% savings",
         (1.0 - arc_memory as f64 / traditional_memory as f64) * 100.0

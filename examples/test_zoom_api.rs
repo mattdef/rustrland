@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("  stderr: {}", stderr.trim());
             }
         }
-        Err(e) => println!("❌ Failed to get cursor_zoom_factor: {}", e),
+        Err(e) => println!("❌ Failed to get cursor_zoom_factor: {e}"),
     }
 
     let output2 = Command::new("hyprctl")
@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("  stderr: {}", stderr.trim());
             }
         }
-        Err(e) => println!("❌ Failed to get cursor_zoom_rigid: {}", e),
+        Err(e) => println!("❌ Failed to get cursor_zoom_rigid: {e}"),
     }
 
     println!();
@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             println!("    ✅ Zoom to 2.0x command executed");
         }
-        Err(e) => println!("    ❌ Failed to set zoom: {}", e),
+        Err(e) => println!("    ❌ Failed to set zoom: {e}"),
     }
 
     // Wait a moment
@@ -84,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             println!("    ✅ Zoom reset to 1.0x command executed");
         }
-        Err(e) => println!("    ❌ Failed to reset zoom: {}", e),
+        Err(e) => println!("    ❌ Failed to reset zoom: {e}"),
     }
 
     println!();

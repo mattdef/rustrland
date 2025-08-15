@@ -109,13 +109,19 @@ duration = 300
 **Change this:**
 ```toml
 [scratchpads.terminal]
-animation_config = { duration = 300, easing = "ease-out" }
+
+[scratchpads.terminal.animation_config]
+duration = 300
+easing = "ease-out"
 ```
 
 **To this:**
 ```toml
 [scratchpads.terminal]
-animation_config = { duration = 500, easing = "bounce" }  # Bouncy!
+
+[scratchpads.terminal.animation_config]
+duration = 500
+easing = "bounce"
 ```
 
 **Result:** `🔄 Reloaded: scratchpads` - Animation changes instantly!

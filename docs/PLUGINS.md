@@ -70,15 +70,7 @@ rustr status
 ```toml
 [scratchpads]
 # Advanced terminal with special options
-term = {
-    command = "foot --app-id foot-scratchpad --title 'Scratchpad Terminal'",
-    class = "foot-scratchpad",
-    size = "75% 60%",
-    position = "center",
-    lazy = true,           # Don't start immediately
-    excludes = "firefox",  # Don't show when Firefox is focused
-    pins = "workspace:1"   # Pin to workspace 1
-}
+term = { command = "foot --app-id foot-scratchpad --title 'Scratchpad Terminal'", class = "foot-scratchpad", size = "75% 60%", position = "center", lazy = true, excludes = "firefox", pins = "workspace:1" }
 ```
 
 ---

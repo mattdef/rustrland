@@ -4,6 +4,7 @@ use anyhow::Result;
 use clap::Parser;
 use tracing::{error, info};
 
+mod animation;
 mod config;
 mod core;
 mod ipc;

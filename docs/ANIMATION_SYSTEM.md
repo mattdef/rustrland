@@ -27,53 +27,70 @@
 ```toml
 [scratchpads.terminal]
 animation = "fromTop"
-animation_config = { 
-    duration = 250, 
-    easing = "ease-out-cubic",  # Much smoother than Pyprland
-    offset = "100px" 
-}
+animation_config = { duration = 250, easing = "ease-out-cubic", offset = "100px" }
 ```
 
 ### **Physics-Based Animations** 🔬
 ```toml
 [scratchpads.calculator]
 animation = "spring"
-animation_config = {
-    duration = 400,
-    easing = "spring",
-    spring = { 
-        stiffness = 400.0,   # Spring tension
-        damping = 25.0,      # Bounce control
-        mass = 1.0           # Object weight
-    }
-}
+
+[scratchpads.calculator.animation_config]
+duration = 400
+easing = "spring"
+
+[scratchpads.calculator.animation_config.spring]
+stiffness = 400.0
+damping = 25.0
+mass = 1.0
 ```
 
 ### **Multi-Property Animations** 🎭
 ```toml
 [scratchpads.editor]
 animation = "complex"
-animation_config = {
-    duration = 350,
-    properties = [
-        { property = "x", from = "100%", to = "25%", easing = "ease-out" },
-        { property = "opacity", from = "0.0", to = "1.0", easing = "ease-in" },
-        { property = "scale", from = "0.8", to = "1.0", easing = "ease-out-back" }
-    ]
-}
+
+[scratchpads.editor.animation_config]
+duration = 350
+
+[[scratchpads.editor.animation_config.properties]]
+property = "x"
+from = "100%"
+to = "25%"
+easing = "ease-out"
+
+[[scratchpads.editor.animation_config.properties]]
+property = "opacity"
+from = "0.0"
+to = "1.0"
+easing = "ease-in"
+
+[[scratchpads.editor.animation_config.properties]]
+property = "scale"
+from = "0.8"
+to = "1.0"
+easing = "ease-out-back"
 ```
 
 ### **Animation Sequences** 🎬
 ```toml
 [scratchpads.advanced]
 animation = "sequence"
-animation_config = {
-    sequence = [
-        { animation_type = "fade", duration = 100, opacity_from = 0.0 },
-        { animation_type = "fromTop", duration = 200, easing = "ease-out" },
-        { animation_type = "scale", duration = 150, scale_from = 0.95 }
-    ]
-}
+
+[[scratchpads.advanced.animation_config.sequence]]
+animation_type = "fade"
+duration = 100
+opacity_from = 0.0
+
+[[scratchpads.advanced.animation_config.sequence]]
+animation_type = "fromTop"
+duration = 200
+easing = "ease-out"
+
+[[scratchpads.advanced.animation_config.sequence]]
+animation_type = "scale"
+duration = 150
+scale_from = 0.95
 ```
 
 ---
@@ -134,49 +151,49 @@ frame_time_budget_ms = 16
 ```toml
 [scratchpads.chat]
 animation = "elastic"
-animation_config = {
-    duration = 600,
-    easing = "ease-out-elastic",
-    offset = "200px",
-    animation_type = "fromRight"
-}
+
+[scratchpads.chat.animation_config]
+duration = 600
+easing = "ease-out-elastic"
+offset = "200px"
+animation_type = "fromRight"
 ```
 
 ### **Bouncy Calculator**
 ```toml
 [scratchpads.calc]
 animation = "bounce"
-animation_config = {
-    duration = 500,
-    easing = "ease-out-bounce", 
-    animation_type = "fromBottom",
-    offset = "150%"
-}
+
+[scratchpads.calc.animation_config]
+duration = 500
+easing = "ease-out-bounce"
+animation_type = "fromBottom"
+offset = "150%"
 ```
 
 ### **Professional Video Player**
 ```toml
 [scratchpads.video]
 animation = "professional"
-animation_config = {
-    duration = 280,
-    easing = "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
-    animation_type = "fromBottom",
-    target_fps = 120,  # Smooth for video
-    hardware_accelerated = true
-}
+
+[scratchpads.video.animation_config]
+duration = 280
+easing = "cubic-bezier(0.25, 0.46, 0.45, 0.94)"
+animation_type = "fromBottom"
+target_fps = 120
+hardware_accelerated = true
 ```
 
 ### **Designer App with Overshoot**
 ```toml
 [scratchpads.gimp]
 animation = "designer"
-animation_config = {
-    duration = 320,
-    easing = "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
-    animation_type = "fromLeft",
-    offset = "100%"
-}
+
+[scratchpads.gimp.animation_config]
+duration = 320
+easing = "cubic-bezier(0.68, -0.55, 0.265, 1.55)"
+animation_type = "fromLeft"
+offset = "100%"
 ```
 
 ---
@@ -185,36 +202,31 @@ animation_config = {
 
 ### **Basic Animation Config**
 ```toml
-animation_config = {
-    duration = 300,              # Animation duration in ms
-    easing = "ease-out",         # Easing function
-    offset = "100%",             # Start/end offset
-    delay = 0,                   # Delay before start
-    target_fps = 60,             # Target frame rate
-    hardware_accelerated = true  # GPU acceleration hint
-}
+[animation_config]
+duration = 300
+easing = "ease-out"
+offset = "100%"
+delay = 0
+target_fps = 60
+hardware_accelerated = true
 ```
 
 ### **Physics Spring Config**
 ```toml
-spring = {
-    stiffness = 300.0,    # Spring tension (higher = snappier)
-    damping = 30.0,       # Bounce control (higher = less bouncy)  
-    initial_velocity = 0.0,  # Starting speed
-    mass = 1.0            # Object weight
-}
+[spring]
+stiffness = 300.0
+damping = 30.0
+initial_velocity = 0.0
+mass = 1.0
 ```
 
 ### **Multi-Property Config**
 ```toml
-properties = [
-    { 
-        property = "x",           # x, y, width, height, opacity, scale, rotation
-        from = "100%", 
-        to = "25%",
-        easing = "ease-out"       # Per-property easing
-    }
-]
+[[properties]]
+property = "x"
+from = "100%"
+to = "25%"
+easing = "ease-out"
 ```
 
 ---
@@ -232,13 +244,13 @@ offset = 100
 ```toml
 [scratchpads.term]
 animation = "fromTop"
-animation_config = {
-    duration = 250,
-    easing = "ease-out-cubic",    # Much smoother!
-    offset = "100px",
-    target_fps = 60,              # Locked 60fps
-    hardware_accelerated = true   # GPU acceleration
-}
+
+[scratchpads.term.animation_config]
+duration = 250
+easing = "ease-out-cubic"
+offset = "100px"
+target_fps = 60
+hardware_accelerated = true
 ```
 
 ---
