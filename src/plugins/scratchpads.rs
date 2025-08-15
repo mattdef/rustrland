@@ -12,6 +12,7 @@ use tracing::{debug, error, info, warn};
 pub type ScratchpadConfigRef = Arc<ScratchpadConfig>;
 pub type ValidatedConfigRef = Arc<ValidatedConfig>;
 
+use crate::animation::{AnimationConfig, WindowAnimator};
 use crate::ipc::{
     EnhancedHyprlandClient, HyprlandClient, HyprlandEvent, MonitorInfo, WindowGeometry,
 };
@@ -30,6 +31,7 @@ pub struct ScratchpadConfig {
 
     // Animation config
     pub animation: Option<String>,
+    pub animation_config: Option<AnimationConfig>,
     pub margin: Option<i32>,
     pub offset: Option<String>,
     pub hide_delay: Option<u32>,
@@ -61,6 +63,7 @@ impl Default for ScratchpadConfig {
             class: String::new(),
             size: "50% 50%".to_string(),
             animation: None,
+            animation_config: None,
             margin: None,
             offset: None,
             hide_delay: None,
@@ -90,6 +93,7 @@ pub struct ValidatedConfig {
     pub class: String,
     pub size: String,
     pub animation: Option<String>,
+    pub animation_config: Option<AnimationConfig>,
     pub margin: Option<i32>,
     pub offset: Option<String>,
     pub hide_delay: Option<u32>,
@@ -126,6 +130,7 @@ impl Default for ValidatedConfig {
             class: String::new(),
             size: "50% 50%".to_string(),
             animation: None,
+            animation_config: None,
             margin: None,
             offset: None,
             hide_delay: None,
@@ -347,6 +352,7 @@ impl ConfigValidator {
             class: config.class.clone(),
             size: config.size.clone(),
             animation: config.animation.clone(),
+            animation_config: config.animation_config.clone(),
             margin: config.margin,
             offset: config.offset.clone(),
             hide_delay: config.hide_delay,
@@ -542,6 +548,7 @@ pub struct ScratchpadsPlugin {
 
     // Animation and delay management
     pub hide_tasks: HashMap<String, JoinHandle<()>>,
+    pub window_animator: Arc<Mutex<WindowAnimator>>,
 
     // Validated configurations (Arc-optimized)
     pub validated_configs: HashMap<String, ValidatedConfigRef>,
@@ -566,6 +573,7 @@ impl ScratchpadsPlugin {
             focused_window: None,
             resolved_configs: HashMap::new(),
             hide_tasks: HashMap::new(),
+            window_animator: Arc::new(Mutex::new(WindowAnimator::new())),
             validated_configs: HashMap::new(),
             geometry_cache: Arc::new(RwLock::new(HashMap::new())),
             sync_tasks: HashMap::new(),
@@ -574,7 +582,11 @@ impl ScratchpadsPlugin {
 
     pub async fn set_hyprland_client(&self, client: Arc<HyprlandClient>) {
         let mut client_guard = self.hyprland_client.lock().await;
-        *client_guard = Some(client);
+        *client_guard = Some(client.clone());
+
+        // Set the client for the WindowAnimator as well
+        let animator = self.window_animator.lock().await;
+        animator.set_hyprland_client(client).await;
     }
 
     /// Get current monitors with caching for performance
@@ -914,6 +926,11 @@ impl ScratchpadsPlugin {
         // Show window
         client.show_window(&window.address.to_string()).await?;
 
+        // Trigger show animation if configured
+        if config.animation.is_some() || config.animation_config.is_some() {
+            self.animate_window_show(&window, config, monitor).await?;
+        }
+
         // Focus if smart_focus is enabled
         if config.smart_focus {
             client.focus_window(&window.address.to_string()).await?;
@@ -1009,6 +1026,11 @@ impl ScratchpadsPlugin {
         let client = self.get_hyprland_client().await?;
 
         for window in windows {
+            // Trigger hide animation if configured
+            if config.animation.is_some() || config.animation_config.is_some() {
+                self.animate_window_hide(window, config).await?;
+            }
+
             if config.close_on_hide {
                 client.close_window(&window.address.to_string()).await?;
             } else {
@@ -1198,11 +1220,20 @@ impl Plugin for ScratchpadsPlugin {
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
 
+                    // Parse animation_config if present
+                    let animation_config = sc.get("animation_config").and_then(|v| match v {
+                        toml::Value::Table(_) => {
+                            crate::animation::AnimationConfig::deserialize(v.clone()).ok()
+                        }
+                        _ => None,
+                    });
+
                     let mut config = ScratchpadConfig {
                         command,
                         class,
                         size,
                         animation,
+                        animation_config,
                         ..Default::default()
                     };
 
@@ -1408,6 +1439,14 @@ impl ScratchpadsPlugin {
                         debug!("✅ Added window to scratchpad '{}' state", scratchpad_name);
                     }
 
+                    // Apply scratchpad geometry and trigger animation
+                    if let Err(e) = self
+                        .setup_scratchpad_window(window_address, scratchpad_name, config)
+                        .await
+                    {
+                        warn!("Failed to setup scratchpad window: {}", e);
+                    }
+
                     // Start geometry sync for this window
                     self.start_geometry_sync(window_address).await;
 
@@ -1551,6 +1590,159 @@ impl ScratchpadsPlugin {
                 debug!("🎯 Updated focus time for scratchpad '{}'", scratchpad_name);
             }
         }
+    }
+
+    /// Animate window show with configured animation
+    async fn animate_window_show(
+        &self,
+        window: &hyprland::data::Client,
+        config: &ValidatedConfig,
+        monitor: &MonitorInfo,
+    ) -> Result<()> {
+        let mut animator = self.window_animator.lock().await;
+
+        // Use animation_config if available, otherwise create from basic animation
+        let animation_config = if let Some(anim_config) = &config.animation_config {
+            anim_config.clone()
+        } else if let Some(animation_type) = &config.animation {
+            // Create basic animation config from legacy animation field
+            crate::animation::AnimationConfig {
+                animation_type: animation_type.clone(),
+                direction: None,
+                duration: 250, // Default duration
+                easing: "ease-out-cubic".to_string(),
+                delay: 0,
+                offset: config.offset.clone().unwrap_or("100px".to_string()),
+                scale_from: 1.0,
+                opacity_from: 0.0,
+                spring: None,
+                properties: None,
+                sequence: None,
+                target_fps: 60,
+                hardware_accelerated: true,
+            }
+        } else {
+            return Ok(()); // No animation configured
+        };
+
+        // Get target geometry
+        let target_geometry = GeometryCalculator::calculate_geometry(config, monitor)?;
+
+        // Trigger show animation
+        animator
+            .show_window(
+                &window.address.to_string(),
+                (target_geometry.x, target_geometry.y),
+                (target_geometry.width, target_geometry.height),
+                animation_config,
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    /// Animate window hide with configured animation
+    async fn animate_window_hide(
+        &self,
+        window: &hyprland::data::Client,
+        config: &ValidatedConfig,
+    ) -> Result<()> {
+        let mut animator = self.window_animator.lock().await;
+
+        // Use animation_config if available, otherwise create from basic animation
+        let animation_config = if let Some(anim_config) = &config.animation_config {
+            anim_config.clone()
+        } else if let Some(animation_type) = &config.animation {
+            // Create basic animation config from legacy animation field
+            crate::animation::AnimationConfig {
+                animation_type: animation_type.clone(),
+                direction: None,
+                duration: 200, // Slightly faster for hide
+                easing: "ease-in-cubic".to_string(),
+                delay: 0,
+                offset: config.offset.clone().unwrap_or("100px".to_string()),
+                scale_from: 1.0,
+                opacity_from: 1.0,
+                spring: None,
+                properties: None,
+                sequence: None,
+                target_fps: 60,
+                hardware_accelerated: true,
+            }
+        } else {
+            return Ok(()); // No animation configured
+        };
+
+        // Get current window position and size from Hyprland data
+        let current_position = (window.at.0 as i32, window.at.1 as i32);
+        let current_size = (window.size.0 as i32, window.size.1 as i32);
+
+        // Trigger hide animation
+        animator
+            .hide_window(
+                &window.address.to_string(),
+                current_position,
+                current_size,
+                animation_config,
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    /// Setup a newly opened scratchpad window with proper geometry and animation
+    async fn setup_scratchpad_window(
+        &self,
+        window_address: &str,
+        scratchpad_name: &str,
+        _config: &ScratchpadConfigRef,
+    ) -> Result<()> {
+        info!(
+            "🎬 Setting up scratchpad window: {} for '{}'",
+            window_address, scratchpad_name
+        );
+
+        // Get window geometry (we don't need the full client object for geometry/animation)
+        let _window_geometry = self
+            .enhanced_client
+            .get_window_geometry(window_address)
+            .await?;
+
+        // Get monitor info
+        let monitors = self.get_monitors().await?;
+        let monitor = monitors
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("No monitors found"))?;
+
+        // Get validated config
+        let validated_config = self.validated_configs.get(scratchpad_name).ok_or_else(|| {
+            anyhow::anyhow!("No validated config for scratchpad: {}", scratchpad_name)
+        })?;
+
+        // Calculate and apply proper geometry
+        let target_geometry = GeometryCalculator::calculate_geometry(validated_config, monitor)?;
+
+        let client = self.get_hyprland_client().await?;
+        client
+            .move_resize_window(
+                window_address,
+                target_geometry.x,
+                target_geometry.y,
+                target_geometry.width,
+                target_geometry.height,
+            )
+            .await?;
+
+        // Make sure the window is floating
+        client.toggle_floating(window_address).await?;
+
+        info!(
+            "📐 Applied geometry to scratchpad window: {}x{} at ({}, {})",
+            target_geometry.width, target_geometry.height, target_geometry.x, target_geometry.y
+        );
+
+        info!("✅ Scratchpad window '{}' setup complete", scratchpad_name);
+        Ok(())
     }
 }
 
@@ -2004,6 +2196,7 @@ mod tests {
                 class: "test".to_string(),
                 size: "50% 60%".to_string(),
                 animation: None,
+                animation_config: None,
                 margin: Some(10),
                 offset: None,
                 hide_delay: None,

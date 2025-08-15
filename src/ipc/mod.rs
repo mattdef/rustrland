@@ -436,6 +436,23 @@ impl HyprlandClient {
 
         Ok(())
     }
+
+    /// Toggle floating mode for a window
+    pub async fn toggle_floating(&self, address: &str) -> Result<()> {
+        debug!("🎈 Toggling floating for window: {}", address);
+
+        let address = address.to_string();
+        tokio::task::spawn_blocking(move || {
+            std::process::Command::new("hyprctl")
+                .arg("dispatch")
+                .arg("togglefloating")
+                .arg(format!("address:{address}"))
+                .output()
+        })
+        .await??;
+
+        Ok(())
+    }
 }
 
 /// Window properties for animations

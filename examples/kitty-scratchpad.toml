@@ -1,0 +1,29 @@
+# Kitty Terminal Scratchpad Configuration Example
+# Demonstrates correct kitty command and animation setup
+
+[rustrland]
+plugins = ["scratchpads"]
+
+[scratchpads.terminal]
+command = "kitty --title='Terminal Scratchpad'"
+class = "kitty"
+size = "1200px 800px"
+margin = 20
+animation = "fromTop"
+
+[scratchpads.terminal.animation_config]
+duration = 500
+easing = "ease-out-cubic"
+offset = "100px"
+target_fps = 60
+hardware_accelerated = true
+
+# Alternative simplified kitty scratchpad without animation
+[scratchpads.simple_terminal]
+command = "kitty --title='Simple Terminal'"
+class = "kitty"
+size = "80% 60%"
+margin = 20
+lazy = false
+pinned = true
+smart_focus = true

@@ -1,0 +1,36 @@
+# Animation Test Configuration for Rustrland
+# This configuration demonstrates the animation system integration
+
+[scratchpads]
+[scratchpads.terminal]
+animation = "fromTop"
+animation_config = { duration = 250, easing = "ease-out-cubic", offset = "100px" }
+command = "foot --title='Animated Terminal'"
+class = "foot"
+size = "75% 60%"
+
+[scratchpads.browser]
+animation = "fromRight"
+command = "firefox --new-window"
+class = "firefox"
+size = "80% 80%"
+
+[scratchpads.browser.animation_config]
+duration = 300
+easing = "ease-out-cubic"
+offset = "200px"
+target_fps = 60
+hardware_accelerated = true
+
+[scratchpads.calculator]
+animation = "fromBottom"
+command = "gnome-calculator"
+class = "gnome-calculator"  
+size = "400px 500px"
+
+[scratchpads.calculator.animation_config]
+duration = 350
+easing = "ease-out-back"
+offset = "150px"
+opacity_from = 0.0
+scale_from = 0.8
