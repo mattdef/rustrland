@@ -830,33 +830,46 @@ impl ScratchpadsPlugin {
     /// Main toggle logic for scratchpads
     async fn toggle_scratchpad(&mut self, name: &str) -> Result<String> {
         info!("🔄 Toggling scratchpad: {}", name);
-        
+
         let validated_config = self.get_validated_config(name)?;
         let client = self.get_hyprland_client().await?;
-        
+
         // Find all windows of this class
-        let windows = client.find_windows_by_class(&validated_config.class).await?;
-        
+        let windows = client
+            .find_windows_by_class(&validated_config.class)
+            .await?;
+
         if windows.is_empty() {
             // No window exists - spawn a new one
-            info!("🚀 No {} window found, spawning new one", validated_config.class);
-            self.spawn_and_show_scratchpad(name, &validated_config).await
+            info!(
+                "🚀 No {} window found, spawning new one",
+                validated_config.class
+            );
+            self.spawn_and_show_scratchpad(name, &validated_config)
+                .await
         } else {
             // Window exists - check if it's visible on current workspace
             let current_workspace = self.get_current_workspace(&client).await?;
             debug!("🖥️ Current workspace detected as: '{}'", current_workspace);
-            
+
             let visible_window = self.find_visible_window(&windows, &current_workspace);
-            
+
             if let Some(window) = visible_window {
                 // Window is visible - hide it
-                info!("👁️ {} window visible on current workspace, hiding it", validated_config.class);
-                self.hide_scratchpad_window(&client, &window, name).await
+                info!(
+                    "👁️ {} window visible on current workspace, hiding it",
+                    validated_config.class
+                );
+                self.hide_scratchpad_window(&client, window, name).await
             } else {
                 // Window exists but not visible - show it
-                info!("🙈 {} window exists but hidden, showing it", validated_config.class);
+                info!(
+                    "🙈 {} window exists but hidden, showing it",
+                    validated_config.class
+                );
                 let window = &windows[0]; // Use first window
-                self.show_scratchpad_window(&client, window, &validated_config, name).await
+                self.show_scratchpad_window(&client, window, &validated_config, name)
+                    .await
             }
         }
     }
@@ -963,7 +976,7 @@ impl ScratchpadsPlugin {
             warn!("Failed to reset window opacity: {}", e);
         }
 
-        // Apply final geometry 
+        // Apply final geometry
         self.apply_geometry(&window, config, monitor).await?;
 
         // Show window
@@ -1002,164 +1015,212 @@ impl ScratchpadsPlugin {
         }
     }
 
-    
-    
     /// Get current workspace information
     async fn get_current_workspace(&self, client: &HyprlandClient) -> Result<String> {
         client.get_active_workspace().await
     }
-    
+
     /// Find if any window is visible on the current workspace  
-    fn find_visible_window<'a>(&self, windows: &'a [hyprland::data::Client], current_workspace: &str) -> Option<&'a hyprland::data::Client> {
+    fn find_visible_window<'a>(
+        &self,
+        windows: &'a [hyprland::data::Client],
+        current_workspace: &str,
+    ) -> Option<&'a hyprland::data::Client> {
         // A window is visible if it's on the current workspace and not in a special workspace
         for window in windows {
             let workspace_id = window.workspace.id.to_string();
             let workspace_name = &window.workspace.name;
-            
-            debug!("🔍 Checking window {} - workspace ID: '{}', name: '{}', current: '{}'", 
-                   window.address, workspace_id, workspace_name, current_workspace);
-            
+
+            debug!(
+                "🔍 Checking window {} - workspace ID: '{}', name: '{}', current: '{}'",
+                window.address, workspace_id, workspace_name, current_workspace
+            );
+
             // Check if window is on current workspace and not special
-            let is_visible = workspace_id == current_workspace && !workspace_name.starts_with("special:");
+            let is_visible =
+                workspace_id == current_workspace && !workspace_name.starts_with("special:");
             debug!("👁️ Window {} visibility: {}", window.address, is_visible);
-            
+
             if is_visible {
                 return Some(window);
             }
         }
         None
     }
-    
+
     /// Spawn and show a new scratchpad window
-    async fn spawn_and_show_scratchpad(&mut self, name: &str, config: &ValidatedConfig) -> Result<String> {
+    async fn spawn_and_show_scratchpad(
+        &mut self,
+        name: &str,
+        config: &ValidatedConfig,
+    ) -> Result<String> {
         info!("🚀 Spawning and showing scratchpad: {}", name);
-        
+
         let client = self.get_hyprland_client().await?;
-        
+
         // Expand command with variables
         let variables = self.variables.read().await;
         let command = self.expand_command(&config.command, &variables);
-        
-        // Spawn the application 
+
+        // Spawn the application
         client.spawn_app(&command).await?;
-        
+
         // Wait for window to appear and configure it
-        if let Some(window) = self.wait_for_window_to_appear(&client, &config.class).await? {
-            self.configure_new_scratchpad_window(&client, &window, config, name).await?;
-            Ok(format!("Scratchpad '{}' spawned and shown", name))
+        if let Some(window) = self
+            .wait_for_window_to_appear(&client, &config.class)
+            .await?
+        {
+            self.configure_new_scratchpad_window(&client, &window, config, name)
+                .await?;
+            Ok(format!("Scratchpad '{name}' spawned and shown"))
         } else {
-            Err(anyhow::anyhow!("Failed to find spawned window for scratchpad '{}'", name))
+            Err(anyhow::anyhow!(
+                "Failed to find spawned window for scratchpad '{}'",
+                name
+            ))
         }
     }
-    
+
     /// Hide a scratchpad window by moving it to special workspace
-    async fn hide_scratchpad_window(&self, client: &HyprlandClient, window: &hyprland::data::Client, name: &str) -> Result<String> {
+    async fn hide_scratchpad_window(
+        &self,
+        client: &HyprlandClient,
+        window: &hyprland::data::Client,
+        name: &str,
+    ) -> Result<String> {
         info!("🙈 Hiding scratchpad window: {}", window.address);
-        
-        // Move to special workspace named after the scratchpad  
-        let special_workspace = format!("special:{}", name);
-        client.move_window_to_workspace(&window.address.to_string(), &special_workspace).await?;
-        
-        Ok(format!("Scratchpad '{}' hidden", name))
+
+        // Move to special workspace named after the scratchpad
+        let special_workspace = format!("special:{name}");
+        client
+            .move_window_to_workspace(&window.address.to_string(), &special_workspace)
+            .await?;
+
+        Ok(format!("Scratchpad '{name}' hidden"))
     }
-    
+
     /// Show a scratchpad window on current workspace
-    async fn show_scratchpad_window(&self, client: &HyprlandClient, window: &hyprland::data::Client, config: &ValidatedConfig, name: &str) -> Result<String> {
+    async fn show_scratchpad_window(
+        &self,
+        client: &HyprlandClient,
+        window: &hyprland::data::Client,
+        config: &ValidatedConfig,
+        name: &str,
+    ) -> Result<String> {
         info!("👁️ Showing scratchpad window: {}", window.address);
-        
+
         let window_address = window.address.to_string();
-        
+
         // Move to current workspace (not special)
         let current_workspace = self.get_current_workspace(client).await?;
-        client.move_window_to_workspace(&window_address, &current_workspace).await?;
-        
+        client
+            .move_window_to_workspace(&window_address, &current_workspace)
+            .await?;
+
         // Apply geometry and focus
         if let Ok(monitor) = self.get_target_monitor(config).await {
             let geometry = GeometryCalculator::calculate_geometry(config, &monitor)?;
-            
+
             // Handle animations for showing existing window
             if let Some(animation_type) = &config.animation {
                 match animation_type.as_str() {
                     "fromTop" => {
                         info!("🎬 Starting fromTop animation for existing window");
-                        
+
                         // Calculate offset - use animation_config offset if available, otherwise default
                         // For fromTop animation, we need enough offset to position window above screen
                         let offset_pixels = if let Some(anim_config) = &config.animation_config {
-                            let parsed_offset = self.parse_offset(&anim_config.offset, geometry.height).unwrap_or(100);
+                            let parsed_offset = self
+                                .parse_offset(&anim_config.offset, geometry.height)
+                                .unwrap_or(100);
                             // Ensure minimum offset for visible animation effect
                             parsed_offset.max(geometry.height + 50) // Window height + 50px buffer
                         } else {
                             geometry.height + 100 // Window height + 100px buffer for smooth animation
                         };
-                        
+
                         // Start position: above the screen (off-screen)
                         let start_y = geometry.y - offset_pixels;
-                        info!("🎯 FromTop (existing): start_y={}, final_y={}, offset={}px", start_y, geometry.y, offset_pixels);
-                        
+                        info!(
+                            "🎯 FromTop (existing): start_y={}, final_y={}, offset={}px",
+                            start_y, geometry.y, offset_pixels
+                        );
+
                         // Position window at start position (above screen)
-                        client.resize_and_position_window(
-                            &window_address,
-                            geometry.x,
-                            start_y,
-                            geometry.width,
-                            geometry.height,
-                        ).await?;
-                        
+                        client
+                            .resize_and_position_window(
+                                &window_address,
+                                geometry.x,
+                                start_y,
+                                geometry.width,
+                                geometry.height,
+                            )
+                            .await?;
+
                         // Brief delay to ensure start position is applied
                         tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
-                        
+
                         // Move to final position - Hyprland will animate smoothly
-                        client.resize_and_position_window(
-                            &window_address,
-                            geometry.x,
-                            geometry.y,
-                            geometry.width,
-                            geometry.height,
-                        ).await?;
-                        
+                        client
+                            .resize_and_position_window(
+                                &window_address,
+                                geometry.x,
+                                geometry.y,
+                                geometry.width,
+                                geometry.height,
+                            )
+                            .await?;
+
                         info!("✨ FromTop animation (existing) setup complete");
                     }
                     _ => {
                         // Other animation types - just apply geometry
-                        client.resize_and_position_window(
-                            &window_address,
-                            geometry.x,
-                            geometry.y,
-                            geometry.width,
-                            geometry.height,
-                        ).await?;
-                        
+                        client
+                            .resize_and_position_window(
+                                &window_address,
+                                geometry.x,
+                                geometry.y,
+                                geometry.width,
+                                geometry.height,
+                            )
+                            .await?;
+
                         info!("✨ Animation '{}' - geometry applied", animation_type);
                     }
                 }
             } else {
                 // No animation - apply geometry directly
-                client.resize_and_position_window(
-                    &window_address,
-                    geometry.x,
-                    geometry.y,
-                    geometry.width,
-                    geometry.height,
-                ).await?;
+                client
+                    .resize_and_position_window(
+                        &window_address,
+                        geometry.x,
+                        geometry.y,
+                        geometry.width,
+                        geometry.height,
+                    )
+                    .await?;
             }
-            
+
             // Focus if configured
             if config.smart_focus {
                 client.focus_window(&window_address).await?;
             }
         }
-        
-        Ok(format!("Scratchpad '{}' shown", name))
+
+        Ok(format!("Scratchpad '{name}' shown"))
     }
-    
+
     /// Wait for a window to appear after spawning
-    async fn wait_for_window_to_appear(&self, client: &HyprlandClient, class: &str) -> Result<Option<hyprland::data::Client>> {
-        use tokio::time::{timeout, Duration, sleep};
-        
+    async fn wait_for_window_to_appear(
+        &self,
+        client: &HyprlandClient,
+        class: &str,
+    ) -> Result<Option<hyprland::data::Client>> {
+        use tokio::time::{sleep, timeout, Duration};
+
         let wait_timeout = Duration::from_secs(5);
         let check_interval = Duration::from_millis(100);
-        
+
         timeout(wait_timeout, async {
             loop {
                 if let Ok(windows) = client.find_windows_by_class(class).await {
@@ -1169,101 +1230,131 @@ impl ScratchpadsPlugin {
                 }
                 sleep(check_interval).await;
             }
-        }).await.unwrap_or(Ok(None))
+        })
+        .await
+        .unwrap_or(Ok(None))
     }
-    
+
     /// Configure a newly spawned scratchpad window
-    async fn configure_new_scratchpad_window(&self, client: &HyprlandClient, window: &hyprland::data::Client, config: &ValidatedConfig, name: &str) -> Result<()> {
-        info!("🔧 Configuring new scratchpad window: {} for '{}'", window.address, name);
-        
+    async fn configure_new_scratchpad_window(
+        &self,
+        client: &HyprlandClient,
+        window: &hyprland::data::Client,
+        config: &ValidatedConfig,
+        name: &str,
+    ) -> Result<()> {
+        info!(
+            "🔧 Configuring new scratchpad window: {} for '{}'",
+            window.address, name
+        );
+
         let window_address = window.address.to_string();
-        
+
         // Make window floating
         client.toggle_floating(&window_address).await?;
-        
+
         // Get target monitor and apply geometry
         let monitor = self.get_target_monitor(config).await?;
         let geometry = GeometryCalculator::calculate_geometry(config, &monitor)?;
-        
+
         // Handle animations based on configuration
         if let Some(animation_type) = &config.animation {
             match animation_type.as_str() {
                 "fromTop" => {
                     info!("🎬 Starting fromTop animation");
-                    
+
                     // Calculate offset - use animation_config offset if available, otherwise default
-                    info!("🔧 Calculating fromTop offset for window geometry: {}x{}", geometry.width, geometry.height);
-                    
+                    info!(
+                        "🔧 Calculating fromTop offset for window geometry: {}x{}",
+                        geometry.width, geometry.height
+                    );
+
                     let offset_pixels = if let Some(anim_config) = &config.animation_config {
                         info!("🔧 Using animation_config offset: {}", anim_config.offset);
-                        let parsed_offset = self.parse_offset(&anim_config.offset, geometry.height).unwrap_or(100);
+                        let parsed_offset = self
+                            .parse_offset(&anim_config.offset, geometry.height)
+                            .unwrap_or(100);
                         info!("🔧 Parsed offset: {}px", parsed_offset);
                         // Ensure minimum offset for visible animation effect
                         let final_offset = parsed_offset.max(geometry.height + 50); // Window height + 50px buffer
-                        info!("🔧 Final offset (max of parsed and window_height+50): {}px", final_offset);
+                        info!(
+                            "🔧 Final offset (max of parsed and window_height+50): {}px",
+                            final_offset
+                        );
                         final_offset
                     } else {
                         let default_offset = geometry.height + 100; // Window height + 100px buffer for smooth animation
                         info!("🔧 Using default offset: {}px", default_offset);
                         default_offset
                     };
-                    
+
                     // Start position: above the screen (off-screen)
                     let start_y = geometry.y - offset_pixels;
-                    info!("🎯 FromTop animation: start_y={}, final_y={}, offset={}px", start_y, geometry.y, offset_pixels);
-                    
+                    info!(
+                        "🎯 FromTop animation: start_y={}, final_y={}, offset={}px",
+                        start_y, geometry.y, offset_pixels
+                    );
+
                     // Position window at start position (above screen)
-                    client.resize_and_position_window(
-                        &window_address,
-                        geometry.x,
-                        start_y,
-                        geometry.width,
-                        geometry.height,
-                    ).await?;
-                    
+                    client
+                        .resize_and_position_window(
+                            &window_address,
+                            geometry.x,
+                            start_y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+
                     // Brief delay to ensure start position is applied
                     tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
-                    
+
                     // Move to final position - Hyprland will animate smoothly
-                    client.resize_and_position_window(
-                        &window_address,
-                        geometry.x,
-                        geometry.y,
-                        geometry.width,
-                        geometry.height,
-                    ).await?;
-                    
+                    client
+                        .resize_and_position_window(
+                            &window_address,
+                            geometry.x,
+                            geometry.y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+
                     info!("✨ FromTop animation setup complete - Hyprland handling transition");
                 }
                 _ => {
                     // Other animation types - just apply geometry
-                    client.resize_and_position_window(
-                        &window_address,
-                        geometry.x,
-                        geometry.y,
-                        geometry.width,
-                        geometry.height,
-                    ).await?;
-                    
+                    client
+                        .resize_and_position_window(
+                            &window_address,
+                            geometry.x,
+                            geometry.y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+
                     info!("✨ Animation '{}' - geometry applied", animation_type);
                 }
             }
         } else {
             // No animation - apply geometry directly
-            client.resize_and_position_window(
-                &window_address,
-                geometry.x,
-                geometry.y,
-                geometry.width,
-                geometry.height,
-            ).await?;
+            client
+                .resize_and_position_window(
+                    &window_address,
+                    geometry.x,
+                    geometry.y,
+                    geometry.width,
+                    geometry.height,
+                )
+                .await?;
         }
-        
+
         // Focus if configured
         if config.smart_focus {
             client.focus_window(&window_address).await?;
         }
-        
+
         Ok(())
     }
 
@@ -1285,16 +1376,16 @@ impl ScratchpadsPlugin {
             "ease-out-cubic" => {
                 let t1 = 1.0 - t;
                 1.0 - t1 * t1 * t1
-            },
+            }
             "ease-out-quart" => {
                 let t1 = 1.0 - t;
                 1.0 - t1 * t1 * t1 * t1
-            },
+            }
             "ease-out-smooth" => {
                 // Smoother variant - less aggressive than cubic
                 let t1 = 1.0 - t;
                 1.0 - t1 * t1 * (2.0 - t1)
-            },
+            }
             "ease-in-cubic" => t.powi(3),
             "ease-in-out-cubic" => {
                 if t < 0.5 {
@@ -1302,10 +1393,11 @@ impl ScratchpadsPlugin {
                 } else {
                     1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
                 }
-            },
+            }
             "ease-out" => 1.0 - (1.0 - t).powi(2),
             "ease-in" => t.powi(2),
-            "linear" | _ => t,
+            "linear" => t,
+            _ => t,
         }
     }
 

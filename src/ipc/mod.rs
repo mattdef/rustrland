@@ -408,9 +408,9 @@ impl HyprlandClient {
         debug!("🖥️ Getting active workspace");
 
         use hyprland::data::{Workspace, Workspaces};
-        
+
         let workspaces = with_hyprland_timeout(Workspaces::get).await?;
-        
+
         // Find the focused workspace
         for workspace in workspaces.iter() {
             if workspace.id > 0 && workspace.windows > 0 {
@@ -419,7 +419,7 @@ impl HyprlandClient {
                 return Ok(workspace.id.to_string());
             }
         }
-        
+
         // Fallback to workspace 1
         Ok("1".to_string())
     }

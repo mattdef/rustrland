@@ -175,7 +175,7 @@ See `KEYBINDINGS.md` for complete setup guide and alternative key schemes.
 - **tracing**: Structured logging
 - **anyhow/thiserror**: Error handling
 
-## Current Status (v0.2.5)
+## Current Status (v0.3.4)
 
 ### ✅ Fully Implemented
 - **Production-Ready Scratchpad System**: Complete scratchpad functionality with comprehensive enhancements
