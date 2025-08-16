@@ -407,6 +407,7 @@ impl LostWindowsPlugin {
                 y: m.y,
                 scale: m.scale,
                 is_focused: m.focused,
+                active_workspace_id: m.active_workspace.id,
             })
             .collect();
 
@@ -865,6 +866,7 @@ mod tests {
             y: 0,
             scale: 1.0,
             is_focused: true,
+            active_workspace_id: 1,
         };
 
         let windows = vec![
@@ -930,6 +932,7 @@ mod tests {
             y: 0,
             scale: 1.0,
             is_focused: true,
+            active_workspace_id: 1,
         };
 
         let monitors = vec![monitor];

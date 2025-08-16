@@ -2,7 +2,7 @@ use anyhow::Result;
 use hyprland::data::{Client, Clients, Monitor, Monitors};
 use hyprland::dispatch::{Dispatch, DispatchType};
 use hyprland::event_listener::EventListener;
-use hyprland::shared::HyprData;
+use hyprland::shared::{HyprData, HyprDataActiveOptional, WorkspaceType};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
@@ -75,19 +75,58 @@ impl HyprlandClient {
         let mut receiver_guard = self.event_receiver.lock().await;
         *receiver_guard = Some(rx);
 
-        // Spawn background task to handle events
+        // Spawn background task to handle events with focus tracking
         tokio::spawn(async move {
-            // For now, create a basic event listener that generates periodic events
-            // This should be replaced with actual Hyprland event listening
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
-
+            debug!("🎧 Starting focus tracking event system");
+            
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500)); // Check every 500ms for responsive focus tracking
+            let mut last_focused_window: Option<String> = None;
+            
             loop {
                 interval.tick().await;
-
-                // Generate a dummy event for testing
-                let event = HyprlandEvent::Other("heartbeat".to_string());
-
-                if tx.send(event).await.is_err() {
+                
+                // Try to get the currently focused window using activewindow
+                match with_hyprland_timeout(|| {
+                    use hyprland::data::{Client};
+                    
+                    // Get the active window directly
+                    match Client::get_active() {
+                        Ok(Some(client)) => Ok(Some(client.address.to_string())),
+                        Ok(None) => Ok(None),
+                        Err(e) => Err(e),
+                    }
+                }).await {
+                    Ok(current_focused) => {
+                        // Check if focus has changed
+                        if current_focused != last_focused_window {
+                            if let Some(ref current_window) = current_focused {
+                                debug!("👁️ Focus changed to: {}", current_window);
+                                
+                                if let Err(e) = tx.send(HyprlandEvent::WindowFocusChanged { 
+                                    window: current_window.clone() 
+                                }).await {
+                                    warn!("Failed to send window focus event: {}", e);
+                                }
+                            } else if last_focused_window.is_some() {
+                                debug!("👁️ Focus lost (no focused window)");
+                                
+                                if let Err(e) = tx.send(HyprlandEvent::WindowFocusChanged { 
+                                    window: "none".to_string() 
+                                }).await {
+                                    warn!("Failed to send window focus lost event: {}", e);
+                                }
+                            }
+                            
+                            last_focused_window = current_focused;
+                        }
+                    }
+                    Err(e) => {
+                        debug!("Failed to get focused window: {}", e);
+                    }
+                }
+                
+                // Send periodic heartbeat for other functionality
+                if let Err(_e) = tx.send(HyprlandEvent::Other("heartbeat".to_string())).await {
                     warn!("Event receiver dropped, stopping event listener");
                     break;
                 }
@@ -562,4 +601,5 @@ pub struct MonitorInfo {
     pub y: i32,
     pub scale: f32,
     pub is_focused: bool,
+    pub active_workspace_id: i32,
 }

@@ -595,16 +595,16 @@ rustrland/
 | Plugin | Status | Tests | Key Features |
 |--------|--------|-------|-------------|
 | **Scratchpads** | ✅ Production | 20/20 | Multi-monitor, caching, events, Pyprland compatible |
-| **Expose** | ✅ Production | Integrated | Grid layout, navigation, Mission Control experience |
-| **Workspaces Follow Focus** | ✅ Production | Integrated | Cross-monitor, focus following, workspace rules |
+| **Expose** | ✅ Development | Integrated | Grid layout, navigation, Mission Control experience |
+| **Workspaces Follow Focus** | ✅ Development | Integrated | Cross-monitor, focus following, workspace rules |
 | **Magnify** | ✅ Production | Integrated | Zoom, animations, accessibility support |
-| **Shift Monitors** | ✅ Production | Integrated | Workspace shifting between monitors |
-| **Toggle Special** | ✅ Production | Integrated | Special workspace management |
-| **Monitors** | ✅ Production | 15/15 | Relative positioning, hotplug, hardware acceleration |
-| **Wallpapers** | ✅ Production | 15/15 | Hardware accel, carousel, multi-monitor support |
-| **System Notifier** | ✅ Production | 10/10 | Log monitoring, animations, desktop notifications |
+| **Shift Monitors** | ✅ Development | Integrated | Workspace shifting between monitors |
+| **Toggle Special** | ✅ Development | Integrated | Special workspace management |
+| **Monitors** | ✅ Development | 15/15 | Relative positioning, hotplug, hardware acceleration |
+| **Wallpapers** | ✅ Development | 15/15 | Hardware accel, carousel, multi-monitor support |
+| **System Notifier** | ✅ Development | 10/10 | Log monitoring, animations, desktop notifications |
 
-**Total**: 9 production-ready plugins with 60+ comprehensive tests passing across all functionality.
+**Total**: 2 production-ready plugins with 60+ comprehensive tests passing across all functionality.
 
 ## What's New in v0.3.3 🔍
 

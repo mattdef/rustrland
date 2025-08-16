@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
@@ -23,10 +23,11 @@ use crate::plugins::Plugin;
 // ============================================================================
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ScratchpadConfig {
     // Basic config
     pub command: String,
-    pub class: String,
+    pub class: Option<String>,
     pub size: String,
 
     // Animation config
@@ -66,7 +67,7 @@ impl Default for ScratchpadConfig {
     fn default() -> Self {
         Self {
             command: String::new(),
-            class: String::new(),
+            class: None,
             size: "50% 50%".to_string(),
             animation: None,
             animation_config: None,
@@ -368,7 +369,10 @@ impl ConfigValidator {
             
             // Expand variables in configuration fields
             validated_config.command = Self::expand_variables(&validated_config.command, variables);
-            validated_config.class = Self::expand_variables(&validated_config.class, variables);
+            // Only expand class if it's not AUTO_DETECT
+            if validated_config.class != "AUTO_DETECT" {
+                validated_config.class = Self::expand_variables(&validated_config.class, variables);
+            }
 
             // Resolve template inheritance
             if let Some(template_name) = &config.r#use {
@@ -400,9 +404,14 @@ impl ConfigValidator {
     }
 
     fn convert_to_validated(config: &ScratchpadConfig) -> ValidatedConfig {
+        let class = match &config.class {
+            Some(class_str) if !class_str.trim().is_empty() => class_str.clone(),
+            _ => "AUTO_DETECT".to_string(),
+        };
+        
         ValidatedConfig {
             command: config.command.clone(),
-            class: config.class.clone(),
+            class,
             size: config.size.clone(),
             animation: config.animation.clone(),
             animation_config: config.animation_config.clone(),
@@ -450,11 +459,7 @@ impl ConfigValidator {
                 .push("Command cannot be empty".to_string());
         }
 
-        if config.class.is_empty() {
-            config
-                .validation_errors
-                .push("Class cannot be empty".to_string());
-        }
+        // Note: Class validation skipped - AUTO_DETECT is resolved after spawning
 
         // Validate size format and pre-calculate for default monitor
         if let Some(default_monitor) = monitors.first() {
@@ -584,8 +589,10 @@ impl ConfigValidator {
         if config.command.is_empty() && !template.command.is_empty() {
             config.command = template.command.clone();
         }
-        if config.class.is_empty() && !template.class.is_empty() {
-            config.class = template.class.clone();
+        if config.class == "AUTO_DETECT" {
+            if let Some(template_class) = &template.class {
+                config.class = template_class.clone();
+            }
         }
         if config.size == "50% 50%" && template.size != "50% 50%" {
             config.size = template.size.clone();
@@ -628,6 +635,15 @@ impl ConfigValidator {
 }
 
 // ============================================================================
+// INTERNAL COMMANDS FOR DELAYED ACTIONS
+// ============================================================================
+
+#[derive(Debug, Clone)]
+pub enum InternalCommand {
+    HysteresisHide { scratchpad_name: String },
+}
+
+// ============================================================================
 // MAIN PLUGIN IMPLEMENTATION
 // ============================================================================
 
@@ -655,6 +671,10 @@ pub struct ScratchpadsPlugin {
     pub hide_tasks: HashMap<String, JoinHandle<()>>,
     pub hysteresis_tasks: HashMap<String, JoinHandle<()>>, // For hysteresis delays
     pub window_animator: Arc<Mutex<WindowAnimator>>,
+    
+    // Internal command channel for hysteresis and other delayed actions
+    pub internal_sender: Option<mpsc::UnboundedSender<InternalCommand>>,
+    pub internal_receiver: Option<mpsc::UnboundedReceiver<InternalCommand>>,
 
     // Validated configurations (Arc-optimized)
     pub validated_configs: HashMap<String, ValidatedConfigRef>,
@@ -666,6 +686,8 @@ pub struct ScratchpadsPlugin {
 
 impl ScratchpadsPlugin {
     pub fn new() -> Self {
+        let (internal_sender, internal_receiver) = mpsc::unbounded_channel();
+        
         Self {
             scratchpads: HashMap::new(),
             states: HashMap::new(),
@@ -682,6 +704,8 @@ impl ScratchpadsPlugin {
             hide_tasks: HashMap::new(),
             hysteresis_tasks: HashMap::new(),
             window_animator: Arc::new(Mutex::new(WindowAnimator::new())),
+            internal_sender: Some(internal_sender),
+            internal_receiver: Some(internal_receiver),
             validated_configs: HashMap::new(),
             geometry_cache: Arc::new(RwLock::new(HashMap::new())),
             sync_tasks: HashMap::new(),
@@ -731,6 +755,7 @@ impl ScratchpadsPlugin {
                 y: m.y,
                 scale: m.scale,
                 is_focused: m.focused,
+                active_workspace_id: m.active_workspace.id,
             })
             .collect();
 
@@ -940,12 +965,18 @@ impl ScratchpadsPlugin {
         info!("🔄 Toggling scratchpad: {}", name);
 
         let validated_config = self.get_validated_config(name)?;
+        debug!("📋 Using config for '{}': class='{}', command='{}'", name, validated_config.class, validated_config.command);
         let client = self.get_hyprland_client().await?;
 
-        // Find all windows of this class
-        let windows = client
-            .find_windows_by_class(&validated_config.class)
-            .await?;
+        // Find all windows of this class (handle AUTO_DETECT case)
+        let windows = if validated_config.class == "AUTO_DETECT" {
+            debug!("🔍 Class is AUTO_DETECT, no existing windows can be found - will spawn new");
+            Vec::new() // Force spawn for auto-detection
+        } else {
+            client
+                .find_windows_by_class(&validated_config.class)
+                .await?
+        };
 
         if windows.is_empty() {
             // No window exists - spawn a new one
@@ -1274,20 +1305,67 @@ impl ScratchpadsPlugin {
         // Spawn the application
         client.spawn_app(&command).await?;
 
-        // Wait for window to appear and configure it
-        if let Some(window) = self
-            .wait_for_window_to_appear(&client, &config.class)
-            .await?
-        {
-            self.configure_new_scratchpad_window(&client, &window, config, name)
-                .await?;
-            Ok(format!("Scratchpad '{name}' spawned and shown"))
+        // Handle auto-detection or use existing class
+        let window = if config.class == "AUTO_DETECT" {
+            info!("🔍 Auto-detecting window class for scratchpad '{}'", name);
+            if let Some(detected_window) = self.wait_for_any_new_window(&client).await? {
+                let detected_class = detected_window.class.clone();
+                info!("✅ Auto-detected class '{}' for scratchpad '{}'", detected_class, name);
+                debug!("🔧 Updating validated config with detected class");
+                
+                // Update the validated config with the detected class
+                if let Some(validated_config) = self.validated_configs.get_mut(name) {
+                    let mut updated_config = (**validated_config).clone();
+                    updated_config.class = detected_class;
+                    self.validated_configs.insert(name.to_string(), Arc::new(updated_config));
+                }
+                
+                detected_window
+            } else {
+                return Err(anyhow::anyhow!(
+                    "Failed to auto-detect window for scratchpad '{}'", 
+                    name
+                ));
+            }
         } else {
-            Err(anyhow::anyhow!(
-                "Failed to find spawned window for scratchpad '{}'",
-                name
-            ))
-        }
+            // Use configured class
+            if let Some(window) = self
+                .wait_for_window_to_appear(&client, &config.class)
+                .await?
+            {
+                window
+            } else {
+                return Err(anyhow::anyhow!(
+                    "Failed to find spawned window for scratchpad '{}'",
+                    name
+                ));
+            }
+        };
+
+        self.configure_new_scratchpad_window(&client, &window, config, name)
+            .await?;
+            
+        // Add window to tracking
+        self.window_to_scratchpad
+            .insert(window.address.to_string(), name.to_string());
+            
+        // Update state
+        let state = self.states.entry(name.to_string()).or_default();
+        state.is_spawned = true;
+        state.last_used = Some(Instant::now());
+
+        let window_state = WindowState {
+            address: window.address.to_string(),
+            is_visible: true,
+            last_position: None,
+            monitor: None,
+            workspace: None,
+            last_focus: Some(Instant::now()),
+        };
+
+        state.windows.push(window_state);
+            
+        Ok(format!("Scratchpad '{name}' spawned and shown"))
     }
 
     /// Hide a scratchpad window by moving it to special workspace
@@ -1333,10 +1411,13 @@ impl ScratchpadsPlugin {
 
         let window_address = window.address.to_string();
 
-        // Move to current workspace (not special)
-        let current_workspace = self.get_current_workspace(client).await?;
+        // Get target monitor and its active workspace
+        let target_monitor = self.get_target_monitor(config).await?;
+        let target_workspace = target_monitor.active_workspace_id.to_string();
+        
+        // Move to target monitor's active workspace (not special)
         client
-            .move_window_to_workspace(&window_address, &current_workspace)
+            .move_window_to_workspace(&window_address, &target_workspace)
             .await?;
 
         // Apply geometry and focus
@@ -1448,6 +1529,42 @@ impl ScratchpadsPlugin {
                 if let Ok(windows) = client.find_windows_by_class(class).await {
                     if !windows.is_empty() {
                         return Ok(Some(windows[0].clone()));
+                    }
+                }
+                sleep(check_interval).await;
+            }
+        })
+        .await
+        .unwrap_or(Ok(None))
+    }
+
+    /// Wait for any new window to appear (for auto-detection)
+    async fn wait_for_any_new_window(
+        &self,
+        client: &HyprlandClient,
+    ) -> Result<Option<hyprland::data::Client>> {
+        use tokio::time::{sleep, timeout, Duration};
+
+        let wait_timeout = Duration::from_secs(5);
+        let check_interval = Duration::from_millis(100);
+
+        // Get current windows before spawning
+        let initial_windows: std::collections::HashSet<_> = client
+            .get_windows()
+            .await?
+            .into_iter()
+            .map(|w| w.address.to_string())
+            .collect();
+
+        timeout(wait_timeout, async {
+            loop {
+                if let Ok(current_windows) = client.get_windows().await {
+                    // Find new windows
+                    for window in current_windows {
+                        if !initial_windows.contains(&window.address.to_string()) {
+                            info!("🔍 Found new window: {} (class: {})", window.address, window.class);
+                            return Ok(Some(window));
+                        }
                     }
                 }
                 sleep(check_interval).await;
@@ -1906,7 +2023,7 @@ impl Plugin for ScratchpadsPlugin {
 
                     let mut config = ScratchpadConfig {
                         command,
-                        class,
+                        class: Some(class),
                         size,
                         animation,
                         animation_config,
@@ -1951,6 +2068,23 @@ impl Plugin for ScratchpadsPlugin {
                     }
                     if let Some(toml::Value::Integer(max_instances)) = sc.get("max_instances") {
                         config.max_instances = Some(*max_instances as u32);
+                    }
+                    
+                    // Parse unfocus field
+                    if let Some(toml::Value::String(unfocus_behavior)) = sc.get("unfocus") {
+                        config.unfocus = Some(unfocus_behavior.clone());
+                    }
+                    
+                    // Parse hysteresis field 
+                    if let Some(toml::Value::Float(hysteresis)) = sc.get("hysteresis") {
+                        config.hysteresis = Some(*hysteresis as f32);
+                    } else if let Some(toml::Value::Integer(hysteresis)) = sc.get("hysteresis") {
+                        config.hysteresis = Some(*hysteresis as f32);
+                    }
+                    
+                    // Parse restore_focus field
+                    if let Some(toml::Value::Boolean(restore_focus)) = sc.get("restore_focus") {
+                        config.restore_focus = *restore_focus;
                     }
 
                     self.scratchpads.insert(name.clone(), Arc::new(config));
@@ -2011,6 +2145,9 @@ impl Plugin for ScratchpadsPlugin {
                 self.handle_other_event(msg).await;
             }
         }
+
+        // Process any pending internal commands (like hysteresis hide)
+        self.process_internal_commands().await;
 
         Ok(())
     }
@@ -2202,7 +2339,7 @@ impl ScratchpadsPlugin {
 
         // Find scratchpad that matches this window class
         for (scratchpad_name, config) in &self.scratchpads {
-            if config.class == window_class {
+            if config.class.as_ref() == Some(&window_class) {
                 debug!(
                     "📋 Detected scratchpad window: {} for '{}' (class: '{}')",
                     window_address, scratchpad_name, window_class
@@ -2364,17 +2501,27 @@ impl ScratchpadsPlugin {
 
     async fn handle_focus_changed(&mut self, window_address: &str) {
         debug!("👁️ Focus changed to: {}", window_address);
+        debug!("🗂️ Window-to-scratchpad mapping has {} entries", self.window_to_scratchpad.len());
+        for (addr, name) in &self.window_to_scratchpad {
+            debug!("🗂️ Mapping: {} -> {}", addr, name);
+        }
         
         // Handle previously focused window losing focus
         let prev_window_clone = self.focused_window.clone();
         if let Some(prev_window) = prev_window_clone {
+            debug!("🔄 Previous focused window: {}", prev_window);
             if prev_window != window_address {
+                debug!("🔄 Focus changed from {} to {}, handling unfocus", prev_window, window_address);
                 self.handle_window_unfocus(&prev_window).await;
                 // Store as previous focus for restoration (but only if it's not a scratchpad)
                 if !self.window_to_scratchpad.contains_key(&prev_window) {
                     self.previous_focused_window = Some(prev_window);
                 }
+            } else {
+                debug!("🔄 Same window focused, no unfocus handling needed");
             }
+        } else {
+            debug!("🔄 No previous focused window");
         }
         
         self.focused_window = Some(window_address.to_string());
@@ -2401,9 +2548,12 @@ impl ScratchpadsPlugin {
 
     /// Handle window losing focus with hysteresis support
     async fn handle_window_unfocus(&mut self, window_address: &str) {
+        debug!("🔍 Handling unfocus for window: {}", window_address);
         if let Some(scratchpad_name) = self.window_to_scratchpad.get(window_address) {
             let scratchpad_name = scratchpad_name.clone();
+            debug!("🔍 Window {} belongs to scratchpad '{}'", window_address, scratchpad_name);
             if let Ok(config) = self.get_validated_config(&scratchpad_name) {
+                debug!("🔍 Config for '{}': unfocus={:?}", scratchpad_name, config.unfocus);
                 // Check if unfocus hiding is enabled
                 if config.unfocus.as_deref() == Some("hide") {
                     let hysteresis = config.hysteresis.unwrap_or(0.4);
@@ -2411,8 +2561,14 @@ impl ScratchpadsPlugin {
                     
                     // Schedule hysteresis delay
                     self.schedule_hysteresis_delay(&scratchpad_name, config, hysteresis).await;
+                } else {
+                    debug!("🔍 Scratchpad '{}' does not have unfocus='hide', ignoring", scratchpad_name);
                 }
+            } else {
+                debug!("🔍 Failed to get config for scratchpad '{}'", scratchpad_name);
             }
+        } else {
+            debug!("🔍 Window {} is not a tracked scratchpad window", window_address);
         }
     }
 
@@ -2437,15 +2593,54 @@ impl ScratchpadsPlugin {
         let scratchpad_name_clone = scratchpad_name.to_string();
         let delay_ms = (hysteresis_seconds * 1000.0) as u64;
         
-        // We need to implement the actual hiding logic here
-        // This is simplified - in a real implementation you'd need to communicate back to hide the window
-        let task_handle = tokio::spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
-            debug!("⏰ Hysteresis delay completed for '{}', should trigger hide", scratchpad_name_clone);
-            // TODO: Implement actual hide trigger mechanism
-        });
+        // Get the sender to communicate back to the plugin
+        if let Some(sender) = &self.internal_sender {
+            let sender_clone = sender.clone();
+            
+            let task_handle = tokio::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                debug!("⏰ Hysteresis delay completed for '{}', triggering hide", scratchpad_name_clone);
+                
+                // Send command to hide the scratchpad
+                if let Err(e) = sender_clone.send(InternalCommand::HysteresisHide { 
+                    scratchpad_name: scratchpad_name_clone.clone() 
+                }) {
+                    warn!("Failed to send hysteresis hide command for '{}': {}", scratchpad_name_clone, e);
+                }
+            });
+            
+            self.hysteresis_tasks.insert(scratchpad_name.to_string(), task_handle);
+        } else {
+            warn!("Internal sender not available for hysteresis delay");
+        }
+    }
+
+    /// Process internal commands (like hysteresis hide)
+    async fn process_internal_commands(&mut self) {
+        // Collect commands first to avoid borrow conflicts
+        let mut commands = Vec::new();
         
-        self.hysteresis_tasks.insert(scratchpad_name.to_string(), task_handle);
+        if let Some(receiver) = &mut self.internal_receiver {
+            while let Ok(command) = receiver.try_recv() {
+                commands.push(command);
+            }
+        }
+        
+        // Process the collected commands
+        for command in commands {
+            match command {
+                InternalCommand::HysteresisHide { scratchpad_name } => {
+                    debug!("🙈 Processing hysteresis hide for '{}'", scratchpad_name);
+                    
+                    // Execute the hide action
+                    if let Err(e) = self.hide_scratchpad_direct(&scratchpad_name).await {
+                        warn!("Failed to hide scratchpad '{}' after hysteresis delay: {}", scratchpad_name, e);
+                    } else {
+                        info!("✅ Scratchpad '{}' hidden after hysteresis delay", scratchpad_name);
+                    }
+                }
+            }
+        }
     }
 
     /// Restore focus to previously focused window
@@ -2814,6 +3009,7 @@ mod tests {
             y: 0,
             scale: 1.0,
             is_focused: true,
+            active_workspace_id: 1,
         }
     }
 
@@ -2829,7 +3025,7 @@ mod tests {
         // Check term scratchpad config
         let term_config = plugin.scratchpads.get("term").unwrap();
         assert_eq!(term_config.command, "foot --app-id=term");
-        assert_eq!(term_config.class, "foot");
+        assert_eq!(term_config.class, Some("foot".to_string()));
         assert_eq!(term_config.size, "75% 60%");
         assert!(!term_config.lazy);
         assert!(term_config.pinned);
@@ -2837,7 +3033,7 @@ mod tests {
         // Check browser scratchpad config
         let browser_config = plugin.scratchpads.get("browser").unwrap();
         assert_eq!(browser_config.command, "firefox --new-window");
-        assert_eq!(browser_config.class, "firefox");
+        assert_eq!(browser_config.class, Some("firefox".to_string()));
         assert!(browser_config.lazy);
         assert_eq!(browser_config.excludes, vec!["term"]);
 
@@ -2939,7 +3135,7 @@ mod tests {
         let config = ScratchpadConfig::default();
 
         assert_eq!(config.command, "");
-        assert_eq!(config.class, "");
+        assert_eq!(config.class, None);
         assert_eq!(config.size, "50% 50%");
         assert!(!config.lazy);
         assert!(config.pinned);
@@ -2967,7 +3163,7 @@ mod tests {
             "term".to_string(),
             ScratchpadConfig {
                 command: "foot".to_string(),
-                class: "foot".to_string(),
+                class: Some("foot".to_string()),
                 size: "75% 60%".to_string(),
                 ..Default::default()
             },
@@ -3307,7 +3503,7 @@ mod tests {
             "advanced".to_string(),
             ScratchpadConfig {
                 command: "advanced-app".to_string(),
-                class: "advanced".to_string(),
+                class: Some("advanced".to_string()),
                 size: "80% 70%".to_string(),
                 lazy: true,
                 pinned: false,
