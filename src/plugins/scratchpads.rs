@@ -54,9 +54,9 @@ pub struct ScratchpadConfig {
 
     // Position and focus control
     pub position: Option<String>, // Manual window positioning
-    pub hysteresis: Option<f32>, // Unfocus reactivity control (default: 0.4)
-    pub restore_focus: bool, // Restore focused state when hiding (default: true)
-    pub multi: bool, // Pyprland compatibility alias for multi_window
+    pub hysteresis: Option<f32>,  // Unfocus reactivity control (default: 0.4)
+    pub restore_focus: bool,      // Restore focused state when hiding (default: true)
+    pub multi: bool,              // Pyprland compatibility alias for multi_window
 
     // Multi-window support
     pub multi_window: bool,
@@ -196,7 +196,7 @@ pub struct ScratchpadState {
     pub last_used: Option<Instant>,
     pub excluded_by: HashSet<String>, // Which scratchpads excluded this one
     pub cached_position: Option<(String, i32, i32, i32, i32)>, // monitor, x, y, w, h
-    pub is_attached: bool, // Whether window is attached to scratchpad system
+    pub is_attached: bool,            // Whether window is attached to scratchpad system
 }
 
 impl Default for ScratchpadState {
@@ -255,7 +255,7 @@ impl GeometryCalculator {
             } else {
                 base_y
             };
-            
+
             (x, y)
         };
 
@@ -366,7 +366,7 @@ impl ConfigValidator {
         // First pass: basic validation, variable expansion, and template resolution
         for (name, config) in configs {
             let mut validated_config = Self::convert_to_validated(config);
-            
+
             // Expand variables in configuration fields
             validated_config.command = Self::expand_variables(&validated_config.command, variables);
             // Only expand class if it's not AUTO_DETECT
@@ -408,7 +408,7 @@ impl ConfigValidator {
             Some(class_str) if !class_str.trim().is_empty() => class_str.clone(),
             _ => "AUTO_DETECT".to_string(),
         };
-        
+
         ValidatedConfig {
             command: config.command.clone(),
             class,
@@ -557,9 +557,9 @@ impl ConfigValidator {
                     .validation_errors
                     .push("Hysteresis cannot be negative".to_string());
             } else if hysteresis > 5.0 {
-                config
-                    .validation_warnings
-                    .push("Very high hysteresis value may make unfocus behavior sluggish".to_string());
+                config.validation_warnings.push(
+                    "Very high hysteresis value may make unfocus behavior sluggish".to_string(),
+                );
             }
         }
 
@@ -671,7 +671,7 @@ pub struct ScratchpadsPlugin {
     pub hide_tasks: HashMap<String, JoinHandle<()>>,
     pub hysteresis_tasks: HashMap<String, JoinHandle<()>>, // For hysteresis delays
     pub window_animator: Arc<Mutex<WindowAnimator>>,
-    
+
     // Internal command channel for hysteresis and other delayed actions
     pub internal_sender: Option<mpsc::UnboundedSender<InternalCommand>>,
     pub internal_receiver: Option<mpsc::UnboundedReceiver<InternalCommand>>,
@@ -687,7 +687,7 @@ pub struct ScratchpadsPlugin {
 impl ScratchpadsPlugin {
     pub fn new() -> Self {
         let (internal_sender, internal_receiver) = mpsc::unbounded_channel();
-        
+
         Self {
             scratchpads: HashMap::new(),
             states: HashMap::new(),
@@ -965,7 +965,10 @@ impl ScratchpadsPlugin {
         info!("🔄 Toggling scratchpad: {}", name);
 
         let validated_config = self.get_validated_config(name)?;
-        debug!("📋 Using config for '{}': class='{}', command='{}'", name, validated_config.class, validated_config.command);
+        debug!(
+            "📋 Using config for '{}': class='{}', command='{}'",
+            name, validated_config.class, validated_config.command
+        );
         let client = self.get_hyprland_client().await?;
 
         // Find all windows of this class (handle AUTO_DETECT case)
@@ -1031,7 +1034,8 @@ impl ScratchpadsPlugin {
                 "🚀 No {} window found, spawning new one",
                 validated_config.class
             );
-            self.spawn_and_show_scratchpad(name, &validated_config).await
+            self.spawn_and_show_scratchpad(name, &validated_config)
+                .await
         } else {
             // Window exists - show it
             let current_workspace = self.get_current_workspace(&client).await?;
@@ -1043,7 +1047,8 @@ impl ScratchpadsPlugin {
             } else {
                 // Show the window
                 let window = &windows[0]; // Use first window
-                self.show_scratchpad_window(&client, window, &validated_config, name).await
+                self.show_scratchpad_window(&client, window, &validated_config, name)
+                    .await
             }
         }
     }
@@ -1101,7 +1106,7 @@ impl ScratchpadsPlugin {
             } else {
                 "detached from scratchpad system"
             };
-            
+
             info!("📌 Scratchpad '{}' is now {}", name, status);
             Ok(format!("Scratchpad '{}' is now {}", name, status))
         } else {
@@ -1109,8 +1114,11 @@ impl ScratchpadsPlugin {
             let mut new_state = ScratchpadState::new();
             new_state.is_attached = false; // Start detached
             self.states.insert(name.to_string(), new_state);
-            
-            Ok(format!("Scratchpad '{}' is now detached from scratchpad system", name))
+
+            Ok(format!(
+                "Scratchpad '{}' is now detached from scratchpad system",
+                name
+            ))
         }
     }
 
@@ -1310,20 +1318,24 @@ impl ScratchpadsPlugin {
             info!("🔍 Auto-detecting window class for scratchpad '{}'", name);
             if let Some(detected_window) = self.wait_for_any_new_window(&client).await? {
                 let detected_class = detected_window.class.clone();
-                info!("✅ Auto-detected class '{}' for scratchpad '{}'", detected_class, name);
+                info!(
+                    "✅ Auto-detected class '{}' for scratchpad '{}'",
+                    detected_class, name
+                );
                 debug!("🔧 Updating validated config with detected class");
-                
+
                 // Update the validated config with the detected class
                 if let Some(validated_config) = self.validated_configs.get_mut(name) {
                     let mut updated_config = (**validated_config).clone();
                     updated_config.class = detected_class;
-                    self.validated_configs.insert(name.to_string(), Arc::new(updated_config));
+                    self.validated_configs
+                        .insert(name.to_string(), Arc::new(updated_config));
                 }
-                
+
                 detected_window
             } else {
                 return Err(anyhow::anyhow!(
-                    "Failed to auto-detect window for scratchpad '{}'", 
+                    "Failed to auto-detect window for scratchpad '{}'",
                     name
                 ));
             }
@@ -1344,11 +1356,11 @@ impl ScratchpadsPlugin {
 
         self.configure_new_scratchpad_window(&client, &window, config, name)
             .await?;
-            
+
         // Add window to tracking
         self.window_to_scratchpad
             .insert(window.address.to_string(), name.to_string());
-            
+
         // Update state
         let state = self.states.entry(name.to_string()).or_default();
         state.is_spawned = true;
@@ -1364,7 +1376,7 @@ impl ScratchpadsPlugin {
         };
 
         state.windows.push(window_state);
-            
+
         Ok(format!("Scratchpad '{name}' spawned and shown"))
     }
 
@@ -1379,10 +1391,10 @@ impl ScratchpadsPlugin {
 
         // Get config for restore_focus setting
         let config = self.get_validated_config(name)?;
-        
+
         // Store current focus for potential restoration
         let should_restore_focus = config.restore_focus;
-        
+
         // Move to special workspace named after the scratchpad
         let special_workspace = format!("special:{name}");
         client
@@ -1414,7 +1426,7 @@ impl ScratchpadsPlugin {
         // Get target monitor and its active workspace
         let target_monitor = self.get_target_monitor(config).await?;
         let target_workspace = target_monitor.active_workspace_id.to_string();
-        
+
         // Move to target monitor's active workspace (not special)
         client
             .move_window_to_workspace(&window_address, &target_workspace)
@@ -1562,7 +1574,10 @@ impl ScratchpadsPlugin {
                     // Find new windows
                     for window in current_windows {
                         if !initial_windows.contains(&window.address.to_string()) {
-                            info!("🔍 Found new window: {} (class: {})", window.address, window.class);
+                            info!(
+                                "🔍 Found new window: {} (class: {})",
+                                window.address, window.class
+                            );
                             return Ok(Some(window));
                         }
                     }
@@ -2069,19 +2084,19 @@ impl Plugin for ScratchpadsPlugin {
                     if let Some(toml::Value::Integer(max_instances)) = sc.get("max_instances") {
                         config.max_instances = Some(*max_instances as u32);
                     }
-                    
+
                     // Parse unfocus field
                     if let Some(toml::Value::String(unfocus_behavior)) = sc.get("unfocus") {
                         config.unfocus = Some(unfocus_behavior.clone());
                     }
-                    
-                    // Parse hysteresis field 
+
+                    // Parse hysteresis field
                     if let Some(toml::Value::Float(hysteresis)) = sc.get("hysteresis") {
                         config.hysteresis = Some(*hysteresis as f32);
                     } else if let Some(toml::Value::Integer(hysteresis)) = sc.get("hysteresis") {
                         config.hysteresis = Some(*hysteresis as f32);
                     }
-                    
+
                     // Parse restore_focus field
                     if let Some(toml::Value::Boolean(restore_focus)) = sc.get("restore_focus") {
                         config.restore_focus = *restore_focus;
@@ -2097,7 +2112,8 @@ impl Plugin for ScratchpadsPlugin {
         // Validate configurations
         let monitors = self.get_monitors().await.unwrap_or_default();
         let variables = self.variables.read().await.clone();
-        self.validated_configs = ConfigValidator::validate_configs(&self.scratchpads, &monitors, &variables);
+        self.validated_configs =
+            ConfigValidator::validate_configs(&self.scratchpads, &monitors, &variables);
 
         info!(
             "✅ Scratchpads plugin initialized with {} scratchpads",
@@ -2214,10 +2230,7 @@ impl Plugin for ScratchpadsPlugin {
                                 Ok(message)
                             }
                             Err(e) => {
-                                error!(
-                                    "❌ Failed to show scratchpad '{}': {}",
-                                    scratchpad_name, e
-                                );
+                                error!("❌ Failed to show scratchpad '{}': {}", scratchpad_name, e);
                                 Err(e)
                             }
                         }
@@ -2242,10 +2255,7 @@ impl Plugin for ScratchpadsPlugin {
                                 Ok(message)
                             }
                             Err(e) => {
-                                error!(
-                                    "❌ Failed to hide scratchpad '{}': {}",
-                                    scratchpad_name, e
-                                );
+                                error!("❌ Failed to hide scratchpad '{}': {}", scratchpad_name, e);
                                 Err(e)
                             }
                         }
@@ -2501,17 +2511,23 @@ impl ScratchpadsPlugin {
 
     async fn handle_focus_changed(&mut self, window_address: &str) {
         debug!("👁️ Focus changed to: {}", window_address);
-        debug!("🗂️ Window-to-scratchpad mapping has {} entries", self.window_to_scratchpad.len());
+        debug!(
+            "🗂️ Window-to-scratchpad mapping has {} entries",
+            self.window_to_scratchpad.len()
+        );
         for (addr, name) in &self.window_to_scratchpad {
             debug!("🗂️ Mapping: {} -> {}", addr, name);
         }
-        
+
         // Handle previously focused window losing focus
         let prev_window_clone = self.focused_window.clone();
         if let Some(prev_window) = prev_window_clone {
             debug!("🔄 Previous focused window: {}", prev_window);
             if prev_window != window_address {
-                debug!("🔄 Focus changed from {} to {}, handling unfocus", prev_window, window_address);
+                debug!(
+                    "🔄 Focus changed from {} to {}, handling unfocus",
+                    prev_window, window_address
+                );
                 self.handle_window_unfocus(&prev_window).await;
                 // Store as previous focus for restoration (but only if it's not a scratchpad)
                 if !self.window_to_scratchpad.contains_key(&prev_window) {
@@ -2523,7 +2539,7 @@ impl ScratchpadsPlugin {
         } else {
             debug!("🔄 No previous focused window");
         }
-        
+
         self.focused_window = Some(window_address.to_string());
 
         // Update focus time for scratchpad windows
@@ -2531,7 +2547,7 @@ impl ScratchpadsPlugin {
         if let Some(scratchpad_name) = scratchpad_name_clone {
             // Cancel any pending hysteresis hide for this scratchpad
             self.cancel_hysteresis_delay(&scratchpad_name).await;
-            
+
             if let Some(state) = self.states.get_mut(&scratchpad_name) {
                 if let Some(window_state) = state
                     .windows
@@ -2551,24 +2567,43 @@ impl ScratchpadsPlugin {
         debug!("🔍 Handling unfocus for window: {}", window_address);
         if let Some(scratchpad_name) = self.window_to_scratchpad.get(window_address) {
             let scratchpad_name = scratchpad_name.clone();
-            debug!("🔍 Window {} belongs to scratchpad '{}'", window_address, scratchpad_name);
+            debug!(
+                "🔍 Window {} belongs to scratchpad '{}'",
+                window_address, scratchpad_name
+            );
             if let Ok(config) = self.get_validated_config(&scratchpad_name) {
-                debug!("🔍 Config for '{}': unfocus={:?}", scratchpad_name, config.unfocus);
+                debug!(
+                    "🔍 Config for '{}': unfocus={:?}",
+                    scratchpad_name, config.unfocus
+                );
                 // Check if unfocus hiding is enabled
                 if config.unfocus.as_deref() == Some("hide") {
                     let hysteresis = config.hysteresis.unwrap_or(0.4);
-                    debug!("🙈 Scratchpad '{}' lost focus, scheduling hysteresis hide in {:.1}s", scratchpad_name, hysteresis);
-                    
+                    debug!(
+                        "🙈 Scratchpad '{}' lost focus, scheduling hysteresis hide in {:.1}s",
+                        scratchpad_name, hysteresis
+                    );
+
                     // Schedule hysteresis delay
-                    self.schedule_hysteresis_delay(&scratchpad_name, config, hysteresis).await;
+                    self.schedule_hysteresis_delay(&scratchpad_name, config, hysteresis)
+                        .await;
                 } else {
-                    debug!("🔍 Scratchpad '{}' does not have unfocus='hide', ignoring", scratchpad_name);
+                    debug!(
+                        "🔍 Scratchpad '{}' does not have unfocus='hide', ignoring",
+                        scratchpad_name
+                    );
                 }
             } else {
-                debug!("🔍 Failed to get config for scratchpad '{}'", scratchpad_name);
+                debug!(
+                    "🔍 Failed to get config for scratchpad '{}'",
+                    scratchpad_name
+                );
             }
         } else {
-            debug!("🔍 Window {} is not a tracked scratchpad window", window_address);
+            debug!(
+                "🔍 Window {} is not a tracked scratchpad window",
+                window_address
+            );
         }
     }
 
@@ -2576,7 +2611,10 @@ impl ScratchpadsPlugin {
     async fn cancel_hysteresis_delay(&mut self, scratchpad_name: &str) {
         if let Some(handle) = self.hysteresis_tasks.remove(scratchpad_name) {
             handle.abort();
-            debug!("🚑 Cancelled hysteresis delay for scratchpad '{}'", scratchpad_name);
+            debug!(
+                "🚑 Cancelled hysteresis delay for scratchpad '{}'",
+                scratchpad_name
+            );
         }
     }
 
@@ -2589,27 +2627,34 @@ impl ScratchpadsPlugin {
     ) {
         // Cancel any existing hysteresis task
         self.cancel_hysteresis_delay(scratchpad_name).await;
-        
+
         let scratchpad_name_clone = scratchpad_name.to_string();
         let delay_ms = (hysteresis_seconds * 1000.0) as u64;
-        
+
         // Get the sender to communicate back to the plugin
         if let Some(sender) = &self.internal_sender {
             let sender_clone = sender.clone();
-            
+
             let task_handle = tokio::spawn(async move {
                 tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
-                debug!("⏰ Hysteresis delay completed for '{}', triggering hide", scratchpad_name_clone);
-                
+                debug!(
+                    "⏰ Hysteresis delay completed for '{}', triggering hide",
+                    scratchpad_name_clone
+                );
+
                 // Send command to hide the scratchpad
-                if let Err(e) = sender_clone.send(InternalCommand::HysteresisHide { 
-                    scratchpad_name: scratchpad_name_clone.clone() 
+                if let Err(e) = sender_clone.send(InternalCommand::HysteresisHide {
+                    scratchpad_name: scratchpad_name_clone.clone(),
                 }) {
-                    warn!("Failed to send hysteresis hide command for '{}': {}", scratchpad_name_clone, e);
+                    warn!(
+                        "Failed to send hysteresis hide command for '{}': {}",
+                        scratchpad_name_clone, e
+                    );
                 }
             });
-            
-            self.hysteresis_tasks.insert(scratchpad_name.to_string(), task_handle);
+
+            self.hysteresis_tasks
+                .insert(scratchpad_name.to_string(), task_handle);
         } else {
             warn!("Internal sender not available for hysteresis delay");
         }
@@ -2619,24 +2664,30 @@ impl ScratchpadsPlugin {
     async fn process_internal_commands(&mut self) {
         // Collect commands first to avoid borrow conflicts
         let mut commands = Vec::new();
-        
+
         if let Some(receiver) = &mut self.internal_receiver {
             while let Ok(command) = receiver.try_recv() {
                 commands.push(command);
             }
         }
-        
+
         // Process the collected commands
         for command in commands {
             match command {
                 InternalCommand::HysteresisHide { scratchpad_name } => {
                     debug!("🙈 Processing hysteresis hide for '{}'", scratchpad_name);
-                    
+
                     // Execute the hide action
                     if let Err(e) = self.hide_scratchpad_direct(&scratchpad_name).await {
-                        warn!("Failed to hide scratchpad '{}' after hysteresis delay: {}", scratchpad_name, e);
+                        warn!(
+                            "Failed to hide scratchpad '{}' after hysteresis delay: {}",
+                            scratchpad_name, e
+                        );
                     } else {
-                        info!("✅ Scratchpad '{}' hidden after hysteresis delay", scratchpad_name);
+                        info!(
+                            "✅ Scratchpad '{}' hidden after hysteresis delay",
+                            scratchpad_name
+                        );
                     }
                 }
             }
