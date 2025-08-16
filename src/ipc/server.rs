@@ -134,6 +134,51 @@ impl IpcServer {
                 }
             }
 
+            ClientMessage::Show { scratchpad } => {
+                debug!("👁️ Processing show for scratchpad: {}", scratchpad);
+                let mut pm = plugin_manager.write().await;
+
+                match pm
+                    .handle_command("scratchpads", "show", &[&scratchpad])
+                    .await
+                {
+                    Ok(result) => DaemonResponse::Success { message: result },
+                    Err(e) => DaemonResponse::Error {
+                        message: e.to_string(),
+                    },
+                }
+            }
+
+            ClientMessage::Hide { scratchpad } => {
+                debug!("🙈 Processing hide for scratchpad: {}", scratchpad);
+                let mut pm = plugin_manager.write().await;
+
+                match pm
+                    .handle_command("scratchpads", "hide", &[&scratchpad])
+                    .await
+                {
+                    Ok(result) => DaemonResponse::Success { message: result },
+                    Err(e) => DaemonResponse::Error {
+                        message: e.to_string(),
+                    },
+                }
+            }
+
+            ClientMessage::Attach { scratchpad } => {
+                debug!("📌 Processing attach for scratchpad: {}", scratchpad);
+                let mut pm = plugin_manager.write().await;
+
+                match pm
+                    .handle_command("scratchpads", "attach", &[&scratchpad])
+                    .await
+                {
+                    Ok(result) => DaemonResponse::Success { message: result },
+                    Err(e) => DaemonResponse::Error {
+                        message: e.to_string(),
+                    },
+                }
+            }
+
             ClientMessage::Expose => {
                 debug!("🪟 Processing expose command");
                 let mut pm = plugin_manager.write().await;

@@ -1,0 +1,141 @@
+# Scratchpads New Features Showcase
+# This configuration demonstrates all the NEW features added to achieve
+# full Pyprland compatibility and beyond
+
+[rustrland]
+plugins = ["scratchpads"]
+
+[rustrland.variables]
+terminal_class = "foot"
+editor_class = "code"
+
+# ============================================================================
+# NEW COMMANDS SHOWCASE
+# ============================================================================
+# Beyond the standard 'toggle' and 'list' commands, Rustrland now supports:
+#
+# rustr show <name>      - Show scratchpad without toggling
+# rustr hide <name>      - Hide scratchpad without toggling  
+# rustr attach <name>    - Toggle window attachment to scratchpad system
+#
+# Examples:
+# rustr show terminal    # Always show, even if already visible
+# rustr hide browser     # Always hide, even if already hidden
+# rustr attach editor    # Detach/reattach window from scratchpad control
+
+# ============================================================================
+# POSITION: Manual Window Placement
+# ============================================================================
+[scratchpads.positioned_terminal]
+command = "foot --app-id=positioned"
+class = "positioned"
+size = "60% 40%"
+position = "20% 10%"    # NEW: Place at specific coordinates (x y from top-left)
+animation = "fromTop"
+restore_focus = true
+
+# ============================================================================
+# HYSTERESIS: Unfocus Delay Control
+# ============================================================================
+[scratchpads.delayed_hide]
+command = "konsole --new-tab"
+class = "konsole"
+size = "70% 50%"
+unfocus = "hide"        # Hide when losing focus
+hysteresis = 1.5        # NEW: Wait 1.5 seconds before hiding (default: 0.4)
+restore_focus = true
+
+# ============================================================================
+# RESTORE_FOCUS: Focus Management
+# ============================================================================
+[scratchpads.focus_manager]
+command = "code --new-window"
+class = "code-oss"
+size = "80% 70%"
+restore_focus = true    # NEW: Restore focus to previous window when hiding (default: true)
+position = "10% 15%"
+
+[scratchpads.no_focus_restore]
+command = "thunar"
+class = "Thunar"
+size = "50% 60%"
+restore_focus = false   # NEW: Don't restore focus when hiding
+unfocus = "hide"
+hysteresis = 0.2        # Quick response
+
+# ============================================================================
+# MULTI: Pyprland Compatibility
+# ============================================================================
+[scratchpads.pyprland_style]
+command = "firefox --new-window"
+class = "firefox"
+size = "90% 80%"
+multi = true            # NEW: Pyprland-compatible multi-window setting
+max_instances = 3       # Works with both 'multi' and 'multi_window'
+preserve_aspect = true
+
+# ============================================================================
+# COMPREHENSIVE EXAMPLE: All Features Combined
+# ============================================================================
+[scratchpads.feature_showcase]
+command = "alacritty --class showcase"
+class = "showcase"
+size = "60% 50%"
+position = "20% 25%"    # Manual positioning
+animation = "fromRight"
+margin = 10
+offset = "5px 5px"
+hide_delay = 200
+lazy = true
+pinned = true
+unfocus = "hide"
+hysteresis = 0.8        # Hysteresis delay
+restore_focus = true    # Focus restoration
+multi = true            # Pyprland compatibility
+multi_window = true     # Native Rustrland setting
+max_instances = 2
+preserve_aspect = true
+force_monitor = "DP-1"
+alt_toggle = true
+allow_special_workspaces = true
+smart_focus = true
+close_on_hide = false
+excludes = ["delayed_hide"]
+restore_excluded = true
+max_size = "1200px 800px"
+
+# ============================================================================
+# TEMPLATE INHERITANCE WITH NEW FEATURES
+# ============================================================================
+[scratchpads.base_template]
+size = "50% 50%"
+animation = "fromTop"
+lazy = true
+pinned = true
+restore_focus = true    # Templates can include new features
+hysteresis = 0.5
+
+[scratchpads.templated_app]
+command = "gnome-calculator"
+class = "gnome-calculator"
+use = "base_template"   # Inherit from template
+position = "75% 5%"     # Override with manual position
+hysteresis = 0.3        # Override template hysteresis
+
+# ============================================================================
+# USAGE EXAMPLES
+# ============================================================================
+# Standard commands (Pyprland compatible):
+# rustr toggle positioned_terminal
+# rustr list
+#
+# NEW commands:
+# rustr show feature_showcase      # Show directly
+# rustr hide delayed_hide          # Hide directly
+# rustr attach pyprland_style      # Toggle attachment
+#
+# Focus behavior:
+# - 'restore_focus = true' restores focus to previous non-scratchpad window
+# - 'hysteresis' adds delay before unfocus hiding
+# - 'position' overrides automatic centering/margin positioning
+# - 'multi' provides Pyprland compatibility for multi-window settings

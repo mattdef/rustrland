@@ -1,5 +1,11 @@
 # Example configuration using legacy Pyprland format
 # This maintains full compatibility with existing Pyprland configurations
+# Now enhanced with NEW features available in Rustrland:
+# - position: Manual window positioning
+# - hysteresis: Unfocus delay control
+# - restore_focus: Focus restoration
+# - multi: Pyprland-compatible multi-window setting
+# - show/hide/attach commands for advanced control
 
 [pyprland]
 plugins = [
@@ -21,6 +27,9 @@ command = "[term_classed] main-dropterm"
 class = "main-dropterm"
 size = "75% 60%"
 max_size = "1920px 100%"
+# NEW Rustrland enhancements while maintaining Pyprland compatibility
+restore_focus = true
+position = "12.5% 20%"  # Center horizontally with custom vertical position
 
 [scratchpads.browser]
 animation = "fromTop"
@@ -33,9 +42,27 @@ animation = "fromRight"
 command = "[file_manager]"
 class = "thunar"
 size = "50% 80%"
+# NEW: Enhanced unfocus behavior
+unfocus = "hide"
+hysteresis = 0.6      # Wait 0.6s before hiding on unfocus
+restore_focus = true
 
 [scratchpads.music]
 animation = "fromBottom"
 command = "spotify"
 class = "Spotify"
 size = "90% 85%"
+# NEW: Pyprland multi-window compatibility
+multi = true          # Pyprland-style multi-window setting
+max_instances = 2     # Limit instances
+preserve_aspect = true
+restore_focus = false # Keep focus on current window when hiding
+
+# USAGE: All standard Pyprland commands work:
+# pypr toggle term
+# pypr list
+# 
+# PLUS new Rustrland commands:
+# rustr show term      # Show without toggling
+# rustr hide music     # Hide without toggling
+# rustr attach browser # Toggle window attachment

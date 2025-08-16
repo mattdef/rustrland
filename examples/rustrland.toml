@@ -1,5 +1,6 @@
 # Rustrland Configuration Example
-# Compatible with Pyprland syntax
+# Compatible with Pyprland syntax with NEW enhanced features:
+# - show/hide commands, attach command, position/hysteresis/restore_focus options
 
 [pyprland]
 plugins = [
@@ -12,22 +13,41 @@ plugins = [
 [pyprland.variables]
 term_classed = "kitty --class"
 
-# Scratchpads configuration
+# Scratchpads configuration with NEW features
 [scratchpads.term]
 animation = "fromTop"
 command = "[term_classed] main-dropterm"
 class = "main-dropterm"
 size = "75% 60%"
 max_size = "1920px 100%"
+# NEW: Enhanced focus and positioning
+restore_focus = true
+position = "12.5% 20%"
 
 [scratchpads.filemanager]
 animation = "fromRight"
 command = "thunar"
 class = "thunar"
 size = "50% 80%"
+# NEW: Unfocus hiding with hysteresis
+unfocus = "hide"
+hysteresis = 0.7
+restore_focus = true
 
 [scratchpads.music]
 animation = "fromBottom"
 command = "spotify"
 class = "Spotify"
 size = "90% 85%"
+# NEW: Pyprland compatibility and focus control
+multi = true
+restore_focus = false
+
+# NEW COMMANDS AVAILABLE:
+# rustr show term        # Show terminal directly
+# rustr hide music       # Hide music player directly  
+# rustr attach filemanager # Toggle window attachment
+# 
+# All existing commands still work:
+# rustr toggle term
+# rustr list

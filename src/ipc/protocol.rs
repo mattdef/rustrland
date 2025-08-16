@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 pub enum ClientMessage {
     /// Toggle a scratchpad
     Toggle { scratchpad: String },
+    /// Show a scratchpad directly
+    Show { scratchpad: String },
+    /// Hide a scratchpad directly
+    Hide { scratchpad: String },
+    /// Toggle window attachment to scratchpad system
+    Attach { scratchpad: String },
     /// Show all windows (expose)
     Expose,
     /// Expose with action

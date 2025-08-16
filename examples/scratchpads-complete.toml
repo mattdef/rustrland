@@ -1,5 +1,11 @@
 # Comprehensive Scratchpad Configuration Example
-# Demonstrates all Pyprland-compatible features
+# Demonstrates all Pyprland-compatible features including new enhancements:
+# - show/hide commands for direct control
+# - attach command for window anchoring
+# - position option for manual window placement
+# - hysteresis for unfocus reactivity control
+# - restore_focus for focus restoration
+# - multi compatibility alias for Pyprland
 
 [rustrland]
 plugins = ["scratchpads"]
@@ -11,7 +17,7 @@ browser_class = "firefox"
 file_manager = "thunar"
 editor_class = "code"
 
-# Terminal scratchpad with advanced features
+# Terminal scratchpad with advanced features and new position/focus controls
 [scratchpads.term]
 command = "foot --app-id=[term_class]"
 class = "foot" 
@@ -21,6 +27,8 @@ margin = 20
 lazy = false
 pinned = true
 smart_focus = true
+restore_focus = true  # NEW: Restore focus when hiding
+position = "10% 5%"   # NEW: Manual positioning override
 
 # Browser scratchpad with exclusion
 [scratchpads.browser]
@@ -34,7 +42,7 @@ excludes = ["term", "editor"]
 restore_excluded = true
 force_monitor = "DP-1"
 
-# File manager scratchpad
+# File manager scratchpad with hysteresis control
 [scratchpads.filemanager]
 command = "thunar"
 class = "Thunar"
@@ -45,8 +53,10 @@ offset = "50px 50px"
 lazy = true
 pinned = false
 unfocus = "hide"
+hysteresis = 0.8     # NEW: Wait 0.8s before hiding on unfocus
+restore_focus = false # NEW: Don't restore focus when hiding
 
-# Code editor with multi-window support
+# Code editor with multi-window support and Pyprland compatibility
 [scratchpads.editor]
 command = "code --new-window"
 class = "code-oss"
@@ -54,8 +64,10 @@ size = "90% 90%"
 lazy = true
 pinned = true
 multi_window = true
+multi = true         # NEW: Pyprland compatibility alias
 max_instances = 3
 preserve_aspect = true
+restore_focus = true
 
 # Music player scratchpad with special features
 [scratchpads.music]
@@ -86,9 +98,45 @@ pinned = true
 margin = 15
 animation = "fromTop"
 
-# Scratchpad using template inheritance
+# Scratchpad using template inheritance with new features
 [scratchpads.calculator]
 command = "gnome-calculator"
 class = "gnome-calculator"
 use = "template_base"
 size = "30% 40%"  # Override template size
+position = "70% 10%" # NEW: Position in top-right corner
+hysteresis = 0.2     # NEW: Quick unfocus response
+
+# NEW: Demo scratchpad showing all advanced features
+[scratchpads.advanced_demo]
+command = "konsole --new-tab"
+class = "konsole"
+size = "50% 50%"
+position = "25% 25%"  # Manual positioning
+animation = "fromBottom"
+margin = 5
+offset = "10px 10px"
+hide_delay = 300
+lazy = true
+pinned = true
+unfocus = "hide"
+hysteresis = 1.0     # 1 second delay before hiding
+restore_focus = true # Restore previous focus
+smart_focus = true
+multi = true         # Pyprland compatibility
+multi_window = true  # Native Rustrland setting
+max_instances = 2
+preserve_aspect = true
+force_monitor = "HDMI-A-1"
+alt_toggle = true
+allow_special_workspaces = true
+excludes = ["music"]
+restore_excluded = true
+close_on_hide = false
+max_size = "800px 600px"
+
+# Usage examples with new commands:
+# rustr show term       # Show terminal directly (no toggle)
+# rustr hide browser    # Hide browser directly
+# rustr attach music    # Toggle attach/detach for music player
+# rustr toggle editor   # Traditional toggle command

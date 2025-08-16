@@ -23,6 +23,21 @@ enum Commands {
         /// Scratchpad name
         name: String,
     },
+    /// Show a scratchpad directly (without toggling)
+    Show {
+        /// Scratchpad name
+        name: String,
+    },
+    /// Hide a scratchpad directly (without toggling)
+    Hide {
+        /// Scratchpad name
+        name: String,
+    },
+    /// Toggle window attachment to scratchpad system
+    Attach {
+        /// Scratchpad name
+        name: String,
+    },
     /// Show all windows (expose)
     Expose {
         /// Expose sub-command (toggle, next, prev, exit, status)
@@ -109,6 +124,9 @@ async fn main() -> Result<()> {
 
     let message = match cli.command {
         Commands::Toggle { name } => ClientMessage::Toggle { scratchpad: name },
+        Commands::Show { name } => ClientMessage::Show { scratchpad: name },
+        Commands::Hide { name } => ClientMessage::Hide { scratchpad: name },
+        Commands::Attach { name } => ClientMessage::Attach { scratchpad: name },
         Commands::Expose { action } => ClientMessage::ExposeAction { action },
         Commands::Reload => ClientMessage::Reload,
         Commands::Status => ClientMessage::Status,
