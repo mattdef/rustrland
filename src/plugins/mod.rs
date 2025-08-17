@@ -27,6 +27,12 @@ pub trait Plugin: Send + Sync {
 
     /// Handle commands from client
     async fn handle_command(&mut self, command: &str, args: &[&str]) -> Result<String>;
+
+    /// Cleanup plugin resources (background tasks, timers, etc.)
+    async fn cleanup(&mut self) -> Result<()> {
+        // Default implementation does nothing
+        Ok(())
+    }
 }
 
 pub type PluginBox = Box<dyn Plugin>;

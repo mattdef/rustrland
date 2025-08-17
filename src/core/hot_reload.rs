@@ -21,7 +21,7 @@ pub enum ReloadEvent {
 }
 
 /// Hot reload configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct HotReloadConfig {
     /// Enable automatic file watching
     pub auto_reload: bool,
@@ -185,6 +185,7 @@ impl HotReloadManager {
                     ReloadEvent::ConfigChanged(path) => {
                         info!("🔄 Processing config change: {:?}", path);
 
+                        info!("🚀 About to call handle_config_change...");
                         if let Err(e) = Self::handle_config_change(
                             &plugin_manager,
                             &path,
@@ -193,8 +194,10 @@ impl HotReloadManager {
                         )
                         .await
                         {
-                            error!("Failed to handle config change: {}", e);
+                            error!("❌ Failed to handle config change: {}", e);
                             let _ = event_sender.send(ReloadEvent::ValidationError(e.to_string()));
+                        } else {
+                            info!("✅ Config change handled successfully");
                         }
                     }
                     ReloadEvent::PluginReload(plugin_name) => {
@@ -219,9 +222,15 @@ impl HotReloadManager {
         config: &HotReloadConfig,
         event_sender: &broadcast::Sender<ReloadEvent>,
     ) -> Result<()> {
+        debug!("🔧 Reading config file: {:?}", config_path);
+
         // Read and validate new configuration
         let config_content = std::fs::read_to_string(config_path)?;
+        debug!("📄 Config content read, {} bytes", config_content.len());
+
+        debug!("🔍 Validating configuration...");
         let new_config = Self::validate_config(&config_content).await?;
+        debug!("✅ Configuration validation completed");
 
         if config.validate_before_apply {
             info!("✓ Configuration validation passed");
@@ -234,15 +243,23 @@ impl HotReloadManager {
         }
 
         // Preserve plugin states if enabled
+        debug!(
+            "💾 Checking if plugin state preservation is enabled: {}",
+            config.preserve_plugin_state
+        );
         let preserved_states = if config.preserve_plugin_state {
+            debug!("📸 Capturing plugin states...");
             Self::capture_plugin_states(plugin_manager).await?
         } else {
+            debug!("⏭️ Skipping plugin state preservation");
             HashMap::new()
         };
 
         // Apply new configuration
+        debug!("🔒 Acquiring plugin manager write lock...");
         {
             let mut pm = plugin_manager.write().await;
+            debug!("✅ Plugin manager lock acquired");
 
             if config.partial_reload {
                 // Compare configs and only reload changed plugins
@@ -259,8 +276,17 @@ impl HotReloadManager {
 
     /// Validate configuration without applying it
     async fn validate_config(config_content: &str) -> Result<RustrlandConfig> {
-        let config: toml::Value = toml::from_str(config_content)?;
-        RustrlandConfig::from_toml_value(config)
+        debug!("🔍 Parsing TOML content...");
+        let config: toml::Value = toml::from_str(config_content).map_err(|e| {
+            error!("❌ TOML parsing failed: {}", e);
+            e
+        })?;
+
+        debug!("🔍 Converting to RustrlandConfig...");
+        RustrlandConfig::from_toml_value(config).map_err(|e| {
+            error!("❌ Config conversion failed: {}", e);
+            e
+        })
     }
 
     /// Capture current plugin states for preservation
@@ -293,6 +319,9 @@ impl HotReloadManager {
         let current_plugins = plugin_manager.get_loaded_plugins();
         let new_plugins = new_config.get_plugin_names();
 
+        debug!("🔍 Current plugins: {:?}", current_plugins);
+        debug!("🔍 New plugins: {:?}", new_plugins);
+
         // Find added, removed, and modified plugins
         let added: Vec<_> = new_plugins
             .iter()
@@ -303,6 +332,9 @@ impl HotReloadManager {
             .iter()
             .filter(|p| !new_plugins.contains(p))
             .collect();
+
+        debug!("🔍 Plugins to add: {:?}", added);
+        debug!("🔍 Plugins to remove: {:?}", removed);
 
         let potentially_modified: Vec<_> = current_plugins
             .iter()

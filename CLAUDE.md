@@ -166,6 +166,59 @@ bind = SUPER_SHIFT, S, exec, rustr status           # Super + Shift + S
 
 See `KEYBINDINGS.md` for complete setup guide and alternative key schemes.
 
+## System Notifier Plugin Architecture
+
+The system_notifier plugin implements a dual-mode notification system to balance compatibility and functionality:
+
+### **Standard Mode** (Default)
+- **Purpose**: Full compatibility with Pyprland's system_notifier plugin
+- **Dependencies**: None - works out-of-the-box
+- **Features**: 
+  - Basic text notifications
+  - Log monitoring and parsing
+  - Hyprland's built-in overlay system
+  - Configuration compatibility with Pyprland
+- **Target**: Users migrating from Pyprland who need immediate compatibility
+- **Implementation**: Uses Hyprland's native overlay notifications without external dependencies
+
+### **Custom Mode** (Advanced)
+- **Purpose**: Enhanced notification system with advanced features
+- **Dependencies**: Third-party applications (rofi, dunst, etc.)
+- **Features**:
+  - Rich animations and transitions
+  - Advanced visual styling and themes
+  - Multi-media notifications (icons, sounds, progress bars)
+  - Interactive notifications with actions
+  - Custom positioning and layouts
+  - Animation integration with the existing animation system
+- **Target**: Power users who want desktop-class notification features
+- **Implementation**: Leverages external tools like rofi for maximum flexibility
+
+### **Configuration**
+Both modes share the same base configuration structure but Custom mode enables additional options:
+
+```toml
+[system_notifier]
+mode = "standard"  # or "custom"
+use_overlay = true
+position = "top_right"
+# Standard mode stops here
+
+# Custom mode additional options
+[system_notifier.custom]
+animation_duration = 300
+theme = "dark"
+icons = true
+sounds = true
+backend = "rofi"  # or "dunst", "mako"
+```
+
+### **Implementation Priority**
+1. **Phase 1**: Complete Standard mode implementation (Pyprland compatibility)
+2. **Phase 2**: Design Custom mode architecture and backend abstraction
+3. **Phase 3**: Implement Custom mode with rofi backend
+4. **Phase 4**: Add support for additional backends (dunst, mako, etc.)
+
 ## Key Dependencies
 
 - **hyprland**: Hyprland IPC client (beta version)

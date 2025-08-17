@@ -1,0 +1,82 @@
+# System Notifier Simple Mode Enhanced Configuration
+# This configuration demonstrates the new color and icon support in simple mode
+
+[rustrland]
+plugins = ["system_notifier"]
+
+# System Notifier Configuration with Enhanced Simple Mode
+[system_notifier]
+# Simple mode only - Hyprland-compatible notifications (no external dependencies)
+
+# NEW: Color and icon support in simple mode
+color = "rgb(0,136,255)"      # Default color - supports Hyprland formats
+icon = "info"                 # Default icon - see available icons below
+timeout = 5000                # Default timeout in milliseconds
+urgency = "normal"            # Default urgency level
+
+# Sources for log monitoring
+[system_notifier.sources]
+# Network events
+network = { command = "echo 'eth0: Link UP'; sleep 2; echo 'wlan0: connected'", parser = "network_events" }
+
+# System errors
+system_errors = { command = "echo 'ERROR: Database connection failed'; sleep 3; echo 'ERROR: Memory allocation failed'", parser = "error_events" }
+
+# Success events
+success = { command = "echo 'SUCCESS: Backup completed'; sleep 4; echo 'SUCCESS: System updated'", parser = "success_events" }
+
+# Warning events  
+warnings = { command = "echo 'WARNING: Low disk space'; sleep 2; echo 'WARNING: High CPU usage'", parser = "warning_events" }
+
+# Parsers with different colors and icons
+[system_notifier.parsers.network_events]
+pattern = "(\\w+): (Link UP|connected)"
+filter = "s/(\\w+): (Link UP|connected)/🌐 Network \\1 is now \\2/"
+color = "rgb(0,170,0)"        # Green for network success
+icon = "none"                 # No text icon, emoji in message
+urgency = "normal"
+timeout = 4000
+
+[system_notifier.parsers.error_events]
+pattern = "ERROR: (.*)"
+filter = "s/ERROR: (.*)/❌ System Error: \\1/"
+color = "rgba(255,68,68,0.9)" # Red with transparency
+icon = "none"                 # No text icon, emoji in message
+urgency = "critical"
+timeout = 8000
+
+[system_notifier.parsers.success_events]
+pattern = "SUCCESS: (.*)"
+filter = "s/SUCCESS: (.*)/✅ \\1/"
+color = "rgb(46,204,113)"     # Nice green
+icon = "none"                 # No text icon, emoji in message
+urgency = "low"
+timeout = 3000
+
+[system_notifier.parsers.warning_events]
+pattern = "WARNING: (.*)"
+filter = "s/WARNING: (.*)/⚠️ \\1/"
+color = "rgb(255,193,7)"      # Orange/yellow for warnings
+icon = "none"                 # No text icon, emoji in message
+urgency = "normal" 
+timeout = 6000
+
+# Available icon names for simple mode:
+# - "warning" → Triangle warning icon
+# - "info"    → Information icon (default)
+# - "hint"    → Hint/tip icon
+# - "error"   → Error/critical icon  
+# - "confused"→ Question mark icon
+# - "ok"      → Checkmark/success icon
+# - "none"    → No icon displayed
+
+# Available color formats for simple mode:
+# - RGB: rgb(255,68,68)
+# - RGBA: rgba(255,68,68,0.9) 
+# - Hyprland legacy: 0xff4444ff (ARGB format)
+# - Default: "0" (uses Hyprland default color for the icon)
+
+# Note: Simple mode uses Hyprland's built-in notification system:
+# - Notifications always display on the active monitor
+# - Position and margin are controlled by Hyprland settings
+# - No external dependencies required

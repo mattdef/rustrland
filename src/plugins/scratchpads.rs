@@ -2301,6 +2301,34 @@ impl Plugin for ScratchpadsPlugin {
             _ => Err(anyhow::anyhow!("Unknown command: {}", command)),
         }
     }
+
+    async fn cleanup(&mut self) -> Result<()> {
+        info!("🧹 Cleaning up scratchpads plugin");
+
+        // Cancel all hide tasks
+        for (window_addr, handle) in self.hide_tasks.drain() {
+            handle.abort();
+            debug!("❌ Cancelled hide task for window: {}", window_addr);
+        }
+
+        // Cancel all hysteresis tasks
+        for (scratchpad_name, handle) in self.hysteresis_tasks.drain() {
+            handle.abort();
+            debug!(
+                "❌ Cancelled hysteresis task for scratchpad: {}",
+                scratchpad_name
+            );
+        }
+
+        // Cancel all sync tasks
+        for (window_addr, handle) in self.sync_tasks.drain() {
+            handle.abort();
+            debug!("❌ Cancelled sync task for window: {}", window_addr);
+        }
+
+        info!("✅ Scratchpads plugin cleanup complete");
+        Ok(())
+    }
 }
 
 // Enhanced event handling methods

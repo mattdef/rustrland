@@ -1,20 +1,24 @@
 use anyhow::Result;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal;
 use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::config::Config;
 use crate::core::event_handler::EventHandler;
+use crate::core::hot_reload::{HotReloadConfig, HotReloadManager};
 use crate::core::plugin_manager::PluginManager;
 use crate::ipc::{server::IpcServer, HyprlandClient};
 
 pub struct Daemon {
     config: Config,
+    config_path: String,
     hyprland_client: HyprlandClient,
     plugin_manager: Arc<RwLock<PluginManager>>,
     event_handler: EventHandler,
+    hot_reload_manager: Option<HotReloadManager>,
 }
 
 impl Daemon {
@@ -35,11 +39,16 @@ impl Daemon {
         info!("📡 Setting up event handler");
         let event_handler = EventHandler::new();
 
+        // Initialize hot reload manager
+        let hot_reload_manager = HotReloadManager::new(Arc::clone(&plugin_manager));
+
         Ok(Self {
             config,
+            config_path: config_path.to_string(),
             hyprland_client,
             plugin_manager,
             event_handler,
+            hot_reload_manager: Some(hot_reload_manager),
         })
     }
 
@@ -53,6 +62,27 @@ impl Daemon {
         }
 
         info!("✅ Connected to Hyprland successfully");
+
+        // Start hot reload manager if configured
+        // Parse hot reload configuration from config first
+        let hot_reload_config = self.parse_hot_reload_config();
+
+        if let Some(ref mut hot_reload_manager) = self.hot_reload_manager {
+            if hot_reload_config.auto_reload {
+                let config_paths = vec![PathBuf::from(&self.config_path)];
+
+                if let Err(e) = hot_reload_manager
+                    .start(config_paths, hot_reload_config)
+                    .await
+                {
+                    error!("❌ Failed to start hot reload manager: {}", e);
+                } else {
+                    info!("🔥 Hot reload manager started successfully");
+                }
+            } else {
+                debug!("🔥 Hot reload auto_reload is disabled");
+            }
+        }
 
         // Start IPC server
         let ipc_server = IpcServer::new(Arc::clone(&self.plugin_manager));
@@ -102,5 +132,27 @@ impl Daemon {
 
         info!("👋 Shutting down Rustrland");
         Ok(())
+    }
+
+    /// Parse hot reload configuration from config file
+    fn parse_hot_reload_config(&self) -> HotReloadConfig {
+        // Check if hot_reload section exists in config
+        if let Some(hot_reload_value) = self.config.plugins.get("hot_reload") {
+            // Try to parse the hot_reload configuration
+            if let Ok(config) = hot_reload_value.clone().try_into::<HotReloadConfig>() {
+                debug!(
+                    "🔥 Parsed hot reload config: auto_reload={}, debounce_ms={}",
+                    config.auto_reload, config.debounce_ms
+                );
+                return config;
+            } else {
+                warn!("⚠️ Invalid hot_reload configuration, using defaults");
+            }
+        } else {
+            debug!("🔥 No hot_reload section found, using defaults");
+        }
+
+        // Return default configuration
+        HotReloadConfig::default()
     }
 }

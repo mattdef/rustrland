@@ -1131,6 +1131,19 @@ impl Plugin for WallpapersPlugin {
             _ => Ok(format!("Unknown wallpapers command: {command}. Available: next, set, carousel, scan, list, status, clear, start, stop")),
         }
     }
+
+    async fn cleanup(&mut self) -> Result<()> {
+        info!("🧹 Cleaning up wallpapers plugin");
+
+        // Stop rotation if running
+        if let Some(handle) = self.rotation_handle.take() {
+            handle.abort();
+            debug!("❌ Cancelled wallpaper rotation task");
+        }
+
+        info!("✅ Wallpapers plugin cleanup complete");
+        Ok(())
+    }
 }
 
 #[cfg(test)]

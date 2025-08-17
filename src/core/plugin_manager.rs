@@ -224,7 +224,11 @@ impl super::hot_reload::HotReloadable for PluginManager {
     }
 
     async fn unload_plugin(&mut self, plugin_name: &str) -> Result<()> {
-        if let Some(_plugin) = self.plugins.remove(plugin_name) {
+        if let Some(mut plugin) = self.plugins.remove(plugin_name) {
+            // Call cleanup method before removing plugin
+            if let Err(e) = plugin.cleanup().await {
+                warn!("⚠️ Error during cleanup of plugin '{}': {}", plugin_name, e);
+            }
             info!("🗑️ Unloaded plugin: {}", plugin_name);
         }
         Ok(())
@@ -232,7 +236,14 @@ impl super::hot_reload::HotReloadable for PluginManager {
 
     async fn unload_all_plugins(&mut self) -> Result<()> {
         let count = self.plugins.len();
-        self.plugins.clear();
+
+        // Call cleanup on all plugins before clearing
+        for (plugin_name, mut plugin) in self.plugins.drain() {
+            if let Err(e) = plugin.cleanup().await {
+                warn!("⚠️ Error during cleanup of plugin '{}': {}", plugin_name, e);
+            }
+        }
+
         info!("🗑️ Unloaded all {} plugins", count);
         Ok(())
     }
