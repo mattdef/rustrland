@@ -21,6 +21,15 @@ path = "src/main.rs"
 name = "rustr"
 path = "src/client.rs"
 
+[[bin]]
+name = "rustrland-gui"
+path = "src/gui_main.rs"
+required-features = ["gui"]
+
+[features]
+default = ["gui"]
+gui = ["egui", "eframe", "egui_extras", "image", "winit"]
+
 [dependencies]
 # IPC Hyprland
 hyprland = "0.4.0-beta.1"
@@ -59,6 +68,13 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 # Desktop notifications
 notify-rust = "4.11"
 regex = "1.10"
+
+# GUI framework (egui) - optional
+egui = { version = "0.27", optional = true }
+eframe = { version = "0.27", optional = true }
+egui_extras = { version = "0.27", features = ["image"], optional = true }
+image = { version = "0.24", optional = true }
+winit = { version = "0.29", optional = true }
 
 [dev-dependencies]
 tokio-test = "0.4"

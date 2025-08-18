@@ -8,6 +8,8 @@
 pub mod animation;
 pub mod config;
 pub mod core;
+#[cfg(feature = "gui")]
+pub mod gui;
 pub mod ipc;
 pub mod plugins;
 
