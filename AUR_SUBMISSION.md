@@ -93,7 +93,7 @@ git push origin master
 
 ### Dependencies
 - **Required**: hyprland
-- **Optional**: swaybg, swww, wpaperd, imagemagick, foot, firefox, thunar
+- **Optional**: swaybg, swww, wpaperd, foot, firefox, thunar
 
 ### Documentation
 - README.md - Main project documentation

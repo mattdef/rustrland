@@ -391,7 +391,11 @@ impl SystemNotifier {
     }
 
     /// Monitor a command output and send notifications for matches
-    async fn monitor_command(command: &str, parser: &CompiledParser, startup_time: Instant) -> Result<()> {
+    async fn monitor_command(
+        command: &str,
+        parser: &CompiledParser,
+        startup_time: Instant,
+    ) -> Result<()> {
         // Modify command to filter out old log entries for common log monitoring commands
         let filtered_command = if command.contains("journalctl") {
             // For journalctl, add --since option to only show entries from after startup
@@ -437,10 +441,14 @@ impl SystemNotifier {
             while let Some(line) = lines.next_line().await? {
                 // For tail -f commands, ignore lines during the first few seconds to avoid old entries
                 if command.contains("tail -f") && startup_time.elapsed().as_secs() < 10 {
-                    debug!("🚫 Ignoring line during startup grace period ({}s elapsed): {}", startup_time.elapsed().as_secs(), line);
+                    debug!(
+                        "🚫 Ignoring line during startup grace period ({}s elapsed): {}",
+                        startup_time.elapsed().as_secs(),
+                        line
+                    );
                     continue;
                 }
-                
+
                 if let Some(captures) = parser.pattern.captures(&line) {
                     let notification_text = if let (Some(filter), Some(replacement)) =
                         (&parser.filter, &parser.filter_replacement)
@@ -595,7 +603,7 @@ impl SystemNotifier {
 
             notification.hint(notify_rust::Hint::Custom(
                 "rustrland-animation".to_string(),
-                format!("fade-{}-{}", i + 1, steps).into(),
+                format!("fade-{}-{}", i + 1, steps),
             ));
 
             notification
@@ -641,7 +649,7 @@ impl SystemNotifier {
 
             notification.hint(notify_rust::Hint::Custom(
                 "rustrland-animation".to_string(),
-                format!("scale-{}-{}", i + 1, steps).into(),
+                format!("scale-{}-{}", i + 1, steps),
             ));
 
             notification
@@ -686,7 +694,7 @@ impl SystemNotifier {
 
             notification.hint(notify_rust::Hint::Custom(
                 "rustrland-animation".to_string(),
-                format!("slide-{}-{}", i + 1, steps).into(),
+                format!("slide-{}-{}", i + 1, steps),
             ));
 
             notification
@@ -910,8 +918,7 @@ impl SystemNotifier {
         }
 
         // Handle hex formats (#RRGGBB, #RRGGBBAA)
-        if color.starts_with("#") {
-            let hex = &color[1..];
+        if let Some(hex) = color.strip_prefix("#") {
             if hex.len() == 6 {
                 // #RRGGBB -> 0xffRRGGBB (full opacity)
                 return format!("0xff{}", hex);

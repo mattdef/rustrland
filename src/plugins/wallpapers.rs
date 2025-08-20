@@ -130,6 +130,12 @@ pub struct WallpapersPlugin {
     active_processes: HashMap<String, u32>, // Track active wallpaper backend processes per monitor
 }
 
+impl Default for WallpapersPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WallpapersPlugin {
     pub fn new() -> Self {
         Self {
@@ -215,7 +221,11 @@ impl WallpapersPlugin {
             let file_path = entry.path();
             if file_path.is_file() {
                 if let Some(extension) = file_path.extension() {
-                    if self.config.extensions.contains(&extension.to_string_lossy().to_lowercase()) {
+                    if self
+                        .config
+                        .extensions
+                        .contains(&extension.to_string_lossy().to_lowercase())
+                    {
                         let metadata = entry.metadata().await?;
                         let wallpaper_info = WallpaperInfo {
                             path: file_path.clone(),
@@ -238,7 +248,11 @@ impl WallpapersPlugin {
     }
 
     /// Recursively scan directories for images
-    fn scan_directory_recursive<'a>(&'a self, path: &'a Path, wallpapers: &'a mut Vec<WallpaperInfo>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+    fn scan_directory_recursive<'a>(
+        &'a self,
+        path: &'a Path,
+        wallpapers: &'a mut Vec<WallpaperInfo>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(async move {
             self.scan_directory(path, wallpapers).await?;
 
@@ -258,7 +272,7 @@ impl WallpapersPlugin {
     /// Preload some images for better performance
     async fn preload_images(&mut self) -> Result<()> {
         let preload_count = self.config.preload_count.min(self.wallpapers.len());
-        
+
         for wallpaper in self.wallpapers.iter().take(preload_count) {
             if !self.preloaded_images.contains_key(&wallpaper.path) {
                 match fs::read(&wallpaper.path).await {
@@ -283,29 +297,38 @@ impl WallpapersPlugin {
         }
 
         let monitor_count = self.monitors.len();
-        let monitor_state = self.monitors.entry(monitor_name.to_string()).or_insert_with(|| {
-            MonitorState {
+        let monitor_state = self
+            .monitors
+            .entry(monitor_name.to_string())
+            .or_insert_with(|| MonitorState {
                 name: monitor_name.to_string(),
                 current_wallpaper: None,
                 wallpaper_index: 0,
                 last_change: Instant::now(),
-            }
-        });
+            });
 
         if self.config.unique {
             // Each monitor gets a different wallpaper
-            let wallpaper_index = (monitor_state.wallpaper_index + monitor_count) % self.wallpapers.len();
+            let wallpaper_index =
+                (monitor_state.wallpaper_index + monitor_count) % self.wallpapers.len();
             monitor_state.wallpaper_index = wallpaper_index;
         } else {
             // All monitors get the same wallpaper
-            monitor_state.wallpaper_index = (monitor_state.wallpaper_index + 1) % self.wallpapers.len();
+            monitor_state.wallpaper_index =
+                (monitor_state.wallpaper_index + 1) % self.wallpapers.len();
         }
 
-        self.wallpapers.get(monitor_state.wallpaper_index).map(|w| w.path.clone())
+        self.wallpapers
+            .get(monitor_state.wallpaper_index)
+            .map(|w| w.path.clone())
     }
 
     /// Set wallpaper for a specific monitor
-    async fn set_wallpaper(&mut self, monitor_name: Option<&str>, wallpaper_path: &Path) -> Result<()> {
+    async fn set_wallpaper(
+        &mut self,
+        monitor_name: Option<&str>,
+        wallpaper_path: &Path,
+    ) -> Result<()> {
         let monitors = if let Some(monitor) = monitor_name {
             vec![monitor.to_string()]
         } else {
@@ -314,14 +337,19 @@ impl WallpapersPlugin {
         };
 
         for monitor in monitors {
-            self.set_wallpaper_for_monitor(&monitor, wallpaper_path).await?;
+            self.set_wallpaper_for_monitor(&monitor, wallpaper_path)
+                .await?;
         }
 
         Ok(())
     }
 
     /// Set wallpaper for a specific monitor
-    async fn set_wallpaper_for_monitor(&mut self, monitor_name: &str, wallpaper_path: &Path) -> Result<()> {
+    async fn set_wallpaper_for_monitor(
+        &mut self,
+        monitor_name: &str,
+        wallpaper_path: &Path,
+    ) -> Result<()> {
         // Kill existing process for this monitor if any
         if let Some(old_pid) = self.active_processes.get(monitor_name) {
             if let Err(e) = Command::new("kill").arg(old_pid.to_string()).output() {
@@ -330,8 +358,11 @@ impl WallpapersPlugin {
         }
 
         // Replace [file] placeholder with actual file path
-        let command = self.config.command.replace("[file]", &wallpaper_path.to_string_lossy());
-        
+        let command = self
+            .config
+            .command
+            .replace("[file]", &wallpaper_path.to_string_lossy());
+
         // Add monitor specification if supported
         let full_command = if command.contains("swaybg") {
             format!("{} -o {}", command, monitor_name)
@@ -339,27 +370,29 @@ impl WallpapersPlugin {
             command
         };
 
-        debug!("🖼️  Setting wallpaper on {}: {}", monitor_name, wallpaper_path.display());
+        debug!(
+            "🖼️  Setting wallpaper on {}: {}",
+            monitor_name,
+            wallpaper_path.display()
+        );
 
         // Execute the wallpaper command
-        let child = Command::new("sh")
-            .arg("-c")
-            .arg(&full_command)
-            .spawn()?;
+        let child = Command::new("sh").arg("-c").arg(&full_command).spawn()?;
 
         // Store the process ID for cleanup
         let pid = child.id();
         self.active_processes.insert(monitor_name.to_string(), pid);
 
         // Update monitor state
-        let monitor_state = self.monitors.entry(monitor_name.to_string()).or_insert_with(|| {
-            MonitorState {
+        let monitor_state = self
+            .monitors
+            .entry(monitor_name.to_string())
+            .or_insert_with(|| MonitorState {
                 name: monitor_name.to_string(),
                 current_wallpaper: None,
                 wallpaper_index: 0,
                 last_change: Instant::now(),
-            }
-        });
+            });
 
         monitor_state.current_wallpaper = Some(wallpaper_path.to_path_buf());
         monitor_state.last_change = Instant::now();
@@ -370,9 +403,7 @@ impl WallpapersPlugin {
     /// Get list of monitor names from Hyprland
     async fn get_monitor_names(&self) -> Result<Vec<String>> {
         match Monitors::get() {
-            Ok(monitors) => {
-                Ok(monitors.iter().map(|m| m.name.clone()).collect())
-            }
+            Ok(monitors) => Ok(monitors.iter().map(|m| m.name.clone()).collect()),
             Err(e) => {
                 warn!("Failed to get monitors from Hyprland: {}", e);
                 Ok(vec!["DP-1".to_string()]) // Default fallback
@@ -385,7 +416,10 @@ impl WallpapersPlugin {
         // Kill all active processes
         for (monitor, pid) in &self.active_processes {
             if let Err(e) = Command::new("kill").arg(pid.to_string()).output() {
-                debug!("Failed to kill wallpaper process {} for {}: {}", pid, monitor, e);
+                debug!(
+                    "Failed to kill wallpaper process {} for {}: {}",
+                    pid, monitor, e
+                );
             }
         }
         self.active_processes.clear();
@@ -411,8 +445,11 @@ impl WallpapersPlugin {
 
         let interval_secs = self.config.interval;
         let unique = self.config.unique;
-        
-        info!("🔄 Starting wallpaper rotation (interval: {}s)", interval_secs);
+
+        info!(
+            "🔄 Starting wallpaper rotation (interval: {}s)",
+            interval_secs
+        );
 
         // Clone necessary data for the background task
         let wallpapers = self.wallpapers.clone();
@@ -450,7 +487,10 @@ impl WallpapersPlugin {
                     if let Err(e) = Command::new("sh").arg("-c").arg(&full_command).spawn() {
                         error!("Failed to set wallpaper: {}", e);
                     } else {
-                        debug!("🖼️  Set wallpaper on {}: {}", monitor_name, wallpaper.filename);
+                        debug!(
+                            "🖼️  Set wallpaper on {}: {}",
+                            monitor_name, wallpaper.filename
+                        );
                     }
                 }
 
@@ -474,11 +514,17 @@ impl WallpapersPlugin {
     /// Get status information
     fn get_status(&self) -> String {
         let mut output = String::new();
-        
-        output.push_str(&format!("📊 Wallpapers Plugin Status\n"));
-        output.push_str(&format!("  • Wallpapers loaded: {}\n", self.wallpapers.len()));
+
+        output.push_str("📊 Wallpapers Plugin Status\n");
+        output.push_str(&format!(
+            "  • Wallpapers loaded: {}\n",
+            self.wallpapers.len()
+        ));
         output.push_str(&format!("  • Monitors tracked: {}\n", self.monitors.len()));
-        output.push_str(&format!("  • Rotation active: {}\n", self.rotation_handle.is_some()));
+        output.push_str(&format!(
+            "  • Rotation active: {}\n",
+            self.rotation_handle.is_some()
+        ));
         output.push_str(&format!("  • Interval: {}s\n", self.config.interval));
         output.push_str(&format!("  • Unique per monitor: {}\n", self.config.unique));
 
@@ -502,14 +548,17 @@ impl WallpapersPlugin {
     /// List all available wallpapers
     fn list_wallpapers(&self) -> String {
         let mut output = String::new();
-        
+
         if self.wallpapers.is_empty() {
             output.push_str("No wallpapers found. Run 'wall scan' first.\n");
             return output;
         }
 
-        output.push_str(&format!("📋 Available Wallpapers ({})\n", self.wallpapers.len()));
-        
+        output.push_str(&format!(
+            "📋 Available Wallpapers ({})\n",
+            self.wallpapers.len()
+        ));
+
         for (i, wallpaper) in self.wallpapers.iter().enumerate() {
             let size_mb = wallpaper.size_bytes as f64 / 1_048_576.0;
             output.push_str(&format!(
@@ -532,7 +581,7 @@ impl Plugin for WallpapersPlugin {
 
     async fn init(&mut self, config: &toml::Value) -> Result<()> {
         info!("🖼️  Initializing wallpapers plugin");
-        
+
         // Load configuration from plugin section
         if let Ok(wallpapers_config) = toml::from_str::<WallpapersConfig>(&config.to_string()) {
             self.config = wallpapers_config;
@@ -550,7 +599,6 @@ impl Plugin for WallpapersPlugin {
     }
 
     async fn handle_command(&mut self, command: &str, args: &[&str]) -> Result<String> {
-
         match command {
             "next" => {
                 if self.wallpapers.is_empty() {
@@ -582,7 +630,7 @@ impl Plugin for WallpapersPlugin {
                 }
 
                 let input = args[0];
-                
+
                 // First, try to find by filename in the scanned wallpapers
                 if let Some(wallpaper) = self.wallpapers.iter().find(|w| w.filename == input) {
                     let wallpaper_path = wallpaper.path.clone();
@@ -601,13 +649,12 @@ impl Plugin for WallpapersPlugin {
                         .take(5)
                         .map(|w| w.filename.clone())
                         .collect();
-                    
+
                     let suggestion = if available.is_empty() {
                         "Run 'wall scan' first to discover wallpapers".to_string()
                     } else {
                         format!("Available wallpapers: {}", available.join(", "))
                     };
-                    
                     return Err(anyhow::anyhow!("File not found: {}. {}", input, suggestion));
                 }
 
@@ -654,7 +701,10 @@ impl Plugin for WallpapersPlugin {
 
         // Clean up all active wallpaper backend processes
         if !self.active_processes.is_empty() {
-            debug!("🔪 Terminating {} active wallpaper processes", self.active_processes.len());
+            debug!(
+                "🔪 Terminating {} active wallpaper processes",
+                self.active_processes.len()
+            );
             let _ = self.clear_wallpapers().await;
         }
 
@@ -741,7 +791,7 @@ mod tests {
     fn test_config_serialization() {
         let config = WallpapersConfig::default();
         let toml_str = toml::to_string(&config).unwrap();
-        
+
         assert!(toml_str.contains("interval"));
         assert!(toml_str.contains("extensions"));
     }
@@ -749,7 +799,7 @@ mod tests {
     #[tokio::test]
     async fn test_plugin_wallpaper_list() {
         let mut plugin = WallpapersPlugin::new();
-        
+
         // Add some test wallpapers
         plugin.wallpapers = vec![
             create_test_wallpaper("test1.jpg"),
