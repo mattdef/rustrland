@@ -7,6 +7,7 @@ use tracing::{error, info};
 mod animation;
 mod config;
 mod core;
+// GUI module removed - now using wofi for wallpaper carousel
 mod ipc;
 mod plugins;
 

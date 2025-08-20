@@ -123,6 +123,8 @@ pub struct SystemNotifier {
     // Integrate the full animation engine
     animation_engine: AnimationEngine,
     notification_counter: u32,
+    // Startup time to avoid showing old notifications
+    startup_time: Instant,
 }
 
 impl SystemNotifier {
@@ -135,6 +137,7 @@ impl SystemNotifier {
             shutdown_tx: None,
             animation_engine: AnimationEngine::new(),
             notification_counter: 0,
+            startup_time: Instant::now(),
         }
     }
 
@@ -296,6 +299,7 @@ impl SystemNotifier {
                 source_config,
                 parser,
                 task_shutdown_rx,
+                self.startup_time,
             )
             .await?;
             self.handles.push(handle);
@@ -319,6 +323,7 @@ impl SystemNotifier {
         source_config: SourceConfig,
         parser: CompiledParser,
         mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
+        startup_time: Instant,
     ) -> Result<JoinHandle<()>> {
         let handle = tokio::spawn(async move {
             debug!("Starting monitor for source '{}'", source_name);
@@ -330,7 +335,7 @@ impl SystemNotifier {
                         break;
                     }
                     // Monitor command
-                    result = Self::monitor_command(&source_config.command, &parser) => {
+                    result = Self::monitor_command(&source_config.command, &parser, startup_time) => {
                         match result {
                             Ok(_) => {
                                 debug!("Command completed for source '{}'", source_name);
@@ -363,12 +368,13 @@ impl SystemNotifier {
         source_name: String,
         source_config: SourceConfig,
         parser: CompiledParser,
+        startup_time: Instant,
     ) -> Result<JoinHandle<()>> {
         let handle = tokio::spawn(async move {
             debug!("Starting monitor for source '{}'", source_name);
 
             loop {
-                match Self::monitor_command(&source_config.command, &parser).await {
+                match Self::monitor_command(&source_config.command, &parser, startup_time).await {
                     Ok(_) => {
                         debug!("Command completed for source '{}'", source_name);
                     }
@@ -385,12 +391,40 @@ impl SystemNotifier {
     }
 
     /// Monitor a command output and send notifications for matches
-    async fn monitor_command(command: &str, parser: &CompiledParser) -> Result<()> {
-        debug!("Executing command: {}", command);
+    async fn monitor_command(command: &str, parser: &CompiledParser, startup_time: Instant) -> Result<()> {
+        // Modify command to filter out old log entries for common log monitoring commands
+        let filtered_command = if command.contains("journalctl") {
+            // For journalctl, add --since option to only show entries from after startup
+            // Use --since 'now' to avoid showing historical entries when plugin starts
+            if command.contains("--since") {
+                // Command already has --since, don't modify it
+                command.to_string()
+            } else if command.contains("|") {
+                // Handle piped commands - add --since to the journalctl part before the pipe
+                let parts: Vec<&str> = command.splitn(2, '|').collect();
+                if parts.len() == 2 {
+                    format!("{} --since 'now' |{}", parts[0].trim(), parts[1])
+                } else {
+                    command.to_string()
+                }
+            } else {
+                // Add --since 'now' to prevent old notifications at startup
+                format!("{} --since 'now'", command)
+            }
+        } else if command.contains("tail -f") {
+            // For tail -f, we'll add a startup delay to avoid showing recent entries that existed before startup
+            // This is particularly important for pacman.log which might have recent entries
+            command.to_string()
+        } else {
+            // For other commands, use as-is
+            command.to_string()
+        };
+
+        debug!("Executing filtered command: {}", filtered_command);
 
         let mut cmd = Command::new("sh")
             .arg("-c")
-            .arg(command)
+            .arg(&filtered_command)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -401,6 +435,12 @@ impl SystemNotifier {
             let mut lines = reader.lines();
 
             while let Some(line) = lines.next_line().await? {
+                // For tail -f commands, ignore lines during the first few seconds to avoid old entries
+                if command.contains("tail -f") && startup_time.elapsed().as_secs() < 10 {
+                    debug!("🚫 Ignoring line during startup grace period ({}s elapsed): {}", startup_time.elapsed().as_secs(), line);
+                    continue;
+                }
+                
                 if let Some(captures) = parser.pattern.captures(&line) {
                     let notification_text = if let (Some(filter), Some(replacement)) =
                         (&parser.filter, &parser.filter_replacement)

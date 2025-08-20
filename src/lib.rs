@@ -8,8 +8,7 @@
 pub mod animation;
 pub mod config;
 pub mod core;
-#[cfg(feature = "gui")]
-pub mod gui;
+// GUI module removed - now using wofi for wallpaper carousel
 pub mod ipc;
 pub mod plugins;
 
