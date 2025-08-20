@@ -21,7 +21,7 @@ optdepends=(
 makedepends=('rust' 'cargo')
 conflicts=('rustrland-git')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/mattdef/$pkgname/archive/v$pkgver.tar.gz")
-sha256sums=('451ee4aa2a965caa7c2074d7f887e4a95e4594a18f3fcd1b57d7aba6e28a9252')
+sha256sums=('d5558cd419c8d46bdc958064cb97f963d1ea793866414c025906ec15033512ed')
 
 build() {
     cd "$pkgname-$pkgver"
@@ -31,7 +31,7 @@ build() {
     export CARGO_TARGET_DIR=target
     
     # Build with optimizations
-    cargo build --release --all-features
+    cargo build --release
 }
 
 check() {
