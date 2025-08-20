@@ -1,0 +1,46 @@
+# Configuration pour git-cliff
+# Voir https://github.com/orhun/git-cliff
+
+[changelog]
+# En-tête par défaut
+header = """
+# Changelog
+"""
+
+# Pied de page par défaut
+footer = """
+---
+_Généré automatiquement avec [git-cliff](https://github.com/orhun/git-cliff)._
+"""
+
+# Tri des commits : plus récent en premier
+sort = "desc"
+
+# Groupement des commits par type
+[git]
+conventional_commits = true
+filter_unconventional = true
+
+# Comment formatter chaque commit
+commit_preprocessors = [
+  { pattern = ".*", replace = "- $0" },
+]
+
+# Groupes basés sur les types Conventional Commits
+commit_parsers = [
+  { message = "^feat", group = "✨ Nouvelles fonctionnalités" },
+  { message = "^fix", group = "🐛 Corrections de bugs" },
+  { message = "^perf", group = "⚡️ Améliorations de performance" },
+  { message = "^refactor", group = "🛠 Refactorisation" },
+  { message = "^docs", group = "📚 Documentation" },
+  { message = "^style", group = "🎨 Style / Mise en forme" },
+  { message = "^test", group = "✅ Tests" },
+  { message = "^build", group = "📦 Build" },
+  { message = "^ci", group = "🤖 Intégration continue" },
+  { message = "^chore", group = "🔧 Divers" },
+]
+
+# Format de chaque entrée dans le changelog
+[template]
+commit = "{{message}} ({{hash}})"
+group = "## {{group}}"
