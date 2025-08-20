@@ -1,12 +1,19 @@
-{ pkgs ? import <nixpkgs> {} }:
-pkgs.rustPlatform.buildRustPackage rec {
+{
+  lib,
+  rustPlatform,
+  fetchFromGitHub,
+  versionCheckHook,
+  nix-update-script,
+}:
+
+rustPlatform.buildRustPackage (finalAttrs: {
   pname = "rustrland";
   version = "0.3.6";
 
-  src = pkgs.fetchFromGitHub {
+  src = fetchFromGitHub {
     owner = "mattdef";
     repo = "rustrland";
-    rev = "v${version}";
+    tag = "v${finalAttrs.version}";
     sha256 = "sha256-sT4XSYrBxjVTd+xMcCqi24k/TbIRX4p8lEgrf/Wj1z8=";
   };
 
@@ -22,11 +29,16 @@ pkgs.rustPlatform.buildRustPackage rec {
   cargoBuildFlags = [ "--bins" ];
   cargoTestFlags = [ "--bins" ];
 
-  meta = with pkgs.lib; {
-    description = "A Rust-powered window management for Hyprland - Fast, reliable plugin system";
+  doInstallCheck = true;
+  nativeInstallCheckInputs = [ versionCheckHook ];
+
+  passthru.updateScript = nix-update-script { };
+
+  meta = {
+    description = "Rust-powered window management for Hyprland";
     homepage = "https://github.com/mattdef/rustrland";
-    license = licenses.mit;
-    maintainers = with maintainers; [ "mattdef" ];
-    platforms = platforms.linux;
+    license = lib.licenses.mit;
+    maintainers = with lib.maintainers; [ "mattdef" ];
+    mainProgram = "rustrland";
   };
-}
+})
