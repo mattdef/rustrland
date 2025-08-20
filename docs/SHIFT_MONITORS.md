@@ -28,44 +28,6 @@ default_direction = "+1"
 
 # Animation duration in milliseconds
 animation_duration = 250
-
-# Shift behavior
-wrap_around = true              # Wrap around to first monitor after last
-preserve_focus = true           # Maintain window focus during shift
-follow_workspace = true         # Follow workspace to new monitor
-```
-
-### Advanced Configuration
-
-```toml
-[shift_monitors]
-# Direction and wrapping
-shift_mode = "circular"         # "circular", "linear", "ping_pong"
-monitor_order = ["DP-1", "DP-2", "HDMI-1"]  # Custom monitor order
-
-# Workspace handling
-preserve_workspace_numbers = true  # Keep workspace numbers during shift
-auto_create_workspaces = true      # Create workspaces as needed
-empty_workspace_behavior = "skip"  # "skip", "include", "create"
-
-# Animation and visual effects
-[shift_monitors.animations]
-enable_animations = true
-transition_type = "slide"       # "slide", "fade", "zoom", "none"
-transition_duration = 300       # Animation duration in milliseconds
-transition_easing = "easeOut"   # Animation easing function
-
-# Visual feedback
-show_shift_indicator = true     # Show visual indicator during shift
-indicator_duration = 1000       # Indicator display duration
-indicator_position = "center"   # "top", "center", "bottom"
-indicator_color = "#007acc"     # Indicator color
-
-# Performance settings
-[shift_monitors.performance]
-batch_operations = true         # Batch multiple workspace moves
-async_transitions = true        # Asynchronous workspace transitions
-cache_workspace_info = true     # Cache workspace information
 ```
 
 ## Commands

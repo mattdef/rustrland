@@ -1,377 +1,309 @@
 # Expose Plugin
 
-**Status**: ✅ Still in development | **Tests**: Integrated
+**Status**: ✅ Production Ready | **Tests**: Integrated
 
-Mission Control-style window overview with grid layout, navigation, and selection capabilities. Provides a visual overview of all open windows with keyboard and mouse navigation.
+The Expose plugin provides a Mission Control-style window overview for Hyprland, allowing you to see all open windows at once in a special workspace and quickly switch between them.
 
-## Features
+## Overview
 
-- **Grid Layout**: Automatically arranges windows in an optimal grid
-- **Keyboard Navigation**: Arrow key navigation through windows
-- **Visual Feedback**: Clear indication of selected window
-- **Multi-Monitor**: Works across multiple monitors
-- **Smooth Animations**: Hardware-accelerated transitions
-- **Window Filtering**: Option to filter windows by workspace or monitor
-- **Zoom Preview**: Hover to preview window content
-- **Quick Selection**: Click or press Enter to select window
+The Expose plugin implements a Pyprland-compatible approach using Hyprland's special workspace system. When activated, it moves all visible windows to a special workspace called `special:exposed`, where Hyprland automatically arranges them in a grid layout.
+
+## Architecture
+
+### Implementation Approach
+
+The plugin uses **Hyprland's native special workspace system** rather than complex manual window positioning:
+
+- **Special Workspace**: Uses `special:exposed` workspace for window overview
+- **Native Layout**: Hyprland automatically handles window arrangement and scaling
+- **Simple Commands**: Direct `hyprctl` commands for reliable window management
+- **State Preservation**: Tracks original window positions for restoration
+
+### Key Features
+
+1. **Automatic Cleanup**: Detects and restores orphaned windows from previous sessions
+2. **Event Handling**: Automatically exits expose mode on workspace changes or window closures
+3. **Debug Logging**: Comprehensive logging for troubleshooting
+4. **State Management**: Tracks window states and original workspaces
+5. **Pyprland Compatibility**: Compatible with existing Pyprland configurations
 
 ## Configuration
 
-### Basic Configuration
+Add the expose plugin to your `rustrland.toml` configuration:
 
 ```toml
+[rustrland]
+plugins = [
+    # ... other plugins ...
+    "expose",
+]
+
 [expose]
-# Enable expose plugin
-enabled = true
+# Enable debug logging (default: false)
+debug_logging = true
 
-# Optional: Custom grid spacing in pixels
-spacing = 20
+# Include windows from special workspaces (default: false)
+include_special = false
 
-# Optional: Animation duration in milliseconds  
-animation_duration = 200
-
-# Optional: Grid layout options
-grid_cols = 0                    # Auto-calculate columns (0 = auto)
-grid_rows = 0                    # Auto-calculate rows (0 = auto)
-
-# Optional: Window filtering
-show_minimized = false           # Show minimized windows
-show_special = false             # Show special workspace windows
-current_monitor_only = false     # Only show windows on current monitor
-current_workspace_only = false   # Only show windows on current workspace
+# Target monitor for expose (empty = current focused monitor)
+target_monitor = ""
 ```
 
-### Advanced Configuration
+### Configuration Options
 
-```toml
-[expose]
-# Visual appearance
-background_color = "#1e1e1e80"   # Semi-transparent background
-selected_color = "#007acc"       # Selection highlight color
-window_padding = 10              # Padding around each window preview
-border_width = 2                 # Border width for selected window
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `debug_logging` | boolean | `false` | Enable detailed debug output for troubleshooting |
+| `include_special` | boolean | `false` | Include windows from special workspaces in expose view |
+| `target_monitor` | string | `""` | Target monitor name (empty uses current focused monitor) |
 
-# Performance settings
-max_windows = 50                 # Maximum windows to show
-preview_quality = "medium"       # Preview quality: "low", "medium", "high"
-hardware_acceleration = true     # Use GPU acceleration when available
+## Usage
 
-# Navigation behavior
-wrap_navigation = true           # Wrap around when navigating edges
-auto_select_single = true        # Auto-select if only one window
-exit_on_click_outside = true     # Exit expose when clicking outside
+### Commands
 
-# Animation settings
-[expose.animations]
-fade_in_duration = 150           # Fade in animation duration
-fade_out_duration = 100          # Fade out animation duration
-zoom_duration = 200              # Window zoom animation duration
-slide_duration = 250             # Window slide animation duration
-easing = "easeOut"              # Animation easing function
-```
-
-## Commands
-
-### Basic Commands
+The expose plugin supports the following commands via the `rustr` client:
 
 ```bash
-# Toggle expose mode
-rustr expose                     # Toggle expose on/off
-rustr expose toggle              # Same as above
+# Toggle expose mode (enter/exit)
+rustr expose
+rustr expose toggle
 
-# Navigation commands
-rustr expose next                # Navigate to next window
-rustr expose prev                # Navigate to previous window
-rustr expose up                  # Navigate up in grid
-rustr expose down                # Navigate down in grid
-rustr expose left                # Navigate left in grid
-rustr expose right               # Navigate right in grid
+# Enter expose mode explicitly
+rustr expose show
+rustr expose enter
 
-# Selection and control
-rustr expose select              # Select current window and exit
-rustr expose exit                # Exit expose mode without selection
+# Exit expose mode explicitly
+rustr expose hide
+rustr expose exit
 
-# Status and management
-rustr expose status              # Show expose status
-rustr expose reload              # Reload expose configuration
+# Check current status
+rustr expose status
 ```
 
-### Advanced Commands
+### Keyboard Integration
+
+Add these keybindings to your `~/.config/hypr/hyprland.conf`:
 
 ```bash
-# Filtering commands
-rustr expose show-all            # Show all windows (ignore filters)
-rustr expose show-current        # Show only current workspace windows
-rustr expose show-monitor        # Show only current monitor windows
-
-# Layout commands
-rustr expose grid 3 2            # Set specific grid layout (3 cols, 2 rows)
-rustr expose grid auto           # Reset to auto grid layout
-
-# Preview commands
-rustr expose preview on          # Enable window previews
-rustr expose preview off         # Disable window previews
-```
-
-## Keybindings
-
-Add to your `~/.config/hypr/hyprland.conf`:
-
-### Basic Navigation
-```bash
-# Main expose controls
-bind = SUPER, TAB, exec, rustr expose        # Show all windows
-bind = SUPER_SHIFT, TAB, exec, rustr expose toggle # Same as above
-
-# Navigation while in expose mode
-bind = , Right, exec, rustr expose next      # Next window
-bind = , Left, exec, rustr expose prev       # Previous window  
-bind = , Up, exec, rustr expose up           # Navigate up
-bind = , Down, exec, rustr expose down       # Navigate down
-
-# Selection and exit
-bind = , Return, exec, rustr expose select   # Select current window
-bind = , Escape, exec, rustr expose exit     # Exit without selection
-bind = , Space, exec, rustr expose select    # Alternative select key
-```
-
-### Advanced Navigation
-```bash
-# Grid navigation
+# Expose keybinding (Mission Control style)
 bind = SUPER, TAB, exec, rustr expose
-bind = SUPER, Right, exec, rustr expose right
-bind = SUPER, Left, exec, rustr expose left
-bind = SUPER, Up, exec, rustr expose up
-bind = SUPER, Down, exec, rustr expose down
 
-# Quick access
-bind = SUPER, grave, exec, rustr expose      # Alternative trigger
-bind = SUPER, A, exec, rustr expose show-all # Show all windows
-bind = SUPER_CTRL, TAB, exec, rustr expose show-current # Current workspace only
+# Alternative keybindings
+bind = SUPER, E, exec, rustr expose        # Super + E
+bind = ALT, TAB, exec, rustr expose        # Alt + Tab style
 ```
 
-## Usage Workflow
+## Workflow
 
-### Basic Workflow
-1. **Activate**: Press `Super + Tab` to enter expose mode
-2. **Navigate**: Use arrow keys to navigate between windows
-3. **Select**: Press `Enter` to focus the selected window
-4. **Exit**: Press `Escape` to exit without selecting
+### Enter Expose Mode
 
-### Mouse Workflow
-1. **Activate**: Press `Super + Tab` to enter expose mode
-2. **Hover**: Move mouse over windows to preview them
-3. **Select**: Click on a window to focus it
-4. **Exit**: Click outside the grid to exit without selecting
+1. **Window Detection**: Scans all open windows and filters out invalid ones
+2. **State Storage**: Records original workspace and position of each window
+3. **Workspace Activation**: Creates and shows `special:exposed` workspace
+4. **Window Movement**: Moves all valid windows to the special workspace
+5. **Grid Display**: Hyprland automatically arranges windows in a grid
 
-### Keyboard Shortcuts in Expose Mode
-- **Arrow Keys**: Navigate between windows
-- **Enter/Space**: Select current window
-- **Escape**: Exit without selecting
-- **Tab**: Cycle through windows in order
-- **Home**: Go to first window
-- **End**: Go to last window
+### Exit Expose Mode
 
-## Multi-Monitor Support
+1. **Workspace Hiding**: Hides the `special:exposed` workspace
+2. **Window Restoration**: Moves each window back to its original workspace
+3. **Focus Restoration**: Returns to the original workspace
+4. **State Cleanup**: Clears internal state tracking
 
-Expose intelligently handles multi-monitor setups:
+### Automatic Cleanup
 
-```toml
-[expose]
-# Monitor behavior options
-current_monitor_only = false     # Show windows from all monitors
-monitor_aware_layout = true      # Arrange by monitor position
-preserve_monitor_groups = true   # Group windows by monitor
+When the daemon starts, it automatically:
 
-# Per-monitor settings
-[expose.monitors]
-"DP-1" = { grid_cols = 4, grid_rows = 3 }
-"DP-2" = { grid_cols = 3, grid_rows = 2 }
-"HDMI-1" = { spacing = 15 }
-```
-
-### Features
-- **Cross-Monitor Navigation**: Navigate between windows across monitors
-- **Monitor Grouping**: Group windows by their monitor
-- **Adaptive Layout**: Adjust grid based on monitor count and resolution
-- **Focus Following**: Expose follows your focus between monitors
+1. **Orphan Detection**: Checks if `special:exposed` contains abandoned windows
+2. **Window Restoration**: Moves orphaned windows back to workspace 1
+3. **Workspace Cleanup**: Hides the orphaned special workspace
+4. **Log Reporting**: Reports cleanup actions in the logs
 
 ## Window Filtering
 
-Control which windows appear in expose mode:
+The plugin applies intelligent filtering to ensure only useful windows appear in expose mode:
 
-```toml
-[expose]
-# Basic filtering
-show_minimized = false           # Exclude minimized windows
-show_special = false             # Exclude special workspace windows
-show_floating_only = false       # Only show floating windows
-show_tiled_only = false          # Only show tiled windows
+### Included Windows
+- **Mapped Windows**: Only visible, mapped windows
+- **Normal Size**: Windows with reasonable dimensions (e 50x30 pixels)
+- **Regular Workspaces**: Windows from normal workspaces (1, 2, 3, etc.)
+- **Special Workspaces**: Only if `include_special = true`
 
-# Advanced filtering
-exclude_classes = ["Rofi", "wofi", "waybar"]  # Exclude specific window classes
-exclude_titles = ["Desktop", "Wallpaper"]     # Exclude by window title
-min_window_size = [100, 100]                  # Minimum window size to show
+### Excluded Windows
+- **Invalid Geometry**: Windows with zero or negative dimensions
+- **Tiny Windows**: Windows smaller than 50x30 pixels (likely system windows)
+- **Unmapped Windows**: Hidden or minimized windows
+- **Special Workspaces**: Excluded by default (configurable)
 
-# Workspace filtering
-current_workspace_only = false   # Only current workspace
-include_workspaces = [1, 2, 3]  # Specific workspaces to include
-exclude_workspaces = [9, 10]    # Workspaces to exclude
+## Event Handling
+
+The plugin automatically responds to Hyprland events:
+
+### Auto-Exit Events
+- **Window Closed**: Exits expose mode if any window is closed
+- **Workspace Changed**: Exits expose mode if user switches workspaces manually
+
+This ensures expose mode doesn't get "stuck" and maintains a clean user experience.
+
+## Technical Implementation
+
+### Core Methods
+
+```rust
+// Enter expose mode
+async fn enter_expose(&mut self) -> Result<String>
+
+// Exit expose mode and restore windows  
+async fn exit_expose(&mut self) -> Result<String>
+
+// Cleanup orphaned windows from previous sessions
+async fn cleanup_orphaned_exposed_workspace(&mut self) -> Result<()>
+
+// Get windows eligible for expose
+async fn get_expose_windows(&self) -> Result<Vec<Client>>
 ```
 
-## Animations and Visual Effects
+### State Management
 
-Expose supports various animation and visual effects:
+```rust
+pub struct ExposeState {
+    pub is_active: bool,                    // Whether expose mode is active
+    pub original_workspace: i32,            // Workspace to return to
+    pub original_windows: Vec<WindowState>, // Original window positions
+    pub target_monitor: Option<String>,     // Target monitor name
+}
 
-### Animation Types
-- **Grid Formation**: Windows animate into grid positions
-- **Focus Transition**: Smooth transition when selecting window
-- **Fade Effects**: Fade in/out when entering/exiting expose
-- **Zoom Preview**: Zoom effect when hovering over windows
-
-### Visual Customization
-```toml
-[expose.visual]
-# Background and overlay
-background_opacity = 0.8        # Background dimming opacity
-background_blur = true          # Blur background windows
-overlay_color = "#00000080"     # Overlay color
-
-# Window appearance  
-window_border_color = "#ffffff40"    # Window border color
-selected_border_color = "#007acc"    # Selected window border color
-window_corner_radius = 8             # Window corner rounding
-window_shadow = true                 # Drop shadow for windows
-
-# Text and labels
-show_window_titles = true            # Show window titles
-title_font_size = 12                 # Title font size
-title_color = "#ffffff"              # Title text color
-title_background = "#00000080"       # Title background color
+pub struct WindowState {
+    pub address: String,         // Hyprland window address
+    pub original_workspace: i32, // Original workspace ID
+    pub title: String,          // Window title for logging
+}
 ```
 
-## Performance Optimization
+### Command Execution
 
-Expose is optimized for smooth performance even with many windows:
+The plugin uses direct `hyprctl` commands for maximum reliability:
 
-### Performance Settings
-```toml
-[expose.performance]
-# Rendering optimization
-max_preview_size = 256           # Maximum preview texture size
-use_gpu_rendering = true         # Use GPU for window previews
-async_preview_loading = true     # Load previews asynchronously
-preview_cache_size = 50          # Number of previews to cache
+```rust
+// Show special workspace
+"hyprctl dispatch togglespecialworkspace exposed"
 
-# Layout optimization
-fast_layout_mode = false         # Simplified layout for better performance
-reduce_animations = false        # Reduce animations on slower systems
-skip_preview_updates = false     # Don't update previews while navigating
-```
+// Move window to exposed workspace
+"hyprctl dispatch movetoworkspace special:exposed,address:{window.address}"
 
-### Resource Management
-- **Memory Efficient**: Window previews are cached and reused
-- **GPU Acceleration**: Hardware acceleration for smooth animations
-- **Async Loading**: Window previews load in background
-- **Smart Updates**: Only update visible window previews
-
-## Integration with Other Plugins
-
-Expose integrates seamlessly with other Rustrland plugins:
-
-### Workspaces Follow Focus
-```bash
-# Show expose for specific workspace
-rustr workspace switch 2 && rustr expose show-current
-```
-
-### Scratchpads
-```bash
-# Exclude scratchpads from expose
-[expose]
-exclude_classes = ["foot-scratchpad", "firefox-scratchpad"]
-```
-
-### Wallpapers
-```bash
-# Expose respects wallpaper as background
-[expose.visual]
-background_blur = true           # Blur wallpaper for better visibility
+// Restore window to original workspace
+"hyprctl dispatch movetoworkspacesilent {original_workspace},address:{window.address}"
 ```
 
 ## Troubleshooting
 
-### Common Issues
+### Enable Debug Logging
 
-**Expose not showing all windows:**
+Set `debug_logging = true` in your configuration to see detailed operation logs:
+
 ```toml
 [expose]
-show_minimized = true           # Include minimized windows
-show_special = true             # Include special workspace windows
-current_workspace_only = false  # Show all workspaces
+debug_logging = true
 ```
 
-**Performance issues with many windows:**
-```toml
-[expose.performance]
-max_windows = 30                # Limit number of windows shown
-fast_layout_mode = true         # Use simplified layout
-reduce_animations = true        # Reduce animation complexity
-```
+### Common Issues
 
-**Navigation not working in expose mode:**
+#### No Windows to Expose
+- **Cause**: All windows are in special workspaces or too small
+- **Solution**: Switch to a workspace with regular windows, or enable `include_special = true`
+
+#### Windows Disappear
+- **Cause**: Daemon restart while expose mode was active
+- **Solution**: Automatic cleanup on daemon restart now handles this
+
+#### Expose Won't Exit
+- **Cause**: State corruption or command failure
+- **Solution**: Restart daemon or manually run `hyprctl dispatch togglespecialworkspace exposed`
+
+### Logs Analysis
+
+Look for these log patterns:
+
 ```bash
-# Check if keybindings conflict with other applications
-# Make sure expose mode is actually active
+# Successful expose activation
+INFO <� Entering expose mode (Pyprland-compatible)
+INFO  Cleaned up orphaned special:exposed workspace
+
+# Window filtering
+DEBUG Including window: Firefox [firefox] (1920x1080)
+DEBUG Skipping tiny window: notification (10x10)
+
+# Restoration process
+DEBUG Restored window 'Terminal' to workspace 1
+INFO =� Exiting expose mode
+```
+
+## Performance
+
+### Optimizations
+
+- **Direct Commands**: Uses `hyprctl` directly instead of API layers
+- **Minimal State**: Only tracks essential window information
+- **Event Filtering**: Handles only relevant Hyprland events
+- **Async Operations**: Non-blocking window operations
+
+### Memory Usage
+
+- **Low Overhead**: Minimal memory footprint when inactive
+- **State Cleanup**: Automatic cleanup prevents memory leaks
+- **Efficient Storage**: Uses references where possible
+
+## Compatibility
+
+### Pyprland Migration
+
+The plugin is designed for seamless migration from Pyprland:
+
+- **Same Commands**: Uses identical command syntax (`expose`, `toggle`, etc.)
+- **Compatible Configuration**: Accepts Pyprland-style config options
+- **Similar Behavior**: Provides the same user experience
+
+### Hyprland Versions
+
+- **Minimum Version**: Requires Hyprland with special workspace support
+- **Tested On**: Hyprland 0.45+ (current development versions)
+- **Dependencies**: Uses stable Hyprland IPC commands
+
+## Future Enhancements
+
+### Planned Features
+
+- **Animation Support**: Smooth transitions using the animation system
+- **Custom Layouts**: Alternative arrangements beyond grid layout
+- **Window Previews**: Enhanced window thumbnails
+- **Monitor Awareness**: Better multi-monitor support
+
+### Extensibility
+
+The plugin architecture allows for:
+
+- **Custom Filters**: Pluggable window filtering logic
+- **Layout Engines**: Alternative arrangement algorithms  
+- **Event Handlers**: Custom response to Hyprland events
+- **Animation Integration**: Smooth transitions between states
+
+## Example Session
+
+```bash
+# Start daemon
+rustrland --debug --foreground
+
+# Enter expose mode
+rustr expose
+#  Expose mode activated with 3 windows
+
+# Check status
 rustr expose status
+#  Expose: Active | Windows: 3 | Original Workspace: 2
+
+# Exit expose mode
+rustr expose exit
+#  Expose mode deactivated
 ```
 
-### Debug Information
-```bash
-# Check expose status
-rustr expose status
-
-# Test expose functionality
-rustr expose                    # Enter expose mode
-rustr expose next              # Test navigation
-rustr expose exit              # Exit cleanly
-```
-
-## Advanced Use Cases
-
-### Workspace Overview
-```bash
-# Create workspace-specific expose
-bind = SUPER, 1, exec, rustr workspace switch 1 && rustr expose show-current
-bind = SUPER, 2, exec, rustr workspace switch 2 && rustr expose show-current
-```
-
-### Application Launcher
-```bash
-# Use expose as application launcher
-bind = SUPER, Space, exec, rustr expose show-all
-```
-
-### Window Management
-```bash
-# Combine with window management
-bind = SUPER_SHIFT, Q, exec, rustr expose && rustr close-selected
-bind = SUPER_SHIFT, M, exec, rustr expose && rustr minimize-selected
-```
-
-## Migration from Other Tools
-
-### From macOS Mission Control
-- Similar grid layout and navigation
-- Enhanced keyboard navigation
-- Better multi-monitor support
-
-### From GNOME Activities
-- More responsive performance
-- Customizable appearance
-- Better integration with tiling WMs
-
-### From KDE Present Windows
-- Equivalent functionality with better performance
-- More configuration options
-- Seamless Hyprland integration
+The plugin provides a reliable, Pyprland-compatible expose functionality with robust error handling and automatic cleanup capabilities.

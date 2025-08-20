@@ -120,8 +120,6 @@ pub struct SystemNotifier {
     parsers: HashMap<String, CompiledParser>,
     handles: Vec<JoinHandle<()>>,
     shutdown_tx: Option<mpsc::Sender<()>>,
-    // Integrate the full animation engine
-    animation_engine: AnimationEngine,
     notification_counter: u32,
     // Startup time to avoid showing old notifications
     startup_time: Instant,
@@ -135,7 +133,6 @@ impl SystemNotifier {
             parsers: HashMap::new(),
             handles: Vec::new(),
             shutdown_tx: None,
-            animation_engine: AnimationEngine::new(),
             notification_counter: 0,
             startup_time: Instant::now(),
         }
@@ -1285,10 +1282,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_new_config_structure() {
+    async fn test_config_structure() {
         let mut plugin = SystemNotifier::new();
         let config_str = r##"
-# Main plugin config (simple mode)
+# Main plugin config 
 color = "#ff6600"
 timeout = 3000
 icon = "info"
@@ -1320,47 +1317,6 @@ timeout = 5000
     }
 
     #[tokio::test]
-    async fn test_enhanced_config_with_animation() {
-        let mut plugin = SystemNotifier::new();
-        let config_str = r##"
-[sources]
-test = { command = "echo 'test'", parser = "enhanced_test" }
-
-[parsers.enhanced_test]
-pattern = "test"
-filter = "s/test/success/"
-color = "#00aa00"
-icon = "dialog-information"
-
-[parsers.enhanced_test.animation]
-display_duration = 3000
-smooth_transitions = true
-
-[parsers.enhanced_test.animation.appear]
-animation_type = "fade"
-duration = 300
-easing = "easeOut"
-opacity_from = 0.0
-scale_from = 1.0
-
-[parsers.enhanced_test.animation.disappear]
-animation_type = "scale"
-duration = 200
-easing = "easeIn"
-opacity_from = 1.0
-scale_from = 0.8
-        "##;
-
-        let config: toml::Value = toml::from_str(config_str).unwrap();
-        assert!(plugin.parse_config(&config).is_ok());
-
-        // Check that parser was created with animation
-        let parser = plugin.parsers.get("enhanced_test").unwrap();
-        assert!(parser.animation.is_some());
-        assert!(parser.icon.is_some());
-    }
-
-    #[tokio::test]
     async fn test_manual_notification() {
         // Skip test in CI environments where notifications aren't available
         if std::env::var("CI").is_ok() || std::env::var("GITHUB_ACTIONS").is_ok() {
@@ -1375,38 +1331,6 @@ scale_from = 0.8
             .handle_command("notify", &["Test message", "normal", "1000"])
             .await;
         assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_animated_notification() {
-        // Skip test in CI environments where notifications aren't available
-        if std::env::var("CI").is_ok() || std::env::var("GITHUB_ACTIONS").is_ok() {
-            return;
-        }
-
-        let mut plugin = SystemNotifier::new();
-        let config = toml::from_str("").unwrap();
-        plugin.init(&config).await.unwrap();
-
-        let result = plugin
-            .handle_command("notify", &["Animated test", "normal", "1000", "--animated"])
-            .await;
-        assert!(result.is_ok());
-        assert!(result.unwrap().contains("animated"));
-    }
-
-    #[tokio::test]
-    async fn test_status_with_animation_engine() {
-        let mut plugin = SystemNotifier::new();
-        let config = toml::from_str("").unwrap();
-        plugin.init(&config).await.unwrap();
-
-        let result = plugin.handle_command("status", &[]).await;
-        assert!(result.is_ok());
-        let status = result.unwrap();
-        assert!(status.contains("System Notifier Status"));
-        assert!(status.contains("Simple Mode"));
-        assert!(status.contains("Hyprland-native"));
     }
 
     #[tokio::test]
@@ -1438,28 +1362,10 @@ scale_from = 0.8
     }
 
     #[tokio::test]
-    async fn test_test_animation_command() {
-        // Skip test in CI environments where notifications aren't available
-        if std::env::var("CI").is_ok() || std::env::var("GITHUB_ACTIONS").is_ok() {
-            return;
-        }
-
-        let mut plugin = SystemNotifier::new();
-        let config = toml::from_str("").unwrap();
-        plugin.init(&config).await.unwrap();
-
-        let result = plugin
-            .handle_command("test-notification", &["Custom test message"])
-            .await;
-        assert!(result.is_ok());
-        assert!(result.unwrap().contains("Custom test message"));
-    }
-
-    #[tokio::test]
-    async fn test_simple_mode_config() {
+    async fn test_simple_config() {
         let mut plugin = SystemNotifier::new();
         let config_str = r##"
-# Simple mode configuration
+# Simple configuration
 color = "#ff6600"
 timeout = 3000
 icon = "info"
@@ -1541,27 +1447,6 @@ icon = "info"
             .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("Test with main config defaults"));
-    }
-
-    #[tokio::test]
-    async fn test_status_shows_simple_mode() {
-        let mut plugin = SystemNotifier::new();
-        let config_str = r##"
-color = "#ff6600"
-timeout = 3000
-icon = "info"
-        "##;
-
-        let config: toml::Value = toml::from_str(config_str).unwrap();
-        plugin.init(&config).await.unwrap();
-
-        let result = plugin.handle_command("status", &[]).await;
-        assert!(result.is_ok());
-        let status = result.unwrap();
-
-        // Should show simple mode
-        assert!(status.contains("Simple Mode"));
-        assert!(status.contains("Hyprland-native"));
     }
 
     #[tokio::test]

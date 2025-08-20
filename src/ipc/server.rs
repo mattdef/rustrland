@@ -382,25 +382,11 @@ impl IpcServer {
 
             ClientMessage::List => {
                 debug!("📋 Processing list command");
-                let mut pm = plugin_manager.write().await;
+                let pm = plugin_manager.read().await;
 
-                match pm.handle_command("scratchpads", "list", &[]).await {
-                    Ok(result) => {
-                        // Parse the result to extract just the scratchpad names
-                        let items = if result.starts_with("Available scratchpads: ") {
-                            result
-                                .replace("Available scratchpads: ", "")
-                                .split(", ")
-                                .map(|s| s.to_string())
-                                .collect()
-                        } else {
-                            vec![result]
-                        };
-                        DaemonResponse::List { items }
-                    }
-                    Err(e) => DaemonResponse::Error {
-                        message: e.to_string(),
-                    },
+                let loaded_plugins = pm.get_loaded_plugins();
+                DaemonResponse::List {
+                    items: loaded_plugins,
                 }
             }
         }

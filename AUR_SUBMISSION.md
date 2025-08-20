@@ -22,10 +22,10 @@ First, generate the actual SHA256 checksum for the release:
 
 ```bash
 # Download the release tarball
-curl -L -o rustrland-0.3.2.tar.gz "https://github.com/mattdef/rustrland/archive/v0.3.2.tar.gz"
+curl -L -o rustrland-0.3.5.tar.gz "https://github.com/mattdef/rustrland/archive/v0.3.5.tar.gz"
 
 # Generate checksum
-sha256sum rustrland-0.3.2.tar.gz
+sha256sum rustrland-0.3.5.tar.gz
 
 # Update the PKGBUILD file with the actual checksum
 sed -i "s/sha256sums=('SKIP')/sha256sums=('ACTUAL_CHECKSUM_HERE')/" PKGBUILD
@@ -73,11 +73,12 @@ makepkg --printsrcinfo > .SRCINFO
 git add PKGBUILD .SRCINFO
 
 # Commit
-git commit -m "Initial upload: rustrland v0.3.2
+git commit -m "Initial upload: rustrland v0.3.5
 
 - Rust implementation of Pyprland for Hyprland
 - Fast, reliable plugin system with memory safety
 - Complete scratchpad, wallpaper, monitor, and animation support
+- Production-ready wallpapers and system_notifier plugins
 - 112 comprehensive tests and production-ready CI/CD"
 
 # Push to AUR

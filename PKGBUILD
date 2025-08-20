@@ -2,7 +2,7 @@
 # Contributor: Rustrland Contributors
 
 pkgname=rustrland
-pkgver=0.3.5
+pkgver=0.3.6
 pkgrel=1
 pkgdesc="A Rust-powered window management for Hyprland - Fast, reliable plugin system"
 arch=('x86_64' 'aarch64')
@@ -53,7 +53,6 @@ package() {
     
     # Install documentation
     install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
-    install -Dm644 CLAUDE.md "$pkgdir/usr/share/doc/$pkgname/CLAUDE.md"
     
     # Install optional documentation (if exists)
     [[ -f "PLUGINS.md" ]] && install -Dm644 PLUGINS.md "$pkgdir/usr/share/doc/$pkgname/PLUGINS.md"

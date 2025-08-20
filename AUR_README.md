@@ -33,7 +33,7 @@ This directory contains all the files needed to submit Rustrland to the Arch Use
    
    # Submit
    git add PKGBUILD .SRCINFO
-   git commit -m "Initial upload: rustrland v0.3.2"
+   git commit -m "Initial upload: rustrland v0.3.5"
    git push origin master
    ```
 
@@ -56,7 +56,7 @@ makepkg -si
 ## 📋 Package Information
 
 - **Package Name:** `rustrland`
-- **Version:** 0.3.2
+- **Version:** 0.3.5
 - **Architecture:** x86_64, aarch64
 - **License:** MIT
 - **Upstream:** https://github.com/mattdef/rustrland

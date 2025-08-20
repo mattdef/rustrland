@@ -12,7 +12,7 @@ use tracing::{debug, error, info, warn};
 pub type ScratchpadConfigRef = Arc<ScratchpadConfig>;
 pub type ValidatedConfigRef = Arc<ValidatedConfig>;
 
-use crate::animation::{AnimationConfig, WindowAnimator};
+use crate::animation::WindowAnimator;
 use crate::ipc::{
     EnhancedHyprlandClient, HyprlandClient, HyprlandEvent, MonitorInfo, WindowGeometry,
 };
@@ -32,7 +32,6 @@ pub struct ScratchpadConfig {
 
     // Animation config
     pub animation: Option<String>,
-    pub animation_config: Option<AnimationConfig>,
     pub margin: Option<i32>,
     pub offset: Option<String>,
     pub hide_delay: Option<u32>,
@@ -70,7 +69,6 @@ impl Default for ScratchpadConfig {
             class: None,
             size: "50% 50%".to_string(),
             animation: None,
-            animation_config: None,
             margin: None,
             offset: None,
             hide_delay: None,
@@ -104,7 +102,6 @@ pub struct ValidatedConfig {
     pub class: String,
     pub size: String,
     pub animation: Option<String>,
-    pub animation_config: Option<AnimationConfig>,
     pub margin: Option<i32>,
     pub offset: Option<String>,
     pub hide_delay: Option<u32>,
@@ -146,7 +143,6 @@ impl Default for ValidatedConfig {
             class: String::new(),
             size: "50% 50%".to_string(),
             animation: None,
-            animation_config: None,
             margin: None,
             offset: None,
             hide_delay: None,
@@ -414,7 +410,6 @@ impl ConfigValidator {
             class,
             size: config.size.clone(),
             animation: config.animation.clone(),
-            animation_config: config.animation_config.clone(),
             margin: config.margin,
             offset: config.offset.clone(),
             hide_delay: config.hide_delay,
@@ -640,7 +635,7 @@ impl ConfigValidator {
 
 #[derive(Debug, Clone)]
 pub enum InternalCommand {
-    HysteresisHide { scratchpad_name: String },
+    SimpleHide { scratchpad_name: String },
 }
 
 // ============================================================================
@@ -1068,11 +1063,17 @@ impl ScratchpadsPlugin {
         if windows.is_empty() {
             Ok(format!("No windows found for scratchpad '{}'", name))
         } else {
-            let current_workspace = self.get_current_workspace(&client).await?;
-            let visible_window = self.find_visible_window(&windows, &current_workspace);
+            // For auto-hide: find ANY scratchpad window that's not already in special workspace
+            let active_window = windows
+                .iter()
+                .find(|window| !window.workspace.name.starts_with("special:"));
 
-            if let Some(window) = visible_window {
-                // Hide the visible window
+            if let Some(window) = active_window {
+                info!(
+                    "🔍 Found active scratchpad window {} on workspace {}",
+                    window.address, window.workspace.name
+                );
+                // Hide the active window (even if on different workspace)
                 self.hide_scratchpad_window(&client, window, name).await
             } else {
                 Ok(format!("Scratchpad '{}' is already hidden", name))
@@ -1129,7 +1130,7 @@ impl ScratchpadsPlugin {
             "📋 Scratchpad config - size: '{}', animation: {:?}, margin: {:?}",
             config.size, config.animation, config.margin
         );
-        debug!("📋 Animation config: {:?}", config.animation_config);
+        debug!("📋 Animation: {:?}", config.animation);
 
         let client = self.get_hyprland_client().await?;
         let vars = self.variables.read().await;
@@ -1380,7 +1381,7 @@ impl ScratchpadsPlugin {
         Ok(format!("Scratchpad '{name}' spawned and shown"))
     }
 
-    /// Hide a scratchpad window by moving it to special workspace
+    /// Hide a scratchpad window with animation, then move to special workspace
     async fn hide_scratchpad_window(
         &self,
         client: &HyprlandClient,
@@ -1389,16 +1390,252 @@ impl ScratchpadsPlugin {
     ) -> Result<String> {
         info!("🙈 Hiding scratchpad window: {}", window.address);
 
-        // Get config for restore_focus setting
+        // Get config for restore_focus setting and animation
         let config = self.get_validated_config(name)?;
+        let window_address = window.address.to_string();
 
         // Store current focus for potential restoration
         let should_restore_focus = config.restore_focus;
 
+        // Handle hide animations if specified
+        if let Some(animation_type) = &config.animation {
+            if let Ok(monitor) = self.get_target_monitor(&config).await {
+                let geometry = GeometryCalculator::calculate_geometry(&config, &monitor)?;
+
+                match animation_type.as_str() {
+                    "fromTop" => {
+                        info!("🎬 Starting hide animation: toTop");
+                        let offset_pixels =
+                            self.calculate_animation_offset(&config, geometry.height)?;
+                        let end_y = geometry.y - geometry.height - offset_pixels;
+                        info!(
+                            "🎯 ToTop (hide): current_y={}, end_y={}, offset={}px",
+                            geometry.y, end_y, offset_pixels
+                        );
+
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            geometry.x,
+                            geometry.y,
+                            geometry.x,
+                            end_y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await; // Wait for animation
+                        info!("✨ ToTop hide animation complete");
+                    }
+                    "fromBottom" => {
+                        info!("🎬 Starting hide animation: toBottom");
+                        let offset_pixels =
+                            self.calculate_animation_offset(&config, geometry.height)?;
+                        let screen_height = 1080; // TODO: Get actual screen height
+                        let end_y = screen_height + offset_pixels;
+                        info!(
+                            "🎯 ToBottom (hide): current_y={}, end_y={}, offset={}px",
+                            geometry.y, end_y, offset_pixels
+                        );
+
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            geometry.x,
+                            geometry.y,
+                            geometry.x,
+                            end_y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await; // Wait for animation
+                        info!("✨ ToBottom hide animation complete");
+                    }
+                    "fromLeft" => {
+                        info!("🎬 Starting hide animation: toLeft");
+                        let offset_pixels =
+                            self.calculate_animation_offset(&config, geometry.width)?;
+                        let end_x = geometry.x - geometry.width - offset_pixels;
+                        info!(
+                            "🎯 ToLeft (hide): current_x={}, end_x={}, offset={}px",
+                            geometry.x, end_x, offset_pixels
+                        );
+
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            geometry.x,
+                            geometry.y,
+                            end_x,
+                            geometry.y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await; // Wait for animation
+                        info!("✨ ToLeft hide animation complete");
+                    }
+                    "fromRight" => {
+                        info!("🎬 Starting hide animation: toRight");
+                        let offset_pixels =
+                            self.calculate_animation_offset(&config, geometry.width)?;
+                        let screen_width = 1920; // TODO: Get actual screen width
+                        let end_x = screen_width + offset_pixels;
+                        info!(
+                            "🎯 ToRight (hide): current_x={}, end_x={}, offset={}px",
+                            geometry.x, end_x, offset_pixels
+                        );
+
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            geometry.x,
+                            geometry.y,
+                            end_x,
+                            geometry.y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await; // Wait for animation
+                        info!("✨ ToRight hide animation complete");
+                    }
+                    "fromTopLeft" => {
+                        info!("🎬 Starting hide animation: toTopLeft");
+                        let offset_pixels = self.calculate_animation_offset(
+                            &config,
+                            geometry.height.max(geometry.width),
+                        )?;
+                        let end_x = geometry.x - geometry.width - offset_pixels;
+                        let end_y = geometry.y - geometry.height - offset_pixels;
+                        info!(
+                            "🎯 ToTopLeft (hide): current=({}, {}), end=({}, {})",
+                            geometry.x, geometry.y, end_x, end_y
+                        );
+
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            geometry.x,
+                            geometry.y,
+                            end_x,
+                            end_y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await; // Wait for animation
+                        info!("✨ ToTopLeft hide animation complete");
+                    }
+                    "fromTopRight" => {
+                        info!("🎬 Starting hide animation: toTopRight");
+                        let offset_pixels = self.calculate_animation_offset(
+                            &config,
+                            geometry.height.max(geometry.width),
+                        )?;
+                        let screen_width = 1920; // TODO: Get actual screen width
+                        let end_x = screen_width + offset_pixels;
+                        let end_y = geometry.y - geometry.height - offset_pixels;
+                        info!(
+                            "🎯 ToTopRight (hide): current=({}, {}), end=({}, {})",
+                            geometry.x, geometry.y, end_x, end_y
+                        );
+
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            geometry.x,
+                            geometry.y,
+                            end_x,
+                            end_y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await; // Wait for animation
+                        info!("✨ ToTopRight hide animation complete");
+                    }
+                    "fromBottomLeft" => {
+                        info!("🎬 Starting hide animation: toBottomLeft");
+                        let offset_pixels = self.calculate_animation_offset(
+                            &config,
+                            geometry.height.max(geometry.width),
+                        )?;
+                        let screen_height = 1080; // TODO: Get actual screen height
+                        let end_x = geometry.x - geometry.width - offset_pixels;
+                        let end_y = screen_height + offset_pixels;
+                        info!(
+                            "🎯 ToBottomLeft (hide): current=({}, {}), end=({}, {})",
+                            geometry.x, geometry.y, end_x, end_y
+                        );
+
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            geometry.x,
+                            geometry.y,
+                            end_x,
+                            end_y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await; // Wait for animation
+                        info!("✨ ToBottomLeft hide animation complete");
+                    }
+                    "fromBottomRight" => {
+                        info!("🎬 Starting hide animation: toBottomRight");
+                        let offset_pixels = self.calculate_animation_offset(
+                            &config,
+                            geometry.height.max(geometry.width),
+                        )?;
+                        let screen_width = 1920; // TODO: Get actual screen width
+                        let screen_height = 1080; // TODO: Get actual screen height
+                        let end_x = screen_width + offset_pixels;
+                        let end_y = screen_height + offset_pixels;
+                        info!(
+                            "🎯 ToBottomRight (hide): current=({}, {}), end=({}, {})",
+                            geometry.x, geometry.y, end_x, end_y
+                        );
+
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            geometry.x,
+                            geometry.y,
+                            end_x,
+                            end_y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await; // Wait for animation
+                        info!("✨ ToBottomRight hide animation complete");
+                    }
+                    "fade" => {
+                        info!("🎬 Starting hide animation: fade out");
+                        // For fade animations, Hyprland handles opacity - we just wait for the animation
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                        info!("✨ Fade out hide animation complete");
+                    }
+                    "scale" => {
+                        info!("🎬 Starting hide animation: scale down");
+                        // For scale animations, Hyprland handles scaling - we just wait for the animation
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                        info!("✨ Scale down hide animation complete");
+                    }
+                    _ => {
+                        debug!("🔄 No specific hide animation for type: {}", animation_type);
+                    }
+                }
+            }
+        }
+
         // Move to special workspace named after the scratchpad
         let special_workspace = format!("special:{name}");
         client
-            .move_window_to_workspace(&window.address.to_string(), &special_workspace)
+            .move_window_to_workspace(&window_address, &special_workspace)
             .await?;
 
         // Restore focus to previously focused window if enabled
@@ -1408,7 +1645,7 @@ impl ScratchpadsPlugin {
             }
         }
 
-        Ok(format!("Scratchpad '{name}' hidden"))
+        Ok(format!("Scratchpad '{name}' hidden with animation"))
     }
 
     /// Show a scratchpad window on current workspace
@@ -1442,40 +1679,220 @@ impl ScratchpadsPlugin {
                     "fromTop" => {
                         info!("🎬 Starting fromTop animation for existing window");
 
-                        // Calculate offset - use animation_config offset if available, otherwise default
-                        // For fromTop animation, we need enough offset to position window above screen
-                        let offset_pixels = if let Some(anim_config) = &config.animation_config {
-                            let parsed_offset = self
-                                .parse_offset(&anim_config.offset, geometry.height)
-                                .unwrap_or(100);
-                            // Ensure minimum offset for visible animation effect
-                            parsed_offset.max(geometry.height + 50) // Window height + 50px buffer
-                        } else {
-                            geometry.height + 100 // Window height + 100px buffer for smooth animation
-                        };
-
-                        // Start position: above the screen (off-screen)
+                        let offset_pixels =
+                            self.calculate_animation_offset(config, geometry.height)?;
                         let start_y = geometry.y - offset_pixels;
                         info!(
                             "🎯 FromTop (existing): start_y={}, final_y={}, offset={}px",
                             start_y, geometry.y, offset_pixels
                         );
 
-                        // Position window at start position (above screen)
-                        client
-                            .resize_and_position_window(
-                                &window_address,
-                                geometry.x,
-                                start_y,
-                                geometry.width,
-                                geometry.height,
-                            )
-                            .await?;
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            geometry.x,
+                            start_y,
+                            geometry.x,
+                            geometry.y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        info!("✨ FromTop animation (existing) setup complete");
+                    }
+                    "fromBottom" => {
+                        info!("🎬 Starting fromBottom animation for existing window");
 
-                        // Brief delay to ensure start position is applied
-                        tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
+                        let offset_pixels =
+                            self.calculate_animation_offset(config, geometry.height)?;
+                        let screen_height = 1080; // TODO: Get actual screen height
+                        let start_y = screen_height + offset_pixels;
+                        info!(
+                            "🎯 FromBottom (existing): start_y={}, final_y={}, offset={}px",
+                            start_y, geometry.y, offset_pixels
+                        );
 
-                        // Move to final position - Hyprland will animate smoothly
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            geometry.x,
+                            start_y,
+                            geometry.x,
+                            geometry.y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        info!("✨ FromBottom animation (existing) setup complete");
+                    }
+                    "fromLeft" => {
+                        info!("🎬 Starting fromLeft animation for existing window");
+
+                        let offset_pixels =
+                            self.calculate_animation_offset(config, geometry.width)?;
+                        let start_x = geometry.x - geometry.width - offset_pixels;
+                        info!(
+                            "🎯 FromLeft (existing): start_x={}, final_x={}, offset={}px",
+                            start_x, geometry.x, offset_pixels
+                        );
+
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            start_x,
+                            geometry.y,
+                            geometry.x,
+                            geometry.y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        info!("✨ FromLeft animation (existing) setup complete");
+                    }
+                    "fromRight" => {
+                        info!("🎬 Starting fromRight animation for existing window");
+
+                        let offset_pixels =
+                            self.calculate_animation_offset(config, geometry.width)?;
+                        let screen_width = 1920; // TODO: Get actual screen width
+                        let start_x = screen_width + offset_pixels;
+                        info!(
+                            "🎯 FromRight (existing): start_x={}, final_x={}, offset={}px",
+                            start_x, geometry.x, offset_pixels
+                        );
+
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            start_x,
+                            geometry.y,
+                            geometry.x,
+                            geometry.y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        info!("✨ FromRight animation (existing) setup complete");
+                    }
+                    "fromTopLeft" => {
+                        info!("🎬 Starting fromTopLeft animation for existing window");
+
+                        let offset_pixels = self.calculate_animation_offset(
+                            config,
+                            geometry.height.max(geometry.width),
+                        )?;
+                        let start_x = geometry.x - geometry.width - offset_pixels;
+                        let start_y = geometry.y - geometry.height - offset_pixels;
+                        info!(
+                            "🎯 FromTopLeft (existing): start=({}, {}), final=({}, {})",
+                            start_x, start_y, geometry.x, geometry.y
+                        );
+
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            start_x,
+                            start_y,
+                            geometry.x,
+                            geometry.y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        info!("✨ FromTopLeft animation (existing) setup complete");
+                    }
+                    "fromTopRight" => {
+                        info!("🎬 Starting fromTopRight animation for existing window");
+
+                        let offset_pixels = self.calculate_animation_offset(
+                            config,
+                            geometry.height.max(geometry.width),
+                        )?;
+                        let screen_width = 1920; // TODO: Get actual screen width
+                        let start_x = screen_width + offset_pixels;
+                        let start_y = geometry.y - geometry.height - offset_pixels;
+                        info!(
+                            "🎯 FromTopRight (existing): start=({}, {}), final=({}, {})",
+                            start_x, start_y, geometry.x, geometry.y
+                        );
+
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            start_x,
+                            start_y,
+                            geometry.x,
+                            geometry.y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        info!("✨ FromTopRight animation (existing) setup complete");
+                    }
+                    "fromBottomLeft" => {
+                        info!("🎬 Starting fromBottomLeft animation for existing window");
+
+                        let offset_pixels = self.calculate_animation_offset(
+                            config,
+                            geometry.height.max(geometry.width),
+                        )?;
+                        let screen_height = 1080; // TODO: Get actual screen height
+                        let start_x = geometry.x - geometry.width - offset_pixels;
+                        let start_y = screen_height + offset_pixels;
+                        info!(
+                            "🎯 FromBottomLeft (existing): start=({}, {}), final=({}, {})",
+                            start_x, start_y, geometry.x, geometry.y
+                        );
+
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            start_x,
+                            start_y,
+                            geometry.x,
+                            geometry.y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        info!("✨ FromBottomLeft animation (existing) setup complete");
+                    }
+                    "fromBottomRight" => {
+                        info!("🎬 Starting fromBottomRight animation for existing window");
+
+                        let offset_pixels = self.calculate_animation_offset(
+                            config,
+                            geometry.height.max(geometry.width),
+                        )?;
+                        let screen_width = 1920; // TODO: Get actual screen width
+                        let screen_height = 1080; // TODO: Get actual screen height
+                        let start_x = screen_width + offset_pixels;
+                        let start_y = screen_height + offset_pixels;
+                        info!(
+                            "🎯 FromBottomRight (existing): start=({}, {}), final=({}, {})",
+                            start_x, start_y, geometry.x, geometry.y
+                        );
+
+                        self.apply_animation_positions(
+                            client,
+                            &window_address,
+                            start_x,
+                            start_y,
+                            geometry.x,
+                            geometry.y,
+                            geometry.width,
+                            geometry.height,
+                        )
+                        .await?;
+                        info!("✨ FromBottomRight animation (existing) setup complete");
+                    }
+                    "fade" | "scale" => {
+                        info!(
+                            "🎬 Starting {} animation for existing window",
+                            animation_type
+                        );
+
+                        // For fade and scale, just apply final geometry - Hyprland handles the visual effect
                         client
                             .resize_and_position_window(
                                 &window_address,
@@ -1486,10 +1903,10 @@ impl ScratchpadsPlugin {
                             )
                             .await?;
 
-                        info!("✨ FromTop animation (existing) setup complete");
+                        info!("✨ {} animation (existing) setup complete", animation_type);
                     }
                     _ => {
-                        // Other animation types - just apply geometry
+                        // Unknown animation type - just apply geometry
                         client
                             .resize_and_position_window(
                                 &window_address,
@@ -1617,53 +2034,205 @@ impl ScratchpadsPlugin {
                 "fromTop" => {
                     info!("🎬 Starting fromTop animation");
 
-                    // Calculate offset - use animation_config offset if available, otherwise default
-                    info!(
-                        "🔧 Calculating fromTop offset for window geometry: {}x{}",
-                        geometry.width, geometry.height
-                    );
-
-                    let offset_pixels = if let Some(anim_config) = &config.animation_config {
-                        info!("🔧 Using animation_config offset: {}", anim_config.offset);
-                        let parsed_offset = self
-                            .parse_offset(&anim_config.offset, geometry.height)
-                            .unwrap_or(100);
-                        info!("🔧 Parsed offset: {}px", parsed_offset);
-                        // Ensure minimum offset for visible animation effect
-                        let final_offset = parsed_offset.max(geometry.height + 50); // Window height + 50px buffer
-                        info!(
-                            "🔧 Final offset (max of parsed and window_height+50): {}px",
-                            final_offset
-                        );
-                        final_offset
-                    } else {
-                        let default_offset = geometry.height + 100; // Window height + 100px buffer for smooth animation
-                        info!("🔧 Using default offset: {}px", default_offset);
-                        default_offset
-                    };
-
-                    // Start position: above the screen (off-screen)
+                    let offset_pixels = self.calculate_animation_offset(config, geometry.height)?;
                     let start_y = geometry.y - offset_pixels;
                     info!(
                         "🎯 FromTop animation: start_y={}, final_y={}, offset={}px",
                         start_y, geometry.y, offset_pixels
                     );
 
-                    // Position window at start position (above screen)
-                    client
-                        .resize_and_position_window(
-                            &window_address,
-                            geometry.x,
-                            start_y,
-                            geometry.width,
-                            geometry.height,
-                        )
-                        .await?;
+                    self.apply_animation_positions(
+                        client,
+                        &window_address,
+                        geometry.x,
+                        start_y,
+                        geometry.x,
+                        geometry.y,
+                        geometry.width,
+                        geometry.height,
+                    )
+                    .await?;
+                    info!("✨ FromTop animation setup complete - Hyprland handling transition");
+                }
+                "fromBottom" => {
+                    info!("🎬 Starting fromBottom animation");
 
-                    // Brief delay to ensure start position is applied
-                    tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
+                    let offset_pixels = self.calculate_animation_offset(config, geometry.height)?;
+                    let screen_height = 1080; // TODO: Get actual screen height
+                    let start_y = screen_height + offset_pixels;
+                    info!(
+                        "🎯 FromBottom animation: start_y={}, final_y={}, offset={}px",
+                        start_y, geometry.y, offset_pixels
+                    );
 
-                    // Move to final position - Hyprland will animate smoothly
+                    self.apply_animation_positions(
+                        client,
+                        &window_address,
+                        geometry.x,
+                        start_y,
+                        geometry.x,
+                        geometry.y,
+                        geometry.width,
+                        geometry.height,
+                    )
+                    .await?;
+                    info!("✨ FromBottom animation setup complete");
+                }
+                "fromLeft" => {
+                    info!("🎬 Starting fromLeft animation");
+
+                    let offset_pixels = self.calculate_animation_offset(config, geometry.width)?;
+                    let start_x = geometry.x - geometry.width - offset_pixels;
+                    info!(
+                        "🎯 FromLeft animation: start_x={}, final_x={}, offset={}px",
+                        start_x, geometry.x, offset_pixels
+                    );
+
+                    self.apply_animation_positions(
+                        client,
+                        &window_address,
+                        start_x,
+                        geometry.y,
+                        geometry.x,
+                        geometry.y,
+                        geometry.width,
+                        geometry.height,
+                    )
+                    .await?;
+                    info!("✨ FromLeft animation setup complete");
+                }
+                "fromRight" => {
+                    info!("🎬 Starting fromRight animation");
+
+                    let offset_pixels = self.calculate_animation_offset(config, geometry.width)?;
+                    let screen_width = 1920; // TODO: Get actual screen width
+                    let start_x = screen_width + offset_pixels;
+                    info!(
+                        "🎯 FromRight animation: start_x={}, final_x={}, offset={}px",
+                        start_x, geometry.x, offset_pixels
+                    );
+
+                    self.apply_animation_positions(
+                        client,
+                        &window_address,
+                        start_x,
+                        geometry.y,
+                        geometry.x,
+                        geometry.y,
+                        geometry.width,
+                        geometry.height,
+                    )
+                    .await?;
+                    info!("✨ FromRight animation setup complete");
+                }
+                "fromTopLeft" => {
+                    info!("🎬 Starting fromTopLeft animation");
+
+                    let offset_pixels = self
+                        .calculate_animation_offset(config, geometry.height.max(geometry.width))?;
+                    let start_x = geometry.x - geometry.width - offset_pixels;
+                    let start_y = geometry.y - geometry.height - offset_pixels;
+                    info!(
+                        "🎯 FromTopLeft animation: start=({}, {}), final=({}, {})",
+                        start_x, start_y, geometry.x, geometry.y
+                    );
+
+                    self.apply_animation_positions(
+                        client,
+                        &window_address,
+                        start_x,
+                        start_y,
+                        geometry.x,
+                        geometry.y,
+                        geometry.width,
+                        geometry.height,
+                    )
+                    .await?;
+                    info!("✨ FromTopLeft animation setup complete");
+                }
+                "fromTopRight" => {
+                    info!("🎬 Starting fromTopRight animation");
+
+                    let offset_pixels = self
+                        .calculate_animation_offset(config, geometry.height.max(geometry.width))?;
+                    let screen_width = 1920; // TODO: Get actual screen width
+                    let start_x = screen_width + offset_pixels;
+                    let start_y = geometry.y - geometry.height - offset_pixels;
+                    info!(
+                        "🎯 FromTopRight animation: start=({}, {}), final=({}, {})",
+                        start_x, start_y, geometry.x, geometry.y
+                    );
+
+                    self.apply_animation_positions(
+                        client,
+                        &window_address,
+                        start_x,
+                        start_y,
+                        geometry.x,
+                        geometry.y,
+                        geometry.width,
+                        geometry.height,
+                    )
+                    .await?;
+                    info!("✨ FromTopRight animation setup complete");
+                }
+                "fromBottomLeft" => {
+                    info!("🎬 Starting fromBottomLeft animation");
+
+                    let offset_pixels = self
+                        .calculate_animation_offset(config, geometry.height.max(geometry.width))?;
+                    let screen_height = 1080; // TODO: Get actual screen height
+                    let start_x = geometry.x - geometry.width - offset_pixels;
+                    let start_y = screen_height + offset_pixels;
+                    info!(
+                        "🎯 FromBottomLeft animation: start=({}, {}), final=({}, {})",
+                        start_x, start_y, geometry.x, geometry.y
+                    );
+
+                    self.apply_animation_positions(
+                        client,
+                        &window_address,
+                        start_x,
+                        start_y,
+                        geometry.x,
+                        geometry.y,
+                        geometry.width,
+                        geometry.height,
+                    )
+                    .await?;
+                    info!("✨ FromBottomLeft animation setup complete");
+                }
+                "fromBottomRight" => {
+                    info!("🎬 Starting fromBottomRight animation");
+
+                    let offset_pixels = self
+                        .calculate_animation_offset(config, geometry.height.max(geometry.width))?;
+                    let screen_width = 1920; // TODO: Get actual screen width
+                    let screen_height = 1080; // TODO: Get actual screen height
+                    let start_x = screen_width + offset_pixels;
+                    let start_y = screen_height + offset_pixels;
+                    info!(
+                        "🎯 FromBottomRight animation: start=({}, {}), final=({}, {})",
+                        start_x, start_y, geometry.x, geometry.y
+                    );
+
+                    self.apply_animation_positions(
+                        client,
+                        &window_address,
+                        start_x,
+                        start_y,
+                        geometry.x,
+                        geometry.y,
+                        geometry.width,
+                        geometry.height,
+                    )
+                    .await?;
+                    info!("✨ FromBottomRight animation setup complete");
+                }
+                "fade" | "scale" => {
+                    info!("🎬 Starting {} animation", animation_type);
+
+                    // For fade and scale, just apply final geometry - Hyprland handles the visual effect
                     client
                         .resize_and_position_window(
                             &window_address,
@@ -1674,10 +2243,10 @@ impl ScratchpadsPlugin {
                         )
                         .await?;
 
-                    info!("✨ FromTop animation setup complete - Hyprland handling transition");
+                    info!("✨ {} animation setup complete", animation_type);
                 }
                 _ => {
-                    // Other animation types - just apply geometry
+                    // Unknown animation type - just apply geometry
                     client
                         .resize_and_position_window(
                             &window_address,
@@ -2013,35 +2582,11 @@ impl Plugin for ScratchpadsPlugin {
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
 
-                    // Parse animation_config if present
-                    let animation_config = sc.get("animation_config").and_then(|v| match v {
-                        toml::Value::Table(table) => {
-                            // Create a mutable copy of the table
-                            let mut config_table = table.clone();
-
-                            // If animation_type is not specified, derive it from the animation field
-                            if !config_table.contains_key("animation_type") {
-                                if let Some(animation_type) = &animation {
-                                    config_table.insert(
-                                        "animation_type".to_string(),
-                                        toml::Value::String(animation_type.clone()),
-                                    );
-                                }
-                            }
-
-                            // Convert back to Value and deserialize
-                            let config_value = toml::Value::Table(config_table);
-                            crate::animation::AnimationConfig::deserialize(config_value).ok()
-                        }
-                        _ => None,
-                    });
-
                     let mut config = ScratchpadConfig {
                         command,
                         class: Some(class),
                         size,
                         animation,
-                        animation_config,
                         ..Default::default()
                     };
 
@@ -2441,7 +2986,14 @@ impl ScratchpadsPlugin {
     }
 
     async fn handle_workspace_changed(&mut self, workspace: &str) {
-        debug!("🖥️ Workspace changed to: {}", workspace);
+        info!("🖥️ WORKSPACE EVENT: Workspace changed to: {}", workspace);
+
+        // DEBUG: Check what happens to focus tracking during workspace change
+        if let Some(focused_window) = &self.focused_window {
+            info!("🔍 Focus before workspace change: {}", focused_window);
+        } else {
+            info!("🔍 No focused window tracked before workspace change");
+        }
 
         // Update visibility status for scratchpad windows
         // Special workspaces (like special:scratchpad) typically hide windows
@@ -2538,153 +3090,96 @@ impl ScratchpadsPlugin {
     }
 
     async fn handle_focus_changed(&mut self, window_address: &str) {
-        debug!("👁️ Focus changed to: {}", window_address);
-        debug!(
-            "🗂️ Window-to-scratchpad mapping has {} entries",
-            self.window_to_scratchpad.len()
-        );
-        for (addr, name) in &self.window_to_scratchpad {
-            debug!("🗂️ Mapping: {} -> {}", addr, name);
-        }
+        info!("👁️ FOCUS EVENT: Focus changed to: {}", window_address);
 
-        // Handle previously focused window losing focus
+        // Handle previously focused window losing focus (simplified)
         let prev_window_clone = self.focused_window.clone();
         if let Some(prev_window) = prev_window_clone {
-            debug!("🔄 Previous focused window: {}", prev_window);
+            info!("🔄 Previous focused window: {}", prev_window);
             if prev_window != window_address {
-                debug!(
-                    "🔄 Focus changed from {} to {}, handling unfocus",
+                info!(
+                    "🔄 Focus changed from {} to {}",
                     prev_window, window_address
                 );
-                self.handle_window_unfocus(&prev_window).await;
-                // Store as previous focus for restoration (but only if it's not a scratchpad)
+                // Previous window lost focus - check if it needs auto-hide
+                if let Some(scratchpad_name) = self.window_to_scratchpad.get(&prev_window).cloned()
+                {
+                    info!(
+                        "🔍 Previous window '{}' is scratchpad '{}'",
+                        prev_window, scratchpad_name
+                    );
+                    if let Ok(config) = self.get_validated_config(&scratchpad_name) {
+                        if config.unfocus.as_deref() == Some("hide") {
+                            let hysteresis = config.hysteresis.unwrap_or(0.4);
+                            info!(
+                                "🙈 UNFOCUS TRIGGER: Scratchpad '{}' lost focus, hiding in {:.1}s",
+                                scratchpad_name, hysteresis
+                            );
+                            self.schedule_simple_hide(scratchpad_name, hysteresis).await;
+                        } else {
+                            info!(
+                                "🔍 Scratchpad '{}' unfocus is {:?}, not hiding",
+                                scratchpad_name, config.unfocus
+                            );
+                        }
+                    }
+                } else {
+                    info!("🔍 Previous window '{}' is not a scratchpad", prev_window);
+                }
+                // Store for potential focus restoration
                 if !self.window_to_scratchpad.contains_key(&prev_window) {
                     self.previous_focused_window = Some(prev_window);
                 }
             } else {
-                debug!("🔄 Same window focused, no unfocus handling needed");
+                info!("🔄 Same window focused, no change");
             }
         } else {
-            debug!("🔄 No previous focused window");
+            info!("🔄 No previous focused window");
         }
 
+        // Update current focus
         self.focused_window = Some(window_address.to_string());
+        info!("🎯 Updated focused_window to: {}", window_address);
 
-        // Update focus time for scratchpad windows
-        let scratchpad_name_clone = self.window_to_scratchpad.get(window_address).cloned();
-        if let Some(scratchpad_name) = scratchpad_name_clone {
-            // Cancel any pending hysteresis hide for this scratchpad
-            self.cancel_hysteresis_delay(&scratchpad_name).await;
-
-            if let Some(state) = self.states.get_mut(&scratchpad_name) {
-                if let Some(window_state) = state
-                    .windows
-                    .iter_mut()
-                    .find(|w| w.address == *window_address)
-                {
-                    window_state.last_focus = Some(Instant::now());
-                }
-                state.last_used = Some(Instant::now());
-                debug!("🎯 Updated focus time for scratchpad '{}'", scratchpad_name);
-            }
-        }
-    }
-
-    /// Handle window losing focus with hysteresis support
-    async fn handle_window_unfocus(&mut self, window_address: &str) {
-        debug!("🔍 Handling unfocus for window: {}", window_address);
-        if let Some(scratchpad_name) = self.window_to_scratchpad.get(window_address) {
-            let scratchpad_name = scratchpad_name.clone();
-            debug!(
-                "🔍 Window {} belongs to scratchpad '{}'",
-                window_address, scratchpad_name
-            );
-            if let Ok(config) = self.get_validated_config(&scratchpad_name) {
-                debug!(
-                    "🔍 Config for '{}': unfocus={:?}",
-                    scratchpad_name, config.unfocus
-                );
-                // Check if unfocus hiding is enabled
-                if config.unfocus.as_deref() == Some("hide") {
-                    let hysteresis = config.hysteresis.unwrap_or(0.4);
-                    debug!(
-                        "🙈 Scratchpad '{}' lost focus, scheduling hysteresis hide in {:.1}s",
-                        scratchpad_name, hysteresis
-                    );
-
-                    // Schedule hysteresis delay
-                    self.schedule_hysteresis_delay(&scratchpad_name, config, hysteresis)
-                        .await;
-                } else {
-                    debug!(
-                        "🔍 Scratchpad '{}' does not have unfocus='hide', ignoring",
-                        scratchpad_name
-                    );
-                }
-            } else {
-                debug!(
-                    "🔍 Failed to get config for scratchpad '{}'",
-                    scratchpad_name
-                );
-            }
-        } else {
-            debug!(
-                "🔍 Window {} is not a tracked scratchpad window",
-                window_address
-            );
-        }
-    }
-
-    /// Cancel pending hysteresis delay for a scratchpad
-    async fn cancel_hysteresis_delay(&mut self, scratchpad_name: &str) {
-        if let Some(handle) = self.hysteresis_tasks.remove(scratchpad_name) {
-            handle.abort();
-            debug!(
-                "🚑 Cancelled hysteresis delay for scratchpad '{}'",
+        // Cancel hide timer if focusing a scratchpad
+        if let Some(scratchpad_name) = self.window_to_scratchpad.get(window_address).cloned() {
+            self.cancel_hide_timer(&scratchpad_name).await;
+            info!(
+                "🎯 Focused scratchpad '{}' - cancelled hide timer",
                 scratchpad_name
             );
+        } else {
+            info!("🔍 Focused window '{}' is not a scratchpad", window_address);
         }
     }
 
-    /// Schedule hysteresis delay before hiding scratchpad
-    async fn schedule_hysteresis_delay(
-        &mut self,
-        scratchpad_name: &str,
-        _config: ValidatedConfigRef,
-        hysteresis_seconds: f32,
-    ) {
-        // Cancel any existing hysteresis task
-        self.cancel_hysteresis_delay(scratchpad_name).await;
+    /// Simple hide scheduling with hysteresis (Pyprland-style)
+    async fn schedule_simple_hide(&mut self, scratchpad_name: String, hysteresis_seconds: f32) {
+        // Cancel any existing hide timer
+        self.cancel_hide_timer(&scratchpad_name).await;
 
-        let scratchpad_name_clone = scratchpad_name.to_string();
+        // Create simple timer
         let delay_ms = (hysteresis_seconds * 1000.0) as u64;
+        let sender = self.internal_sender.clone();
+        let scratchpad_name_clone = scratchpad_name.clone();
 
-        // Get the sender to communicate back to the plugin
-        if let Some(sender) = &self.internal_sender {
-            let sender_clone = sender.clone();
+        let handle = tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
 
-            let task_handle = tokio::spawn(async move {
-                tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
-                debug!(
-                    "⏰ Hysteresis delay completed for '{}', triggering hide",
-                    scratchpad_name_clone
-                );
+            if let Some(sender) = sender {
+                let _ = sender.send(InternalCommand::SimpleHide {
+                    scratchpad_name: scratchpad_name_clone,
+                });
+            }
+        });
 
-                // Send command to hide the scratchpad
-                if let Err(e) = sender_clone.send(InternalCommand::HysteresisHide {
-                    scratchpad_name: scratchpad_name_clone.clone(),
-                }) {
-                    warn!(
-                        "Failed to send hysteresis hide command for '{}': {}",
-                        scratchpad_name_clone, e
-                    );
-                }
-            });
+        self.hysteresis_tasks.insert(scratchpad_name, handle);
+    }
 
-            self.hysteresis_tasks
-                .insert(scratchpad_name.to_string(), task_handle);
-        } else {
-            warn!("Internal sender not available for hysteresis delay");
+    /// Cancel hide timer (simplified)
+    async fn cancel_hide_timer(&mut self, scratchpad_name: &str) {
+        if let Some(handle) = self.hysteresis_tasks.remove(scratchpad_name) {
+            handle.abort();
         }
     }
 
@@ -2699,23 +3194,15 @@ impl ScratchpadsPlugin {
             }
         }
 
-        // Process the collected commands
+        // Process the collected commands (simplified)
         for command in commands {
             match command {
-                InternalCommand::HysteresisHide { scratchpad_name } => {
-                    debug!("🙈 Processing hysteresis hide for '{}'", scratchpad_name);
-
-                    // Execute the hide action
+                InternalCommand::SimpleHide { scratchpad_name } => {
+                    debug!("🙈 Processing simple hide for '{}'", scratchpad_name);
                     if let Err(e) = self.hide_scratchpad_direct(&scratchpad_name).await {
-                        warn!(
-                            "Failed to hide scratchpad '{}' after hysteresis delay: {}",
-                            scratchpad_name, e
-                        );
+                        warn!("Failed to hide scratchpad '{}': {}", scratchpad_name, e);
                     } else {
-                        info!(
-                            "✅ Scratchpad '{}' hidden after hysteresis delay",
-                            scratchpad_name
-                        );
+                        debug!("✅ Scratchpad '{}' hidden", scratchpad_name);
                     }
                 }
             }
@@ -2744,11 +3231,8 @@ impl ScratchpadsPlugin {
     ) -> Result<()> {
         let mut animator = self.window_animator.lock().await;
 
-        // Use animation_config if available, otherwise create from basic animation
-        let animation_config = if let Some(anim_config) = &config.animation_config {
-            anim_config.clone()
-        } else if let Some(animation_type) = &config.animation {
-            // Create basic animation config from legacy animation field
+        // Create animation config from legacy animation field if present
+        let animation_config = if let Some(animation_type) = &config.animation {
             crate::animation::AnimationConfig {
                 animation_type: animation_type.clone(),
                 direction: None,
@@ -2792,11 +3276,8 @@ impl ScratchpadsPlugin {
     ) -> Result<()> {
         let mut animator = self.window_animator.lock().await;
 
-        // Use animation_config if available, otherwise create from basic animation
-        let animation_config = if let Some(anim_config) = &config.animation_config {
-            anim_config.clone()
-        } else if let Some(animation_type) = &config.animation {
-            // Create basic animation config from legacy animation field
+        // Create animation config from legacy animation field if present
+        let animation_config = if let Some(animation_type) = &config.animation {
             crate::animation::AnimationConfig {
                 animation_type: animation_type.clone(),
                 direction: None,
@@ -3024,7 +3505,7 @@ impl ScratchpadsPlugin {
             .await?;
 
         // Apply animation if configured
-        if validated_config.animation.is_some() || validated_config.animation_config.is_some() {
+        if validated_config.animation.is_some() {
             info!(
                 "🎬 Applying show animation for scratchpad '{}'",
                 scratchpad_name
@@ -3046,6 +3527,44 @@ impl ScratchpadsPlugin {
         }
 
         info!("✅ Scratchpad window '{}' setup complete", scratchpad_name);
+        Ok(())
+    }
+    /// Helper function to calculate animation offset with config support
+    fn calculate_animation_offset(&self, config: &ValidatedConfig, dimension: i32) -> Result<i32> {
+        if let Some(offset_str) = &config.offset {
+            self.parse_offset(offset_str, dimension)
+                .map_err(|_| anyhow::anyhow!("Failed to parse offset"))
+        } else {
+            Ok(dimension + 100) // Default offset
+        }
+    }
+
+    /// Helper function to apply animation positions (start -> final)
+    #[allow(clippy::too_many_arguments)]
+    async fn apply_animation_positions(
+        &self,
+        client: &HyprlandClient,
+        window_address: &str,
+        start_x: i32,
+        start_y: i32,
+        final_x: i32,
+        final_y: i32,
+        width: i32,
+        height: i32,
+    ) -> Result<()> {
+        // Position window at start position
+        client
+            .resize_and_position_window(window_address, start_x, start_y, width, height)
+            .await?;
+
+        // Brief delay to ensure start position is applied
+        tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
+
+        // Move to final position - Hyprland will animate smoothly
+        client
+            .resize_and_position_window(window_address, final_x, final_y, width, height)
+            .await?;
+
         Ok(())
     }
 }
@@ -3502,7 +4021,6 @@ mod tests {
                 class: "test".to_string(),
                 size: "50% 60%".to_string(),
                 animation: None,
-                animation_config: None,
                 margin: Some(10),
                 offset: None,
                 hide_delay: None,

@@ -19,7 +19,6 @@
 - **📦 Easy deployment**: Single binary, no Python dependencies
 - **🎯 Multi-monitor**: Intelligent caching with 90% API call reduction
 - **🔧 Enhanced IPC**: Robust reconnection logic and event filtering
-- **🎨 Animation Support**: Complete animation framework with 16+ easing types
 
 ---
 
@@ -554,25 +553,21 @@ make ci                           # fmt + lint + test + build
 rustrland/
 ├── src/
 │   ├── main.rs              # Daemon entry point
-│   ├── client.rs            # Client entry point
-│   ├── lib.rs               # Shared library
+│   ├── ...                  # Client entry point
 │   ├── config/              # Configuration system
+│   │   └── mod.rs           # Rustrland config
 │   ├── core/                # Core daemon and plugin management
 │   │   ├── daemon.rs        # Main daemon loop
-│   │   ├── plugin_manager.rs # Plugin loading and management
-│   │   ├── event_handler.rs # Event processing
-│   │   └── hot_reload.rs    # Hot reload system
+│   │   └── ...              # Hot reload system
 │   ├── ipc/                 # IPC communication
 │   │   ├── mod.rs           # Hyprland IPC client
-│   │   ├── enhanced_client.rs # Production-ready client
-│   │   ├── protocol.rs      # IPC message definitions
-│   │   └── server.rs        # Unix socket server
+│   │   └── ...              # Unix socket server
 │   ├── animation/           # Animation system
 │   │   ├── timeline.rs      # Keyframe timelines
-│   │   ├── easing.rs        # Easing functions
-│   │   └── properties.rs    # Property interpolation
+│   │   └── ...              # And more
 │   └── plugins/             # Plugin implementations
-│       └── scratchpads.rs   # Production-ready scratchpads
+│       ├── scratchpads.rs   # Production-ready scratchpads
+│   │   └── ...              # And more
 ├── examples/                # Configuration examples
 ├── tests/                   # Integration tests
 └── docs/                    # Documentation
@@ -595,126 +590,16 @@ rustrland/
 | Plugin | Status | Tests | Key Features |
 |--------|--------|-------|-------------|
 | **Scratchpads** | ✅ Production | 20/20 | Multi-monitor, caching, events, Pyprland compatible |
-| **Expose** | ✅ Development | Integrated | Grid layout, navigation, Mission Control experience |
+| **Expose** | ✅ Production | Integrated | Grid layout, navigation, Mission Control experience |
 | **Workspaces Follow Focus** | ✅ Development | Integrated | Cross-monitor, focus following, workspace rules |
 | **Magnify** | ✅ Production | Integrated | Zoom, animations, accessibility support |
-| **Shift Monitors** | ✅ Development | Integrated | Workspace shifting between monitors |
+| **Shift Monitors** | ✅ Production | Integrated | Workspace shifting between monitors |
 | **Toggle Special** | ✅ Development | Integrated | Special workspace management |
 | **Monitors** | ✅ Development | 15/15 | Relative positioning, hotplug, hardware acceleration |
 | **Wallpapers** | ✅ Production | 15/15 | Hardware accel, carousel, multi-monitor support |
 | **System Notifier** | ✅ Production | 10/10 | Log monitoring, animations, desktop notifications |
 
-**Total**: 2 production-ready plugins with 60+ comprehensive tests passing across all functionality.
-
-## What's New in v0.3.3 🔍
-
-### 🔍 **Lost Windows Plugin - Complete Implementation**
-
-- **Lost Window Detection**: Advanced detection system that identifies windows that have lost their proper workspace assignment or become invisible
-- **Smart Recovery System**: Intelligent recovery mechanisms to restore lost windows to their intended workspaces or make them visible again
-- **Multi-Monitor Compatibility**: Full support for multi-monitor setups with per-monitor lost window detection and recovery
-- **Comprehensive Logging**: Detailed logging system that tracks window states, recovery attempts, and success rates for debugging
-- **Configurable Detection**: Customizable detection criteria and recovery strategies through configuration options
-- **Integration with Expose**: Seamless integration with the expose plugin to show lost windows in the overview grid
-
-### 📚 **Documentation Improvements**
-
-- **Comprehensive Uninstall Guide**: Added detailed uninstall instructions in README with step-by-step removal process
-- **Enhanced Plugin Documentation**: Updated PLUGINS.md with complete lost_windows plugin documentation and usage examples
-- **Configuration Examples**: Added lost_windows plugin configuration examples for both Pyprland and Rustrland formats
-
-### 🧪 **Quality & Reliability**
-
-- **Enhanced Error Handling**: Improved error handling throughout the lost_windows plugin with proper anyhow::Result usage
-- **Memory Safety**: Zero unwrap() calls in new plugin code, following project safety standards
-- **Thread Safety**: Lost windows plugin is fully Send + Sync compatible for multi-threaded environments
-
-## What's New in v0.3.2 🖼️
-
-### 🎨 **Advanced Wallpapers Plugin - Complete Implementation**
-
-- **Hardware-Accelerated Wallpaper Engine**: ImageMagick with OpenCL acceleration for thumbnails and image processing
-- **Interactive Carousel Navigation**: Horizontal/vertical carousel with mouse and keyboard controls for visual wallpaper selection
-- **Multi-Monitor Wallpaper Support**: Per-monitor wallpaper management with unique wallpapers for each display
-- **Smart Thumbnail Caching**: Intelligent caching system with modification time checking to avoid unnecessary regeneration
-- **Multiple Backend Support**: Compatible with swaybg, swww, wpaperd, and custom wallpaper commands
-- **Auto-Rotation System**: Automatic wallpaper changing with configurable intervals and preloading for instant switching
-
-### 🖥️ **Enhanced Monitors Plugin - Production Ready**
-
-- **Relative Monitor Placement**: Rule-based monitor positioning (left-of, right-of, above, below) with conditional placement
-- **Hotplug Event Handling**: Automatic monitor detection and configuration when displays are connected/disconnected
-- **Hardware Acceleration**: GPU-accelerated monitor operations and scaling when available
-- **Multiple Configuration Formats**: Support for both Pyprland and native configuration formats
-- **Real-time Updates**: Dynamic monitor configuration without daemon restart
-
-### 📚 **Comprehensive Plugin Documentation**
-
-- **Complete PLUGINS.md**: Detailed documentation for all 8 plugins with configuration examples and usage guides
-- **Plugin Development Guide**: Step-by-step guide for creating new plugins with templates and best practices
-- **Configuration Examples**: Multiple format examples (Pyprland, Rustrland native, and dual configurations)
-- **Status Summary**: Production readiness status and test coverage for all plugins
-
-### 🧪 **Testing & Quality Improvements**
-
-- **50+ Comprehensive Tests**: All plugins now have extensive test coverage (112 total tests passing)
-- **Memory Safety**: Zero `unwrap()` calls, proper error handling with `anyhow::Result`
-- **Thread Safety**: All plugins are `Send + Sync` compatible for multi-threaded environments
-- **Performance Optimizations**: Reduced memory allocations and improved async/await patterns
-
-## What's New in v0.3.1 🔧
-
-### 🚀 **Performance & Reliability Improvements**
-
-- **Eliminated Critical `.unwrap()` Calls**: Replaced dangerous `.unwrap()` usage with proper error handling to prevent daemon crashes
-- **Added Comprehensive IPC Timeouts**: All socket operations now have timeouts to prevent indefinite blocking when Hyprland becomes unresponsive
-- **Optimized Concurrent Access**: Replaced `Mutex` with `RwLock` for shared plugin state, enabling concurrent read operations
-- **Enhanced Error Handling**: Standardized error handling using `anyhow::Result` throughout the codebase
-- **Improved Connection Recovery**: Added retry logic with exponential backoff for IPC operations
-
-### 🛡️ **Reliability Features**
-- **Timeout Protection**: 10s client timeouts, 5s Hyprland API timeouts, 30s server client handling
-- **DoS Protection**: Message size validation (1MB limit) to prevent memory exhaustion
-- **Graceful Degradation**: Descriptive error messages instead of crashes
-- **Better Concurrency**: Multiple status queries can now run in parallel
-
-## What's New in v0.3.0 🎉
-
-### 🎯 **Enhanced Expose Plugin - Complete Rewrite**
-
-- **✅ Mission Control Experience**: True macOS-style window overview with grid layout
-- **✅ Dynamic Multi-Monitor Support**: Auto-detection with intelligent caching (5s refresh)
-- **✅ Advanced Navigation**: Arrow keys, mouse selection, Home/End navigation
-- **✅ Performance Optimization**: Window limits, thumbnail caching with LRU eviction
-- **✅ Visual Polish**: Semi-transparent background, highlight colors, smooth animations
-- **✅ State Persistence**: Perfect window restoration (position, size, floating state)
-- **✅ Configurable Everything**: Scale factor, colors, animation duration, performance limits
-
-### 🚀 **System-Wide Improvements**
-
-- **✅ Arc Memory Optimization**: 82.7% memory reduction, 1205x performance improvement
-- **✅ Hyprland API Compatibility**: Updated to latest hyprland-rs API (v0.4.0-beta.2)
-- **✅ Enhanced Error Handling**: Comprehensive error coverage with proper async patterns
-- **✅ Global State Caching**: Shared state across plugins reduces API calls by 90%
-
-### 📋 **New Commands & Features**
-
-```bash
-# Enhanced expose commands
-rustr expose up/down/left/right    # Grid navigation
-rustr expose home/end              # Jump to first/last window
-rustr expose select x y            # Mouse selection
-rustr expose status               # Detailed metrics
-
-# All existing commands enhanced with better performance and reliability
-```
-
-### 🔧 **Developer Experience**
-
-- **Cleaner Codebase**: Removed old expose implementation, consolidated to single enhanced version
-- **Better Testing**: Comprehensive test coverage for all new features
-- **Improved Documentation**: Updated README with all v0.3.0 features and examples
-- **Production Ready**: All critical issues identified and fixed
+**Total**: 6 production-ready plugins with 60+ comprehensive tests passing across all functionality.
 
 ## License
 

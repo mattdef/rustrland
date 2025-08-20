@@ -1,7 +1,7 @@
 { pkgs ? import <nixpkgs> {} }:
 pkgs.rustPlatform.buildRustPackage rec {
   pname = "rustrland";
-  version = "0.3.3";
+  version = "0.3.6";
 
   src = pkgs.fetchFromGitHub {
     owner = "mattdef";
