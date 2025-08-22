@@ -21,7 +21,7 @@ optdepends=(
 makedepends=('rust' 'cargo')
 conflicts=('rustrland-git')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/mattdef/$pkgname/archive/v$pkgver.tar.gz")
-sha256sums=('SKIP') # TODO: Update after tag creation
+sha256sums=('3968331229617b1775842cc0a86a80f517003b42981571735c649d33cd7cea6c')
 
 build() {
     cd "$pkgname-$pkgver"

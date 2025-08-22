@@ -14,7 +14,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
     owner = "mattdef";
     repo = "rustrland";
     tag = "v${finalAttrs.version}";
-    sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; # TODO: Update after tag creation
+    sha256 = "sha256-OWgzEilhexd1hCzAqGqA9RcAO0KYFXFzXGSdM8186mw=";
   };
 
   cargoLock = {
