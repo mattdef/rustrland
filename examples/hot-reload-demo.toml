@@ -27,11 +27,7 @@ command = "[term_classed] dropterm"
 class = "dropterm"
 size = "75% 60%"  # Change to "80% 70%" and reload!
 animation = "fromTop"
-animation_config = { 
-    duration = 300,  # Try changing to 500
-    easing = "ease-out",  # Try "bounce" or "elastic"
-    offset = "100px" 
-}
+animation_config = { duration = 300, easing = "ease-out", offset = "100px" }
 
 # Try adding this new scratchpad by uncommenting:
 # [scratchpads.calculator]
@@ -52,11 +48,7 @@ command = "[browser_cmd]"
 class = "firefox"
 size = "90% 80%"
 animation = "fromBottom"  # Try "elastic" or "bounce"
-animation_config = { 
-    duration = 350, 
-    easing = "ease-in-out",
-    offset = "150px" 
-}
+animation_config = { duration = 350, easing = "ease-in-out", offset = "150px" }
 
 # File manager - try different easing
 [scratchpads.files]
@@ -64,11 +56,7 @@ command = "thunar"
 class = "Thunar"
 size = "70% 60%"
 animation = "fromLeft"
-animation_config = {
-    duration = 280,
-    easing = "ease-out-back",  # Try "cubic-bezier(0.68, -0.55, 0.265, 1.55)"
-    offset = "100%"
-}
+animation_config = { duration = 280, easing = "ease-out-back", offset = "100%" }
 
 # ========================================
 # PLUGIN CONFIGURATIONS
@@ -85,10 +73,7 @@ show_titles = true  # Try false
 factor = 2.0           # Try 2.5
 duration = 300         # Try 500
 smooth_animation = true
-spring = { 
-    stiffness = 300.0,  # Try 400.0 for snappier
-    damping = 25.0      # Try 15.0 for more bouncy
-}
+spring = { stiffness = 300.0, damping = 25.0 }
 min_zoom = 1.0
 max_zoom = 5.0         # Try 3.0
 increment = 0.5        # Try 0.3

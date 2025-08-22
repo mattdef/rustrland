@@ -175,20 +175,22 @@ impl Default for ValidatedConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowState {
     pub address: String,
     pub is_visible: bool,
     pub last_position: Option<(i32, i32, i32, i32)>, // x, y, width, height
     pub monitor: Option<String>,
     pub workspace: Option<String>,
+    #[serde(skip)] // Skip Instant as it's not serializable and will be set to None
     pub last_focus: Option<Instant>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScratchpadState {
     pub windows: Vec<WindowState>,
     pub is_spawned: bool,
+    #[serde(skip)] // Skip Instant as it's not serializable and will be set to None
     pub last_used: Option<Instant>,
     pub excluded_by: HashSet<String>, // Which scratchpads excluded this one
     pub cached_position: Option<(String, i32, i32, i32, i32)>, // monitor, x, y, w, h
@@ -3564,6 +3566,173 @@ impl ScratchpadsPlugin {
         client
             .resize_and_position_window(window_address, final_x, final_y, width, height)
             .await?;
+
+        Ok(())
+    }
+
+    // ============================================================================
+    // STATE MANAGEMENT FOR HOT RELOAD
+    // ============================================================================
+
+    /// Capture the current state of all scratchpads for hot reload preservation
+    pub fn capture_state(&self) -> Result<serde_json::Value> {
+        debug!("🔍 Capturing scratchpads state for hot reload");
+
+        // Capture core state information
+        let captured_states: HashMap<String, &ScratchpadState> = self
+            .states
+            .iter()
+            .map(|(name, state)| (name.clone(), state))
+            .collect();
+
+        let state_json = serde_json::json!({
+            "plugin_name": "scratchpads",
+            "timestamp": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            "scratchpad_states": captured_states,
+            "window_mappings": self.window_to_scratchpad,
+            "focused_window": self.focused_window,
+            "previous_focused_window": self.previous_focused_window,
+            "config_count": self.scratchpads.len(),
+            "active_scratchpads": captured_states.len()
+        });
+
+        debug!(
+            "📸 Captured state for {} scratchpads with {} windows mapped",
+            captured_states.len(),
+            self.window_to_scratchpad.len()
+        );
+
+        Ok(state_json)
+    }
+
+    /// Restore the state of scratchpads after hot reload
+    pub fn restore_state(&mut self, state_json: serde_json::Value) -> Result<()> {
+        debug!("🔄 Restoring scratchpads state from hot reload");
+
+        // Extract timestamp for validation
+        if let Some(timestamp) = state_json.get("timestamp").and_then(|t| t.as_u64()) {
+            let age = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+                - timestamp;
+
+            if age > 300 {
+                // 5 minutes
+                warn!(
+                    "⚠️ Scratchpads state is {} seconds old, restoration may be stale",
+                    age
+                );
+            } else {
+                debug!("✅ State age: {}s - within acceptable range", age);
+            }
+        }
+
+        // Restore window mappings if available
+        if let Some(mappings) = state_json.get("window_mappings") {
+            if let Ok(window_mappings) =
+                serde_json::from_value::<HashMap<String, String>>(mappings.clone())
+            {
+                self.window_to_scratchpad = window_mappings;
+                debug!(
+                    "♻️ Restored {} window mappings",
+                    self.window_to_scratchpad.len()
+                );
+            }
+        }
+
+        // Restore focused window state
+        if let Some(focused) = state_json.get("focused_window").and_then(|f| f.as_str()) {
+            self.focused_window = Some(focused.to_string());
+            debug!("♻️ Restored focused window: {}", focused);
+        }
+
+        if let Some(prev_focused) = state_json
+            .get("previous_focused_window")
+            .and_then(|f| f.as_str())
+        {
+            self.previous_focused_window = Some(prev_focused.to_string());
+            debug!("♻️ Restored previous focused window: {}", prev_focused);
+        }
+
+        // Restore scratchpad states
+        if let Some(states) = state_json.get("scratchpad_states") {
+            if let Ok(restored_states) =
+                serde_json::from_value::<HashMap<String, ScratchpadState>>(states.clone())
+            {
+                for (name, state) in restored_states {
+                    self.states.insert(name.clone(), state);
+                    debug!("♻️ Restored state for scratchpad: {}", name);
+                }
+                debug!("♻️ Restored {} scratchpad states", self.states.len());
+            } else {
+                warn!("⚠️ Failed to deserialize scratchpad states, keeping current states");
+            }
+        }
+
+        info!(
+            "✅ Scratchpads state restoration complete: {} scratchpads, {} window mappings",
+            self.states.len(),
+            self.window_to_scratchpad.len()
+        );
+
+        Ok(())
+    }
+
+    /// Validate that the restored state is compatible with current configuration
+    pub fn validate_restored_state(&self) -> Result<()> {
+        debug!("🔍 Validating restored scratchpad state compatibility");
+
+        let mut warnings = Vec::new();
+        let mut valid_states = 0;
+
+        // Check each restored state against current configuration
+        for name in self.states.keys() {
+            if self.scratchpads.contains_key(name) {
+                valid_states += 1;
+                debug!("✅ Scratchpad '{}' state is compatible", name);
+            } else {
+                warnings.push(format!(
+                    "Scratchpad '{}' has restored state but no current config",
+                    name
+                ));
+            }
+        }
+
+        // Check for orphaned window mappings
+        let mut orphaned_windows = 0;
+        for (window_addr, scratchpad_name) in &self.window_to_scratchpad {
+            if !self.scratchpads.contains_key(scratchpad_name) {
+                orphaned_windows += 1;
+                debug!(
+                    "⚠️ Window {} mapped to non-existent scratchpad '{}'",
+                    window_addr, scratchpad_name
+                );
+            }
+        }
+
+        if orphaned_windows > 0 {
+            warnings.push(format!(
+                "{} windows mapped to non-existent scratchpads",
+                orphaned_windows
+            ));
+        }
+
+        if !warnings.is_empty() {
+            for warning in &warnings {
+                warn!("⚠️ State validation: {}", warning);
+            }
+        }
+
+        info!(
+            "✅ State validation complete: {}/{} valid states, {} warnings",
+            valid_states,
+            self.states.len(),
+            warnings.len()
+        );
 
         Ok(())
     }

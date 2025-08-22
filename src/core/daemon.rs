@@ -69,7 +69,9 @@ impl Daemon {
 
         if let Some(ref mut hot_reload_manager) = self.hot_reload_manager {
             if hot_reload_config.auto_reload {
-                let config_paths = vec![PathBuf::from(&self.config_path)];
+                // Expand the tilde in config path before passing to file watcher
+                let expanded_path = shellexpand::tilde(&self.config_path);
+                let config_paths = vec![PathBuf::from(expanded_path.as_ref())];
 
                 if let Err(e) = hot_reload_manager
                     .start(config_paths, hot_reload_config)
@@ -136,17 +138,28 @@ impl Daemon {
 
     /// Parse hot reload configuration from config file
     fn parse_hot_reload_config(&self) -> HotReloadConfig {
+        // Debug all available plugin keys
+        debug!(
+            "🔍 Available plugin sections: {:?}",
+            self.config.plugins.keys().collect::<Vec<_>>()
+        );
+
         // Check if hot_reload section exists in config
         if let Some(hot_reload_value) = self.config.plugins.get("hot_reload") {
-            // Try to parse the hot_reload configuration
-            if let Ok(config) = hot_reload_value.clone().try_into::<HotReloadConfig>() {
-                debug!(
-                    "🔥 Parsed hot reload config: auto_reload={}, debounce_ms={}",
-                    config.auto_reload, config.debounce_ms
-                );
-                return config;
-            } else {
-                warn!("⚠️ Invalid hot_reload configuration, using defaults");
+            debug!("🔍 Found hot_reload section: {:?}", hot_reload_value);
+
+            // Try to deserialize the hot_reload configuration
+            match hot_reload_value.clone().try_into::<HotReloadConfig>() {
+                Ok(config) => {
+                    debug!(
+                        "🔥 Parsed hot reload config: auto_reload={}, debounce_ms={}",
+                        config.auto_reload, config.debounce_ms
+                    );
+                    return config;
+                }
+                Err(e) => {
+                    warn!("⚠️ Invalid hot_reload configuration: {}, using defaults", e);
+                }
             }
         } else {
             debug!("🔥 No hot_reload section found, using defaults");
