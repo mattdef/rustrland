@@ -30,9 +30,7 @@ jobs:
 
       # Publication sur crates.io
       - name: Publish to crates.io
-        run: cargo publish
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
 
       # Installation de cargo-deb
       - name: Install cargo-deb
