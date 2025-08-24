@@ -49,11 +49,11 @@ Both formats can coexist in the same configuration file, with Rustrland intellig
 | Plugin | Status | Features | Documentation |
 |--------|--------|----------|---------------|
 | **[Scratchpads](SCRATCHPADS.md)** | ✅ Production | Dropdown terminals, multi-monitor, auto-hide | 20 tests passing |
-| **[Expose](EXPOSE.md)** | ✅ In development | Mission Control-style window overview | Grid layout, navigation |
+| **[Expose](EXPOSE.md)** | ✅ Production | Mission Control-style window overview | Grid layout, navigation |
 | **[Workspaces Follow Focus](WORKSPACES_FOLLOW_FOCUS.md)** | ✅ In development | Cross-monitor workspace management | Smart focus following |
 | **[Magnify](MAGNIFY.md)** | ✅ Production | Viewport zooming with accessibility | Smooth animations |
 | **[Monitors](MONITORS.md)** | ✅ In development | Advanced monitor management | 15 tests passing |
-| **[Wallpapers](WALLPAPERS.md)** | ✅ In development | Hardware-accelerated wallpaper management | 15 tests passing |
+| **[Wallpapers](WALLPAPERS.md)** | ✅ Production | Hardware-accelerated wallpaper management | 15 tests passing |
 | **[System Notifier](SYSTEM_NOTIFIER.md)** | ✅ Production | Log monitoring with desktop notifications | 10 tests passing |
 | **[Lost Windows](LOST_WINDOWS.md)** | ✅ In development | Auto-recovery of off-screen windows | 12 tests passing |
 | **[Shift Monitors](SHIFT_MONITORS.md)** | ✅ In development | Workspace shifting between monitors | Multi-monitor support |

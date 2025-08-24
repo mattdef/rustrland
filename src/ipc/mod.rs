@@ -331,6 +331,25 @@ impl HyprlandClient {
         Ok(())
     }
 
+    /// Move window to exact pixel coordinates (for animations)
+    pub async fn move_window_pixel(&self, address: &str, x: i32, y: i32) -> Result<()> {
+        debug!("📍 Moving window {} to exact pixel position ({}, {})", address, x, y);
+
+        // Use hyprctl with movewindowpixel exact for precise positioning
+        let address = address.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            std::process::Command::new("hyprctl")
+                .arg("dispatch")
+                .arg("movewindowpixel")
+                .arg(format!("exact {} {},address:{}", x, y, address))
+                .output()
+        })
+        .await??;
+
+        Ok(())
+    }
+
     /// Resize window to specific size (for animations)
     pub async fn resize_window(&self, address: &str, width: i32, height: i32) -> Result<()> {
         debug!(
@@ -373,6 +392,7 @@ impl HyprlandClient {
 
         Ok(())
     }
+
 
     /// Get window properties for animation calculations
     pub async fn get_window_properties(&self, address: &str) -> Result<WindowProperties> {

@@ -13,7 +13,7 @@ optdepends=(
     'swaybg: Default wallpaper backend for wallpapers plugin'
     'swww: Alternative wallpaper backend with animations'
     'wpaperd: Per-workspace wallpaper backend'
-    'imagemagick: Hardware acceleration for wallpaper processing'
+    'hyprpaper: Wallpaper backend for hyprland'
     'foot: Recommended terminal for scratchpad plugin'
     'firefox: Browser support for scratchpad plugin'
     'thunar: File manager support for scratchpad plugin'

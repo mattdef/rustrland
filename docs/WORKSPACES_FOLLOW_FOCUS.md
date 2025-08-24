@@ -1,431 +1,261 @@
 # Workspaces Follow Focus Plugin
 
-**Status**: ✅ Still in development | **Tests**: Integrated
+**Status**: ⚠️ **UNDER ACTIVE DEVELOPMENT** - Core functionality broken | **Tests**: Limited
 
-Multi-monitor workspace management with cross-monitor switching, intelligent focus following, and advanced workspace manipulation. Provides seamless workspace navigation across multiple monitors.
+⚠️ **CRITICAL ISSUES**: This plugin is currently unstable with major functionality broken. See TODO section below for required fixes.
 
-## Features
+Basic workspace management plugin inspired by Pyprland's workspaces_follow_focus. Currently supports limited workspace listing and partial navigation.
 
-- **Cross-Monitor Navigation**: Switch workspaces across different monitors
-- **Focus Following**: Automatically follow focus between workspaces  
-- **Workspace Management**: Create, switch, and manage workspaces dynamically
-- **Monitor Awareness**: Intelligent handling of monitor-specific workspaces
-- **Relative Navigation**: Navigate with +1/-1 relative movements
-- **Workspace Persistence**: Remember workspace state across sessions
-- **Smart Switching**: Intelligent workspace switching based on content
+## Currently Working Features
+
+✅ **Workspace Listing**: Display current workspaces and monitors (`rustr workspace list`)
+✅ **Status Display**: Show plugin status and configuration (`rustr workspace status`)
+✅ **Partial Relative Navigation**: Forward navigation only (`rustr workspace change +1`)
+
+## Broken Features (Need Fixes)
+
+❌ **Direct Workspace Switching**: `rustr workspace switch N` fails with "Previous workspace doesn't exist"
+❌ **Backward Navigation**: `rustr workspace change -- -1` fails with range errors
+❌ **Animation System**: Completely disabled due to circular dependencies
+❌ **Most Advanced Features**: Monitor-specific rules, persistence, templates, etc.
 
 ## Configuration
 
-### Basic Configuration
+### Basic Working Configuration
 
 ```toml
 [workspaces_follow_focus]
-# Enable the plugin
-enabled = true
+# Basic settings that actually work
+follow_window_focus = true
+allow_cross_monitor_switch = true
+workspace_switching_delay = 100
+debug_logging = true  # Recommended for troubleshooting
 
-# Optional: Max workspaces per monitor
-max_workspaces = 10
-
-# Optional: Auto-create workspaces when switching
-auto_create = true
-
-# Optional: Start with workspace 1 on all monitors
-start_workspace = 1
-
-# Optional: Workspace naming scheme
-workspace_naming = "numeric"     # "numeric", "named", "hybrid"
+# Workspace rules (basic monitor locking)
+workspace_rules = { "1" = "DP-1", "2" = "DP-2" }
 ```
 
-### Advanced Configuration
+### ⚠️ Configuration Options Not Yet Implemented
 
-```toml
-[workspaces_follow_focus]
-# Monitor behavior
-follow_focus_delay = 100         # Delay in ms before following focus
-cross_monitor_switching = true   # Enable cross-monitor workspace switching
-preserve_monitor_workspaces = true # Keep workspace-monitor associations
-
-# Workspace management
-empty_workspace_timeout = 30     # Auto-remove empty workspaces after 30s
-remember_last_workspace = true   # Remember last workspace per monitor
-workspace_wrap_around = true     # Wrap to workspace 1 after max
-
-# Focus behavior
-focus_follows_workspace = true   # Focus follows when switching workspaces
-workspace_follows_focus = false  # Workspace switches when focus changes
-smart_focus_switching = true     # Intelligent focus-based switching
-
-# Advanced options
-[workspaces_follow_focus.naming]
-# Custom workspace names
-workspace_names = {
-    1 = "Main",
-    2 = "Dev", 
-    3 = "Web",
-    4 = "Chat",
-    5 = "Media"
-}
-
-# Monitor-specific workspace ranges
-monitor_workspace_ranges = {
-    "DP-1" = [1, 5],      # Monitor DP-1 uses workspaces 1-5
-    "DP-2" = [6, 10],     # Monitor DP-2 uses workspaces 6-10
-    "HDMI-1" = [11, 15]   # Monitor HDMI-1 uses workspaces 11-15
-}
-```
+Many configuration options shown in the code are not yet functional:
+- `max_workspaces`, `auto_create`, `start_workspace`
+- Complex monitor strategies and workspace ranges
+- Named workspaces and templates
+- Persistence and history features
+- Advanced focus following options
 
 ## Commands
 
-### Basic Workspace Commands
+### ✅ Working Commands
 
 ```bash
-# Direct workspace switching
-rustr workspace switch 1        # Switch to workspace 1
-rustr workspace switch 2        # Switch to workspace 2
-rustr workspace switch 3        # Switch to workspace 3
-
-# Relative workspace navigation
-rustr workspace change +1       # Next workspace
-rustr workspace change -1       # Previous workspace (use -- for negative)
-rustr workspace change +2       # Skip ahead 2 workspaces
-rustr workspace change -- -2    # Go back 2 workspaces
-
-# Workspace information
+# Workspace information (WORKS)
 rustr workspace list            # List all workspaces and monitors
-rustr workspace current         # Show current workspace info
 rustr workspace status          # Show detailed workspace status
+
+# Partial relative navigation (WORKS - forward only)
+rustr workspace change +1       # Next workspace
 ```
 
-### Advanced Workspace Commands
+### ❌ Broken Commands (Need Fixes)
 
 ```bash
-# Workspace creation and management
-rustr workspace create 5        # Create workspace 5 if it doesn't exist
-rustr workspace create "Dev"    # Create named workspace
-rustr workspace remove 5       # Remove empty workspace 5
-rustr workspace rename 5 "Code" # Rename workspace 5 to "Code"
+# Direct workspace switching (BROKEN)
+rustr workspace switch 1        # ❌ Fails: "Previous workspace doesn't exist"
+rustr workspace switch 2        # ❌ Fails: Hyprland dispatcher error
 
-# Cross-monitor operations
-rustr workspace move-to-monitor "DP-2"  # Move current workspace to monitor
-rustr workspace switch-monitor 3 "DP-1" # Switch workspace 3 on specific monitor
-
-# Window management
-rustr workspace move-window 4   # Move current window to workspace 4
-rustr workspace follow-window 4 # Move window and follow to workspace 4
+# Backward navigation (BROKEN) 
+rustr workspace change -- -1    # ❌ Fails: "Workspace 0 out of range"
+rustr workspace change +2       # ⚠️  May work depending on current workspace
 ```
 
-### Monitoring and Status
+### 🚫 Not Yet Implemented Commands
 
-```bash
-# Status and debugging
-rustr workspace status          # Detailed workspace and monitor status
-rustr workspace list-monitors   # List all connected monitors
-rustr workspace list-windows    # List windows per workspace
-rustr workspace history         # Show workspace switch history
-
-# Configuration management
-rustr workspace reload          # Reload workspace configuration
-rustr workspace reset           # Reset all workspaces to default state
-```
+The following commands are documented but don't exist in the current implementation:
+- `current`, `create`, `remove`, `rename`
+- `move-to-monitor`, `switch-monitor`
+- `move-window`, `follow-window`
+- `list-monitors`, `list-windows`, `history`
+- `reload`, `reset`, `back`, `forward`
 
 ## Keybindings
 
-Add to your `~/.config/hypr/hyprland.conf`:
+### ⚠️ Temporary Working Keybindings
 
-### Basic Workspace Navigation
-
-```bash
-# Direct workspace switching
-bind = SUPER, 1, exec, rustr workspace switch 1
-bind = SUPER, 2, exec, rustr workspace switch 2
-bind = SUPER, 3, exec, rustr workspace switch 3
-bind = SUPER, 4, exec, rustr workspace switch 4
-bind = SUPER, 5, exec, rustr workspace switch 5
-
-# Relative navigation
-bind = SUPER, Right, exec, rustr workspace change +1
-bind = SUPER, Left, exec, rustr workspace change -- -1
-bind = SUPER, Page_Up, exec, rustr workspace change +5
-bind = SUPER, Page_Down, exec, rustr workspace change -- -5
-
-# Quick access
-bind = SUPER, Home, exec, rustr workspace switch 1    # Go to first workspace
-bind = SUPER, End, exec, rustr workspace list         # Show workspace list
-```
-
-### Advanced Keybindings
+Add to your `~/.config/hypr/hyprland.conf` (only working commands):
 
 ```bash
-# Window management with workspaces
-bind = SUPER_SHIFT, 1, exec, rustr workspace move-window 1
-bind = SUPER_SHIFT, 2, exec, rustr workspace move-window 2
-bind = SUPER_SHIFT, 3, exec, rustr workspace move-window 3
-
-# Follow window to workspace
-bind = SUPER_CTRL, 1, exec, rustr workspace follow-window 1
-bind = SUPER_CTRL, 2, exec, rustr workspace follow-window 2
-bind = SUPER_CTRL, 3, exec, rustr workspace follow-window 3
-
-# Monitor operations
-bind = SUPER_ALT, Right, exec, rustr workspace move-to-monitor next
-bind = SUPER_ALT, Left, exec, rustr workspace move-to-monitor prev
-
-# Special operations
-bind = SUPER, grave, exec, rustr workspace switch-back  # Switch to last workspace
-bind = SUPER_SHIFT, grave, exec, rustr workspace create-next # Create next workspace
+# Working commands only
+bind = SUPER, Right, exec, rustr workspace change +1   # Next workspace (works)
+bind = SUPER, End, exec, rustr workspace list         # Show workspace list (works)
+bind = SUPER_SHIFT, S, exec, rustr workspace status   # Show status (works)
 ```
 
-## Multi-Monitor Workspace Management
-
-### Monitor-Specific Workspaces
-
-The plugin supports sophisticated multi-monitor workspace management:
-
-```toml
-[workspaces_follow_focus]
-# Per-monitor workspace configuration
-monitor_workspace_strategy = "dedicated"  # "dedicated", "shared", "hybrid"
-
-# Dedicated: Each monitor has its own workspace range
-[workspaces_follow_focus.monitors."DP-1"]
-workspace_range = [1, 5]         # Workspaces 1-5 for primary monitor
-default_workspace = 1
-wrap_around = true
-
-[workspaces_follow_focus.monitors."DP-2"]  
-workspace_range = [6, 10]        # Workspaces 6-10 for secondary monitor
-default_workspace = 6
-wrap_around = true
-
-[workspaces_follow_focus.monitors."HDMI-1"]
-workspace_range = [11, 15]       # Workspaces 11-15 for tertiary monitor
-default_workspace = 11
-wrap_around = false
-```
-
-### Cross-Monitor Navigation
+### ❌ Don't Use These (Broken)
 
 ```bash
-# Navigate workspaces across monitors
-rustr workspace switch 1         # Switch to workspace 1 (monitor DP-1)
-rustr workspace switch 6         # Switch to workspace 6 (monitor DP-2)
-rustr workspace switch 11        # Switch to workspace 11 (monitor HDMI-1)
-
-# Cross-monitor relative navigation
-rustr workspace change +1        # Next workspace (may switch monitors)
-rustr workspace change-monitor +1 # Next workspace on same monitor only
+# These keybindings will fail - avoid until fixed
+# bind = SUPER, 1, exec, rustr workspace switch 1      # BROKEN
+# bind = SUPER, Left, exec, rustr workspace change -- -1  # BROKEN
 ```
 
-## Focus Following Behavior
-
-### Focus-Driven Workspace Switching
-
-```toml
-[workspaces_follow_focus]
-# Focus following options
-workspace_follows_focus = true   # Switch workspace when focus changes
-focus_follow_threshold = 500     # Minimum time in ms before switching
-focus_follow_exclusions = ["Rofi", "wofi"] # Don't follow focus for these apps
-
-# Smart following behavior
-smart_focus_switching = true     # Use intelligent focus following
-focus_memory_duration = 5000     # Remember focus for 5 seconds
-prevent_focus_loops = true       # Prevent infinite focus switching loops
+Use Hyprland's native workspace switching as workaround:
+```bash
+# Hyprland native (working alternative)
+bind = SUPER, 1, workspace, 1
+bind = SUPER, 2, workspace, 2
+bind = SUPER, Left, workspace, -1
+bind = SUPER, Right, workspace, +1
 ```
 
-### Use Cases for Focus Following
+---
 
-1. **Multi-Monitor Development**: Follow focus between code editor and terminal across monitors
-2. **Content Creation**: Switch between design tools and reference materials
-3. **Presentations**: Follow focus between presentation and notes
-4. **Gaming**: Switch between game and chat applications
+# 🚧 TODO: Critical Development Tasks
 
-## Workspace Persistence
+## 🔥 Priority 1: Critical Fixes (Required for Basic Functionality)
 
-### Session Management
+### 1.1 Fix Direct Workspace Switching
+- **Issue**: `rustr workspace switch N` fails with "Previous workspace doesn't exist"
+- **Location**: `src/plugins/workspaces_follow_focus.rs:461-465`
+- **Cause**: Incorrect Hyprland dispatcher call
+- **Fix Required**: 
+  - Use correct `WorkspaceIdentifier` type instead of `WorkspaceIdentifierWithSpecial`
+  - Test dispatcher calls with real Hyprland instance
+  - Validate workspace existence before switching
 
-```toml
-[workspaces_follow_focus.persistence]
-# Save workspace state
-save_workspace_state = true     # Save state between sessions
-state_file = "~/.cache/rustrland/workspaces.json"
-save_interval = 30              # Save every 30 seconds
+### 1.2 Fix Backward Navigation
+- **Issue**: `rustr workspace change -- -1` fails with "Workspace 0 out of range"
+- **Location**: `src/plugins/workspaces_follow_focus.rs:497-505`
+- **Cause**: No bounds checking or wrap-around logic
+- **Fix Required**:
+  - Implement proper wrap-around (workspace 1 → 10, 10 → 1)
+  - Handle negative offsets correctly
+  - Add boundary validation
 
-# Restore behavior
-restore_on_startup = true       # Restore workspaces on startup
-restore_window_positions = true # Restore window positions
-restore_focus_state = true      # Restore last focused window
+### 1.3 Simplify Command Interface
+- **Issue**: Over-complex interface compared to Pyprland original
+- **Goal**: Align with Pyprland's simple `change_workspace [direction]`
+- **Fix Required**:
+  - Implement `change_workspace` as primary command
+  - Keep `switch` and `change` as aliases for compatibility
+  - Remove non-functional commands from documentation
+
+## 🛠️ Priority 2: Technical Improvements
+
+### 2.1 Repair Animation System
+- **Issue**: Animation system disabled due to circular dependencies
+- **Location**: Multiple commented sections in plugin code
+- **Fix Required**:
+  - Resolve circular dependency between animation and plugin modules
+  - Re-enable animation timeline functionality
+  - Test smooth workspace transitions
+
+### 2.2 Optimize Performance
+- **Issue**: Excessive calls to `update_monitors()` and `update_workspaces()`
+- **Fix Required**:
+  - Implement intelligent caching with cache invalidation
+  - Reduce API calls by batching operations
+  - Add performance metrics and monitoring
+
+### 2.3 Add Missing Commands
+- **Issue**: Many documented commands don't exist
+- **Fix Required**:
+  - Implement `current` command
+  - Add basic `create` and `remove` functionality
+  - Return proper error messages for unimplemented features
+
+## 📝 Priority 3: Documentation and Polish
+
+### 3.1 Update Documentation Status
+- **Task**: Mark non-working features clearly
+- **Update**: Configuration examples to show only working options
+- **Add**: Troubleshooting section with common issues
+- **Create**: Migration guide from current broken state
+
+### 3.2 Add Integration Tests
+- **Task**: Test with real Hyprland instance
+- **Validate**: All basic commands work correctly
+- **Test**: Multi-monitor scenarios
+- **Verify**: Error handling and edge cases
+
+### 3.3 Improve Error Messages
+- **Task**: Replace generic errors with helpful messages
+- **Add**: Suggestions for working alternatives
+- **Include**: Debug information in error outputs
+
+## 🎯 Success Criteria
+
+**Milestone 1 - Basic Functionality**:
+- ✅ `rustr workspace switch N` works without errors
+- ✅ `rustr workspace change +1` and `rustr workspace change -- -1` both work
+- ✅ Commands match Pyprland's `change_workspace` behavior
+
+**Milestone 2 - Stability**:
+- ✅ Animation system functional
+- ✅ Performance optimized (minimal API calls)
+- ✅ Multi-monitor switching stable
+
+**Milestone 3 - Polish**:
+- ✅ Documentation accurate and up-to-date
+- ✅ Integration tests passing
+- ✅ Error handling comprehensive
+
+## 📞 Development Notes
+
+- **Test Environment**: Requires active Hyprland session with multiple monitors
+- **Dependencies**: Fix animation system circular dependencies first
+- **Validation**: Compare behavior with Pyprland original
+- **Performance**: Profile before/after optimizations
+
+---
+
+## ⚠️ Current Limitations & Workarounds
+
+### Known Issues
+
+**Direct workspace switching fails:**
+```bash
+# This command fails with "Previous workspace doesn't exist"
+rustr workspace switch 1
+
+# Workaround: Use Hyprland's native command
+hyprctl dispatch workspace 1
 ```
 
-### Workspace History
+**Backward navigation broken:**
+```bash
+# This fails with "Workspace 0 out of range"
+rustr workspace change -- -1
+
+# Workaround: Use Hyprland's native command
+hyprctl dispatch workspace -1
+```
+
+**Animation system disabled:**
+- All animation features are currently non-functional
+- No smooth transitions between workspaces
+- Plugin loads but animations are skipped
+
+### Working Debug Commands
 
 ```bash
-# Access workspace history
-rustr workspace history         # Show recent workspace switches
-rustr workspace back           # Go to previous workspace in history
-rustr workspace forward        # Go to next workspace in history
-
-# History navigation with keybindings
-bind = SUPER, bracketleft, exec, rustr workspace back
-bind = SUPER, bracketright, exec, rustr workspace forward
+# These commands work for debugging
+rustr workspace status          # Shows plugin status and config
+rustr workspace list            # Lists workspaces and monitors
+rustr workspace change +1       # Forward navigation only
 ```
 
-## Integration with Other Plugins
+### Temporary Solution
 
-### Scratchpads Integration
-
-```toml
-# Scratchpads respect workspace following
-[scratchpads.term]
-follow_workspace = true         # Scratchpad follows workspace changes
-workspace_specific = false      # Show on all workspaces vs. workspace-specific
-```
-
-### Expose Integration
+Until the plugin is fixed, use Hyprland's native workspace switching:
 
 ```bash
-# Show expose for current workspace only
-rustr expose show-current       # Uses current workspace from follow focus
-
-# Navigate between workspaces in expose mode
-bind = SUPER, TAB, exec, rustr expose && rustr workspace-nav
+# Native Hyprland commands (reliable alternative)
+hyprctl dispatch workspace 1    # Switch to workspace 1
+hyprctl dispatch workspace +1    # Next workspace
+hyprctl dispatch workspace -1    # Previous workspace
 ```
 
-### Wallpapers Integration
+## Development Status
 
-```toml
-# Different wallpapers per workspace
-[wallpapers]
-workspace_specific = true       # Different wallpaper per workspace
-workspace_wallpapers = {
-    1 = "~/Pictures/desktop.jpg",
-    2 = "~/Pictures/coding.jpg", 
-    3 = "~/Pictures/web.jpg"
-}
-```
-
-## Advanced Features
-
-### Smart Workspace Creation
-
-```toml
-[workspaces_follow_focus.smart_creation]
-# Automatically create workspaces based on patterns
-auto_create_on_switch = true    # Create workspace when switching to non-existent
-template_workspaces = true      # Use templates for new workspaces
-inherit_layout = true           # Inherit layout from similar workspaces
-
-# Workspace templates
-[workspaces_follow_focus.templates]
-"Dev" = {
-    layout = "tiled",
-    default_apps = ["code", "terminal", "browser"],
-    monitor_preference = "DP-1"
-}
-
-"Media" = {
-    layout = "floating", 
-    default_apps = ["vlc", "spotify"],
-    monitor_preference = "DP-2"
-}
-```
-
-### Workspace Rules
-
-```toml
-[workspaces_follow_focus.rules]
-# Application-specific workspace rules
-app_workspace_rules = [
-    { app = "firefox", workspace = 3, monitor = "DP-1" },
-    { app = "code", workspace = 2, monitor = "DP-1" },
-    { app = "spotify", workspace = 5, monitor = "DP-2" },
-    { app = "discord", workspace = 4, monitor = "DP-2" }
-]
-
-# Window class rules
-window_class_rules = [
-    { class = "org.gnome.Nautilus", workspace = 6 },
-    { class = "Gimp", workspace = 7, monitor = "DP-2" }
-]
-```
-
-## Performance Optimization
-
-### Efficient Workspace Switching
-
-```toml
-[workspaces_follow_focus.performance]
-# Optimize workspace switching
-cache_workspace_info = true     # Cache workspace information
-lazy_workspace_loading = true   # Load workspace content on demand
-batch_workspace_operations = true # Batch multiple operations
-
-# Memory management
-max_workspace_history = 50      # Limit history size
-cleanup_empty_workspaces = true # Auto-remove empty workspaces
-workspace_cleanup_interval = 300 # Cleanup every 5 minutes
-```
-
-### Multi-Monitor Performance
-
-- **Intelligent Caching**: Workspace and monitor information cached
-- **Event Batching**: Multiple workspace changes batched together
-- **Lazy Loading**: Workspace content loaded only when needed
-- **Memory Efficiency**: Efficient data structures for workspace tracking
-
-## Troubleshooting
-
-### Common Issues
-
-**Workspace not switching:**
-```bash
-# Check current workspace status
-rustr workspace status
-
-# Verify Hyprland connection
-rustr workspace current
-```
-
-**Focus following not working:**
-```toml
-[workspaces_follow_focus]
-workspace_follows_focus = true  # Ensure this is enabled
-focus_follow_threshold = 200    # Reduce threshold if too slow
-```
-
-**Cross-monitor switching issues:**
-```toml
-[workspaces_follow_focus]
-cross_monitor_switching = true  # Enable cross-monitor switching
-monitor_workspace_strategy = "shared" # Try shared strategy
-```
-
-### Debug Commands
-
-```bash
-# Debug workspace state
-rustr workspace status          # Detailed status information
-rustr workspace list-monitors   # Check monitor detection
-rustr workspace history         # Check switching history
-
-# Test workspace operations
-rustr workspace switch 1        # Test basic switching
-rustr workspace change +1       # Test relative navigation
-```
-
-## Migration from Other Tools
-
-### From i3/Sway Workspaces
-- Similar numeric workspace concepts
-- Enhanced multi-monitor support
-- Better focus following behavior
-
-### From GNOME Activities
-- More precise workspace control
-- Better keyboard navigation
-- Improved multi-monitor handling
-
-### From Pyprland
-- Full compatibility with existing configurations
-- Enhanced focus following features
-- Better performance and reliability
+This plugin is actively being developed to achieve compatibility with Pyprland's workspaces_follow_focus. Current implementation provides ~30% of intended functionality. See TODO section above for development roadmap.
