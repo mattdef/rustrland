@@ -148,11 +148,32 @@ impl AnimationEngine {
         initial_properties: HashMap<String, PropertyValue>,
     ) -> Result<()> {
         info!(
-            "🎬 Starting animation '{}' with type '{}'",
-            id, config.animation_type
+            "🎬 Starting animation '{}' with type '{}', duration: {}ms",
+            id, config.animation_type, config.duration
         );
 
-        let target_properties = self.calculate_target_properties(&config, &initial_properties)?;
+        // Initialize properties correctly for multi-property animations
+        let (final_initial_properties, target_properties) = if config.properties.is_some() {
+            // For multi-property animations, use 'from' values as initial properties
+            let mut multi_initial = HashMap::new();
+            let mut multi_targets = HashMap::new();
+            
+            if let Some(properties) = &config.properties {
+                for prop_config in properties {
+                    multi_initial.insert(prop_config.property.clone(), prop_config.from.clone());
+                    multi_targets.insert(prop_config.property.clone(), prop_config.to.clone());
+                }
+            }
+            
+            info!("Multi-property animation with {} properties", multi_initial.len());
+            (multi_initial, multi_targets)
+        } else {
+            // Traditional single-property animation - LOGIC CORRECTED
+            // initial_properties = where window should START (off-screen)
+            // targets = where window should END (final position)
+            let start_properties = self.calculate_start_properties(&config, &initial_properties)?;
+            (start_properties, initial_properties) // SWAPPED: start->final
+        };
 
         let state = AnimationState {
             config: config.clone(),
@@ -161,31 +182,31 @@ impl AnimationEngine {
             is_running: true,
             is_paused: false,
             timeline: Timeline::new(Duration::from_millis(config.duration as u64)),
-            properties: initial_properties,
+            properties: final_initial_properties,
             target_properties,
         };
 
         self.active_animations.insert(id.clone(), state);
 
-        // Start animation loop for this animation
-        self.run_animation_loop(id).await?;
+        // Don't start animation loop here - let start_window_animation_loop handle it
+        info!("✅ Animation '{}' initialized and ready", id);
 
         Ok(())
     }
 
-    /// Calculate target properties based on animation type and direction
-    fn calculate_target_properties(
+    /// Calculate start properties based on animation type and direction
+    fn calculate_start_properties(
         &self,
         config: &AnimationConfig,
-        initial: &HashMap<String, PropertyValue>,
+        final_properties: &HashMap<String, PropertyValue>,
     ) -> Result<HashMap<String, PropertyValue>> {
-        let mut targets = initial.clone();
+        let mut start_props = final_properties.clone();
 
         match config.animation_type.as_str() {
             "fromTop" => {
                 let offset_pixels = self.parse_offset(&config.offset, "height")?;
-                if let Some(y) = targets.get("y") {
-                    targets.insert(
+                if let Some(y) = start_props.get("y") {
+                    start_props.insert(
                         "y".to_string(),
                         PropertyValue::Pixels(y.as_pixels() - offset_pixels as i32),
                     );
@@ -193,8 +214,8 @@ impl AnimationEngine {
             }
             "fromBottom" => {
                 let offset_pixels = self.parse_offset(&config.offset, "height")?;
-                if let Some(y) = targets.get("y") {
-                    targets.insert(
+                if let Some(y) = start_props.get("y") {
+                    start_props.insert(
                         "y".to_string(),
                         PropertyValue::Pixels(y.as_pixels() + offset_pixels as i32),
                     );
@@ -202,8 +223,8 @@ impl AnimationEngine {
             }
             "fromLeft" => {
                 let offset_pixels = self.parse_offset(&config.offset, "width")?;
-                if let Some(x) = targets.get("x") {
-                    targets.insert(
+                if let Some(x) = start_props.get("x") {
+                    start_props.insert(
                         "x".to_string(),
                         PropertyValue::Pixels(x.as_pixels() - offset_pixels as i32),
                     );
@@ -211,26 +232,26 @@ impl AnimationEngine {
             }
             "fromRight" => {
                 let offset_pixels = self.parse_offset(&config.offset, "width")?;
-                if let Some(x) = targets.get("x") {
-                    targets.insert(
+                if let Some(x) = start_props.get("x") {
+                    start_props.insert(
                         "x".to_string(),
                         PropertyValue::Pixels(x.as_pixels() + offset_pixels as i32),
                     );
                 }
             }
             "fade" => {
-                targets.insert(
+                start_props.insert(
                     "opacity".to_string(),
                     PropertyValue::Float(config.opacity_from),
                 );
             }
             "scale" => {
-                targets.insert("scale".to_string(), PropertyValue::Float(config.scale_from));
+                start_props.insert("scale".to_string(), PropertyValue::Float(config.scale_from));
             }
             "bounce" | "elastic" | "spring" => {
                 // Physics-based animations will be handled by spring dynamics
                 if let Some(spring) = &config.spring {
-                    self.setup_spring_animation(&mut targets, spring)?;
+                    self.setup_spring_animation(&mut start_props, spring)?;
                 }
             }
             _ => {
@@ -238,106 +259,175 @@ impl AnimationEngine {
             }
         }
 
-        // Handle custom property animations
+        // Handle custom property animations - targets remain the same
         if let Some(properties) = &config.properties {
             for prop_config in properties {
-                targets.insert(prop_config.property.clone(), prop_config.to.clone());
+                start_props.insert(prop_config.property.clone(), prop_config.to.clone());
             }
         }
 
-        Ok(targets)
+        Ok(start_props)
     }
 
-    /// Main animation loop with 60fps target and performance monitoring
+    /// Optimized 60fps animation loop with precise frame timing
     async fn run_animation_loop(&mut self, animation_id: String) -> Result<()> {
-        let target_frame_duration = Duration::from_millis(16); // 60fps
-
-        loop {
-            let frame_start = Instant::now();
-
-            let should_continue = {
-                let (easing_name, progress, should_continue) = {
-                    let animation = match self.active_animations.get_mut(&animation_id) {
-                        Some(anim) => anim,
-                        None => break, // Animation was stopped
-                    };
-
-                    if animation.is_paused || !animation.is_running {
-                        sleep(Duration::from_millis(16)).await;
-                        continue;
-                    }
-
-                    // Check if animation should start (handle delay)
-                    if Instant::now() < animation.start_time {
-                        sleep(Duration::from_millis(1)).await;
-                        continue;
-                    }
-
-                    // Update timeline progress
-                    let elapsed = animation.start_time.elapsed();
-                    let progress = animation.timeline.get_progress(elapsed);
-                    animation.current_progress = progress;
-
-                    (animation.config.easing.clone(), progress, progress < 1.0)
-                };
-
-                // Apply easing function
-                let eased_progress = self.apply_easing(&easing_name, progress);
-
-                // Calculate current property values
-                Self::interpolate_properties_for_animation(
-                    &mut self.active_animations,
-                    &animation_id,
-                    eased_progress,
-                )?;
-
-                should_continue
+        info!("🎬 Starting 60fps animation loop for '{}'", animation_id);
+        
+        // Get animation duration to calculate total frames
+        let (duration_ms, easing_name) = {
+            let animation = match self.active_animations.get(&animation_id) {
+                Some(anim) => anim,
+                None => return Ok(()),
             };
-
-            if !should_continue {
-                self.complete_animation(&animation_id).await?;
+            (animation.config.duration, animation.config.easing.clone())
+        };
+        
+        let total_frames = ((duration_ms as f32 / 16.67).round() as u32).max(1); // 60fps = 16.67ms per frame
+        // Note: easing is now handled per-property in multi-property animations
+        
+        // Precise 60fps loop with frame-perfect timing
+        for frame in 0..total_frames {
+            let frame_start = Instant::now();
+            
+            // Calculate progress (0.0 to 1.0)
+            let progress = if total_frames == 1 {
+                1.0 // Handle single frame case
+            } else {
+                frame as f32 / (total_frames - 1) as f32
+            };
+            
+            // Update animation properties with per-property easing support
+            Self::interpolate_properties_with_individual_easing(
+                &mut self.active_animations,
+                &animation_id,
+                progress, // Raw progress, not eased yet
+                &easing_name,
+            )?;
+            
+            // Check if animation was stopped
+            if !self.active_animations.get(&animation_id)
+                .map(|anim| anim.is_running && !anim.is_paused)
+                .unwrap_or(false)
+            {
+                debug!("Animation '{}' was stopped during loop", animation_id);
                 break;
             }
-
-            // Performance monitoring and adaptive frame rate
+            
+            // Performance monitoring
             let frame_time = frame_start.elapsed();
             self.performance_monitor.frame_times.push(frame_time);
-
             if self.performance_monitor.frame_times.len() > 60 {
                 self.performance_monitor.frame_times.remove(0);
             }
-
-            // Adaptive sleep to maintain target FPS
-            if frame_time < target_frame_duration {
-                sleep(target_frame_duration - frame_time).await;
+            
+            // Frame timing debug (every 10th frame to avoid spam)
+            if frame % 10 == 0 {
+                debug!("Animation '{}' frame {}/{}: progress={:.3}, frame_time={:.1}ms", 
+                       animation_id, frame + 1, total_frames, progress, frame_time.as_millis());
+            }
+            
+            // Maintain 60fps (16.67ms per frame)
+            let target_frame_time = Duration::from_millis(16);
+            if frame_time < target_frame_time {
+                sleep(target_frame_time - frame_time).await;
             }
         }
-
+        
+        // Complete the animation
+        self.complete_animation(&animation_id).await?;
+        info!("✅ Animation '{}' completed after {} frames", animation_id, total_frames);
+        
         Ok(())
     }
 
-    /// Interpolate between current and target properties
-    fn interpolate_properties_for_animation(
+    /// Advanced interpolation with per-property easing support
+    fn interpolate_properties_with_individual_easing(
         animations: &mut HashMap<String, AnimationState>,
         animation_id: &str,
-        progress: f32,
+        raw_progress: f32,
+        default_easing: &str,
     ) -> Result<()> {
         if let Some(animation) = animations.get_mut(animation_id) {
-            for (property_name, target_value) in &animation.target_properties.clone() {
-                if let Some(current_value) = animation.properties.get(property_name) {
-                    let interpolated = current_value.interpolate(target_value, progress);
-                    animation
-                        .properties
-                        .insert(property_name.clone(), interpolated);
+            // Check if we have custom property configurations
+            if let Some(properties_config) = &animation.config.properties {
+                // Multi-property animation with individual easing
+                for prop_config in properties_config {
+                    // Use property-specific easing or default
+                    let easing_name = prop_config.easing.as_deref().unwrap_or(default_easing);
+                    let easing = EasingFunction::from_name(easing_name);
+                    let eased_progress = easing.apply(raw_progress);
+                    
+                    // Interpolate from configured 'from' to configured 'to' value
+                    let interpolated = prop_config.from.interpolate(&prop_config.to, eased_progress);
+                    
+                    debug!("Property '{}': easing={}, progress={:.3}, eased={:.3}, value={:?}",
+                           prop_config.property, easing_name, raw_progress, eased_progress, interpolated);
+                    
+                    animation.properties.insert(prop_config.property.clone(), interpolated);
+                }
+            } else {
+                // Single-property animation (legacy behavior)
+                let easing = EasingFunction::from_name(default_easing);
+                let eased_progress = easing.apply(raw_progress);
+                
+                for (property_name, target_value) in &animation.target_properties.clone() {
+                    if let Some(current_value) = animation.properties.get(property_name) {
+                        let interpolated = current_value.interpolate(target_value, eased_progress);
+                        animation.properties.insert(property_name.clone(), interpolated);
+                    }
                 }
             }
         }
         Ok(())
     }
 
-    /// Apply sophisticated easing functions
+    /// Legacy interpolation method (kept for compatibility)
+    fn interpolate_properties_for_animation(
+        animations: &mut HashMap<String, AnimationState>,
+        animation_id: &str,
+        progress: f32,
+    ) -> Result<()> {
+        Self::interpolate_properties_with_individual_easing(animations, animation_id, progress, "linear")
+    }
+
+    /// Apply sophisticated easing functions with validation
     fn apply_easing(&self, easing_name: &str, progress: f32) -> f32 {
-        EasingFunction::from_name(easing_name).apply(progress)
+        // Validate easing function exists, fallback to linear if not
+        let validated_easing = self.validate_easing_function(easing_name);
+        EasingFunction::from_name(&validated_easing).apply(progress)
+    }
+
+    /// Validate easing function exists, return valid name or fallback
+    fn validate_easing_function(&self, easing_name: &str) -> String {
+        // List of all supported easing functions
+        let valid_easings = [
+            "linear",
+            "ease", "ease-in", "ease-out", "ease-in-out",
+            "ease-in-sine", "ease-out-sine", "ease-in-out-sine",
+            "ease-in-quad", "ease-out-quad", "ease-in-out-quad",
+            "ease-in-cubic", "ease-out-cubic", "ease-in-out-cubic",
+            "ease-in-quart", "ease-out-quart", "ease-in-out-quart",
+            "ease-in-quint", "ease-out-quint", "ease-in-out-quint",
+            "ease-in-expo", "ease-out-expo", "ease-in-out-expo",
+            "ease-in-circ", "ease-out-circ", "ease-in-out-circ",
+            "ease-in-back", "ease-out-back", "ease-in-out-back",
+            "ease-in-elastic", "ease-out-elastic", "ease-in-out-elastic",
+            "ease-in-bounce", "ease-out-bounce", "ease-in-out-bounce",
+            "spring",
+        ];
+
+        // Check if the requested easing function is valid
+        if valid_easings.contains(&easing_name) {
+            easing_name.to_string()
+        } else {
+            // Check for custom cubic-bezier format
+            if easing_name.starts_with("cubic-bezier(") && easing_name.ends_with(')') {
+                easing_name.to_string() // Assume custom bezier is valid
+            } else {
+                warn!("⚠️  Unknown easing function '{}', falling back to 'linear'", easing_name);
+                "linear".to_string()
+            }
+        }
     }
 
     /// Complete an animation and trigger callbacks
@@ -415,12 +505,74 @@ impl AnimationEngine {
 
     /// Get current animation properties for applying to windows
     pub fn get_current_properties(
-        &self,
+        &mut self,
         animation_id: &str,
-    ) -> Option<&HashMap<String, PropertyValue>> {
+    ) -> Option<HashMap<String, PropertyValue>> {
+        let (raw_progress, duration_completed, easing_name) = {
+            if let Some(animation) = self.active_animations.get(animation_id) {
+                // Calculate elapsed time
+                let elapsed = animation.start_time.elapsed();
+                let duration = Duration::from_millis(animation.config.duration as u64);
+                
+                // Calculate progress (0.0 to 1.0)
+                let raw_progress = if duration.is_zero() {
+                    1.0
+                } else {
+                    (elapsed.as_millis() as f32 / duration.as_millis() as f32).min(1.0)
+                };
+                
+                (raw_progress, raw_progress >= 1.0, animation.config.easing.clone())
+            } else {
+                return None;
+            }
+        };
+        
+        if duration_completed {
+            // Animation completed
+            if let Some(animation) = self.active_animations.get_mut(animation_id) {
+                animation.current_progress = 1.0;
+                animation.is_running = false;
+            }
+            return None; // Signal completion
+        }
+        
+        // Update animation properties in real-time
+        Self::interpolate_properties_with_individual_easing(
+            &mut self.active_animations,
+            animation_id,
+            raw_progress,
+            &easing_name,
+        ).ok()?;
+        
+        // Return cloned properties
         self.active_animations
             .get(animation_id)
-            .map(|anim| &anim.properties)
+            .map(|anim| anim.properties.clone())
+    }
+
+    /// Validate if an easing function is supported
+    pub fn is_easing_supported(&self, easing_name: &str) -> bool {
+        let validated = self.validate_easing_function(easing_name);
+        validated == easing_name || easing_name.starts_with("cubic-bezier(")
+    }
+
+    /// Get list of all supported easing functions
+    pub fn get_supported_easings(&self) -> Vec<&'static str> {
+        vec![
+            "linear",
+            "ease", "ease-in", "ease-out", "ease-in-out",
+            "ease-in-sine", "ease-out-sine", "ease-in-out-sine",
+            "ease-in-quad", "ease-out-quad", "ease-in-out-quad",
+            "ease-in-cubic", "ease-out-cubic", "ease-in-out-cubic",
+            "ease-in-quart", "ease-out-quart", "ease-in-out-quart",
+            "ease-in-quint", "ease-out-quint", "ease-in-out-quint",
+            "ease-in-expo", "ease-out-expo", "ease-in-out-expo",
+            "ease-in-circ", "ease-out-circ", "ease-in-out-circ",
+            "ease-in-back", "ease-out-back", "ease-in-out-back",
+            "ease-in-elastic", "ease-out-elastic", "ease-in-out-elastic",
+            "ease-in-bounce", "ease-out-bounce", "ease-in-out-bounce",
+            "spring",
+        ]
     }
 
     /// Get performance statistics
@@ -457,10 +609,10 @@ fn default_duration() -> u32 {
     300
 }
 fn default_easing() -> String {
-    "easeInOut".to_string()
+    "ease-out-cubic".to_string() // Better default for scratchpads
 }
 fn default_offset() -> String {
-    "100%".to_string()
+    "200px".to_string() // Plus réaliste pour les scratchpads
 }
 fn default_scale() -> f32 {
     0.0

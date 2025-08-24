@@ -2,10 +2,12 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
 use tracing::{debug, info, warn};
 
 use super::{properties::PropertyValue, AnimationConfig, AnimationEngine};
 use crate::ipc::HyprlandClient;
+use crate::animation::easing::EasingFunction;
 
 /// Manages animations for Hyprland windows
 pub struct WindowAnimator {
@@ -49,69 +51,98 @@ impl WindowAnimator {
     /// Animate a window showing with specified animation
     pub async fn show_window(
         &mut self,
-        window_address: &str,
+        app: &str,
         target_position: (i32, i32),
         target_size: (i32, i32),
         config: AnimationConfig,
-    ) -> Result<()> {
-        info!(
-            "🎬 Starting show animation for window {} with type '{}'",
-            window_address, config.animation_type
+    ) -> Result<Option<hyprland::data::Client>> {
+        println!(
+            "🎬 Starting show animation for app {} with type '{}'",
+            app, config.animation_type
         );
 
         // Calculate starting position based on animation type
         let start_position = self
             .calculate_start_position(target_position, target_size, &config)
             .await?;
+        println!("Start position from x:{} and y:{}", start_position.0, start_position.1);
 
-        // Set window to starting position instantly
-        self.set_window_properties(window_address, start_position, target_size, 0.0)
-            .await?;
+        self.spawn_window_offscreen(&app, start_position.0, start_position.1, target_size.0, target_size.1).await?;
+        let window = self.wait_for_window_by_class(&app, 5000).await?;
 
-        // Create animation state
-        let animation_id = format!("show_{window_address}");
-        let state = WindowAnimationState {
-            window_address: window_address.to_string(),
-            original_position: start_position,
-            original_size: target_size,
-            target_position,
-            target_size,
-            animation_id: animation_id.clone(),
-            is_showing: true,
-        };
+        if let Some(window) = window {
 
-        self.active_window_animations
-            .insert(window_address.to_string(), state);
+            let address = window.address.to_string();
 
-        // Prepare animation properties
-        let mut initial_properties = HashMap::new();
-        initial_properties.insert("x".to_string(), PropertyValue::Pixels(start_position.0));
-        initial_properties.insert("y".to_string(), PropertyValue::Pixels(start_position.1));
-        initial_properties.insert("width".to_string(), PropertyValue::Pixels(target_size.0));
-        initial_properties.insert("height".to_string(), PropertyValue::Pixels(target_size.1));
+            // Set window to starting position instantly
+            self.set_window_properties(&address, start_position, target_size, 0.0)
+                .await?;
 
-        // Add opacity for fade animations
-        if config.animation_type.contains("fade") {
-            initial_properties.insert(
-                "opacity".to_string(),
-                PropertyValue::Float(config.opacity_from),
-            );
+            // Create animation state
+            let animation_id = format!("show_{address}");
+            let state = WindowAnimationState {
+                window_address: address.to_string(),
+                original_position: start_position,
+                original_size: target_size,
+                target_position,
+                target_size,
+                animation_id: animation_id.clone(),
+                is_showing: true,
+            };
+
+            self.active_window_animations
+                .insert(address.to_string(), state);
+
+            // Prepare animation properties - CORRECTED: Pass final position as initial_properties
+            // AnimationEngine expects final position and calculates start position internally
+            let mut initial_properties = HashMap::new();
+            initial_properties.insert("x".to_string(), PropertyValue::Pixels(target_position.0));
+            initial_properties.insert("y".to_string(), PropertyValue::Pixels(target_position.1));
+            initial_properties.insert("width".to_string(), PropertyValue::Pixels(target_size.0));
+            initial_properties.insert("height".to_string(), PropertyValue::Pixels(target_size.1));
+
+            // Add opacity for fade animations
+            if config.animation_type.contains("fade") {
+                initial_properties.insert(
+                    "opacity".to_string(),
+                    PropertyValue::Float(config.opacity_from),
+                );
+            }
+
+            // Add scale for scale animations
+            if config.animation_type.contains("scale") {
+                initial_properties.insert("scale".to_string(), PropertyValue::Float(config.scale_from));
+            }
+
+            // Start the animation
+            let mut engine = self.animation_engine.lock().await;
+            engine
+                .start_animation(animation_id.clone(), config, initial_properties)
+                .await?;
+
+            // Start window update loop
+            self.start_window_animation_loop(address.to_string(), animation_id)
+                .await?;
+
+            return Ok(Some(window));
         }
 
-        // Add scale for scale animations
-        if config.animation_type.contains("scale") {
-            initial_properties.insert("scale".to_string(), PropertyValue::Float(config.scale_from));
-        }
+        Ok(None)
+    }
 
-        // Start the animation
-        let mut engine = self.animation_engine.lock().await;
-        engine
-            .start_animation(animation_id.clone(), config, initial_properties)
-            .await?;
-
-        // Start window update loop
-        self.start_window_animation_loop(window_address.to_string(), animation_id)
-            .await?;
+    // Close a window
+    pub async fn close_window(
+        &mut self,
+        window_adress: &str,
+    ) -> Result<()> {
+        // Close window
+        tokio::process::Command::new("hyprctl")
+            .arg("dispatch")
+            .arg("closewindow")
+            .arg(format!("address:{}", window_adress))
+            .output()
+            .await
+            .ok();
 
         Ok(())
     }
@@ -236,14 +267,24 @@ impl WindowAnimator {
         let hyprland_client = Arc::clone(&self.hyprland_client);
 
         tokio::spawn(async move {
+            debug!("🎯 Animation loop started for window {}", window_address);
+            let mut frame_count = 0;
+            
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_millis(16)).await; // 60fps
+                frame_count += 1;
 
                 let properties = {
-                    let engine_guard = engine.lock().await;
+                    let mut engine_guard = engine.lock().await;
                     match engine_guard.get_current_properties(&animation_id) {
-                        Some(props) => props.clone(),
-                        None => break, // Animation completed
+                        Some(props) => {
+                            // Animation running smoothly
+                            props
+                        },
+                        None => {
+                            debug!("✅ Animation {} completed naturally, ending loop", animation_id);
+                            break; // Animation completed
+                        }
                     }
                 };
 
@@ -256,7 +297,7 @@ impl WindowAnimator {
                 }
             }
 
-            debug!("Animation loop completed for window {}", window_address);
+            debug!("✅ Animation loop completed for window {} after {} frames", window_address, frame_count);
         });
 
         Ok(())
@@ -288,11 +329,13 @@ impl WindowAnimator {
             .map(|p| p.as_pixels())
             .unwrap_or(600);
 
-        // Move and resize window
-        client.move_window(window_address, x, y).await?;
+        // Move window using precise pixel positioning (required for animations)
+        client.move_window_pixel(window_address, x, y).await?;
+        
+        // Resize window for scale animations
         client.resize_window(window_address, width, height).await?;
-
-        // Handle opacity changes
+        
+        // Handle opacity changes for fade animations
         if let Some(PropertyValue::Float(opacity)) = properties.get("opacity") {
             client.set_window_opacity(window_address, *opacity).await?;
         }
@@ -315,7 +358,7 @@ impl WindowAnimator {
         };
 
         client
-            .move_window(window_address, position.0, position.1)
+            .move_window_pixel(window_address, position.0, position.1)
             .await?;
         client.resize_window(window_address, size.0, size.1).await?;
 
@@ -364,5 +407,134 @@ impl WindowAnimator {
     pub async fn get_performance_stats(&self) -> super::PerformanceStats {
         let engine = self.animation_engine.lock().await;
         engine.get_performance_stats()
+    }
+
+    /// Spawn window off-screen using Hyprland exec syntax (best practice for animations)
+    pub async fn spawn_window_offscreen(
+        &self,
+        app: &str,
+        spawn_x: i32,
+        spawn_y: i32,
+        width: i32,
+        height: i32,
+    ) -> Result<()> {
+        info!("🚀 Spawning {} off-screen at ({}, {}) with size {}x{}", 
+              app, spawn_x, spawn_y, width, height);
+        
+        let spawn_cmd = format!("[float; move {} {}; size {} {}] {}", 
+                               spawn_x, spawn_y, width, height, app);
+        
+        debug!("Commande d'affichage hyprctl: {}", spawn_cmd);
+        
+        tokio::process::Command::new("hyprctl")
+            .arg("dispatch")
+            .arg("exec")
+            .arg(&spawn_cmd)
+            .output()
+            .await?;
+            
+        info!("✅ Spawned {} using intelligent off-screen positioning", app);
+        Ok(())
+    }
+
+    /// Wait for window with specific class to appear (intelligent detection)
+    pub async fn wait_for_window_by_class(
+        &self,
+        class: &str,
+        timeout_ms: u64,
+    ) -> Result<Option<hyprland::data::Client>> {
+        debug!("🔍 Waiting for {} window (timeout: {}ms)", class, timeout_ms);
+        
+        let client_guard = self.hyprland_client.lock().await;
+        let client = match client_guard.as_ref() {
+            Some(client) => client,
+            None => return Ok(None),
+        };
+        
+        let max_attempts = timeout_ms / 100;
+        
+        for attempt in 1..=max_attempts {
+            let windows = client.get_windows().await?;
+            
+            if let Some(window) = windows.iter()
+                .find(|w| w.class.to_lowercase().contains(&class.to_lowercase()))
+                .cloned()
+            {
+                info!("✅ Found {} window after {}ms: {}", 
+                      class, attempt * 100, window.address);
+                return Ok(Some(window));
+            }
+            
+            // Progress logging every 500ms to avoid spam
+            if attempt % 5 == 0 {
+                debug!("Still waiting for {} window... attempt {}/{}", 
+                       class, attempt, max_attempts);
+            }
+            
+            sleep(Duration::from_millis(100)).await;
+        }
+        
+        warn!("⏰ Timeout waiting for {} window after {}ms", class, timeout_ms);
+        Ok(None)
+    }
+
+    /// Wait for window to reach specific position (validation)
+    pub async fn wait_for_window_positioning(
+        &self,
+        address: &str,
+        expected_condition: impl Fn(i16, i16) -> bool,
+        timeout_ms: u64,
+    ) -> Result<bool> {
+        debug!("🎯 Waiting for window {} to reach expected position", address);
+        
+        let client_guard = self.hyprland_client.lock().await;
+        let client = match client_guard.as_ref() {
+            Some(client) => client,
+            None => return Ok(false),
+        };
+        
+        let max_attempts = timeout_ms / 50;
+        
+        for attempt in 1..=max_attempts {
+            let windows = client.get_windows().await?;
+            
+            if let Some(window) = windows.iter()
+                .find(|w| w.address.to_string() == address)
+            {
+                if expected_condition(window.at.0, window.at.1) {
+                    info!("✅ Window positioned correctly at ({}, {}) after {}ms", 
+                          window.at.0, window.at.1, attempt * 50);
+                    return Ok(true);
+                }
+            }
+            
+            sleep(Duration::from_millis(50)).await;
+        }
+        
+        warn!("⏰ Window positioning timeout after {}ms", timeout_ms);
+        Ok(false)
+    }
+
+    /// Calculate optimal off-screen position for animation type
+    pub fn calculate_offscreen_position(
+        &self,
+        animation_type: &str,
+        target_position: (i32, i32),
+        window_size: (i32, i32),
+        offset: i32,
+    ) -> (i32, i32) {
+        let screen_size = (1920, 1080); // TODO: Get actual screen size
+        
+        match animation_type {
+            "fromTop" => (target_position.0, -window_size.1 - offset),
+            "fromBottom" => (target_position.0, screen_size.1 + offset),
+            "fromLeft" => (-window_size.0 - offset, target_position.1),
+            "fromRight" => (screen_size.0 + offset, target_position.1),
+            "fromTopLeft" => (-window_size.0 - offset, -window_size.1 - offset),
+            "fromTopRight" => (screen_size.0 + offset, -window_size.1 - offset),
+            "fromBottomLeft" => (-window_size.0 - offset, screen_size.1 + offset),
+            "fromBottomRight" => (screen_size.0 + offset, screen_size.1 + offset),
+            _ => target_position, // Default to target position
+        }
     }
 }
