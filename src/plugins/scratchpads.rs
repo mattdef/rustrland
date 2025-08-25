@@ -1142,7 +1142,7 @@ impl ScratchpadsPlugin {
         client.spawn_app(&expanded_command).await?;
 
         // Wait for the window to appear and configure it immediately
-        let window = self.wait_for_window_and_configure(name, config).await?;
+        let window = self.wait_for_window_and_configure(name, config, 10000).await?;
 
         // Update state
         let state = self.states.entry(name.to_string()).or_default();
@@ -1345,7 +1345,7 @@ impl ScratchpadsPlugin {
         } else {
             // Use configured class
             if let Some(window) = self
-                .wait_for_window_to_appear(&client, &config.class)
+                .wait_for_window_to_appear(&client, &config.class, 5000)
                 .await?
             {
                 window
@@ -1949,10 +1949,11 @@ impl ScratchpadsPlugin {
         &self,
         client: &HyprlandClient,
         class: &str,
+        timeout_in_ms: u64,
     ) -> Result<Option<hyprland::data::Client>> {
         use tokio::time::{sleep, timeout, Duration};
 
-        let wait_timeout = Duration::from_secs(5);
+        let wait_timeout = Duration::from_millis(timeout_in_ms);
         let check_interval = Duration::from_millis(100);
 
         timeout(wait_timeout, async {
@@ -2461,7 +2462,8 @@ impl ScratchpadsPlugin {
             client.spawn_app(&expanded_command).await?;
 
             // Wait for window to appear
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            //tokio::time::sleep(Duration::from_millis(500)).await;
+            self.wait_for_window_to_appear(&client, &config.class, 5000).await?;
 
             let new_windows = client.find_windows_by_class(&config.class).await?;
             new_windows
@@ -3321,6 +3323,7 @@ impl ScratchpadsPlugin {
         &self,
         scratchpad_name: &str,
         config: &ValidatedConfig,
+        timeout_in_ms: i32,
     ) -> Result<hyprland::data::Client> {
         let client = self.get_hyprland_client().await?;
         let target_class = &config.class;
@@ -3332,7 +3335,7 @@ impl ScratchpadsPlugin {
 
         // Wait up to 5 seconds for the window to appear
         let mut attempts = 0;
-        let max_attempts = 50; // 5 seconds with 100ms intervals
+        let max_attempts = timeout_in_ms / 100; // 5 seconds with 100ms intervals
 
         loop {
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
