@@ -27,8 +27,8 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Demo 1: Basic directional animation (like Pyprland but smoother)
-    //demo_manual_directional().await?;
-    //sleep(Duration::from_secs(2)).await;
+    demo_manual_directional().await?;
+    sleep(Duration::from_secs(2)).await;
 
     println!("");
     println!("");

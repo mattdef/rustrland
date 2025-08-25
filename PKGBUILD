@@ -2,7 +2,7 @@
 # Contributor: Rustrland Contributors
 
 pkgname=rustrland
-pkgver=0.3.7
+pkgver=0.3.8
 pkgrel=1
 pkgdesc="A Rust-powered window management for Hyprland - Fast, reliable plugin system"
 arch=('x86_64' 'aarch64')
