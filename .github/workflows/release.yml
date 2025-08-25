@@ -6,6 +6,9 @@ on:
     tags:
       - "v*.*.*"
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -50,7 +53,9 @@ jobs:
 
       # Génération du changelog depuis les commits
       - name: Generate changelog
-        run: git cliff --tag ${{ github.ref_name }} --output CHANGELOG.md
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          git cliff --tag "$TAG_NAME" --output CHANGELOG.md
 
       # Upload du binaire, du .deb et du changelog dans la Release GitHub
       - name: Upload Release Assets
@@ -58,5 +63,6 @@ jobs:
         with:
           body_path: CHANGELOG.md
           files: |
-            target/release/*           # binaires
-            target/debian/*.deb        # paquet Debian
+            target/release/rustrland
+            target/release/rustr
+            target/debian/*.deb
