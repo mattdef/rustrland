@@ -158,19 +158,22 @@ impl AnimationEngine {
             // For multi-property animations, use 'from' values as initial properties
             let mut multi_initial = HashMap::new();
             let mut multi_targets = HashMap::new();
-            
+
             if let Some(properties) = &config.properties {
                 for prop_config in properties {
                     multi_initial.insert(prop_config.property.clone(), prop_config.from.clone());
                     multi_targets.insert(prop_config.property.clone(), prop_config.to.clone());
                 }
             }
-            
-            info!("Multi-property animation with {} properties", multi_initial.len());
+
+            info!(
+                "Multi-property animation with {} properties",
+                multi_initial.len()
+            );
             (multi_initial, multi_targets)
         } else {
             // Traditional single-property animation
-            // initial_properties = where window should END (final position)  
+            // initial_properties = where window should END (final position)
             // We need to calculate where it should START and swap them
             let start_properties = self.calculate_start_properties(&config, &initial_properties)?;
             (start_properties, initial_properties) // start_properties = where to START, initial_properties = where to END
@@ -280,7 +283,7 @@ impl AnimationEngine {
     /// Optimized 60fps animation loop with precise frame timing
     async fn run_animation_loop(&mut self, animation_id: String) -> Result<()> {
         info!("🎬 Starting 60fps animation loop for '{}'", animation_id);
-        
+
         // Get animation duration to calculate total frames
         let (duration_ms, easing_name) = {
             let animation = match self.active_animations.get(&animation_id) {
@@ -289,21 +292,21 @@ impl AnimationEngine {
             };
             (animation.config.duration, animation.config.easing.clone())
         };
-        
+
         let total_frames = ((duration_ms as f32 / 16.67).round() as u32).max(1); // 60fps = 16.67ms per frame
-        // Note: easing is now handled per-property in multi-property animations
-        
+                                                                                 // Note: easing is now handled per-property in multi-property animations
+
         // Precise 60fps loop with frame-perfect timing
         for frame in 0..total_frames {
             let frame_start = Instant::now();
-            
+
             // Calculate progress (0.0 to 1.0)
             let progress = if total_frames == 1 {
                 1.0 // Handle single frame case
             } else {
                 frame as f32 / (total_frames - 1) as f32
             };
-            
+
             // Update animation properties with per-property easing support
             Self::interpolate_properties_with_individual_easing(
                 &mut self.active_animations,
@@ -311,40 +314,51 @@ impl AnimationEngine {
                 progress, // Raw progress, not eased yet
                 &easing_name,
             )?;
-            
+
             // Check if animation was stopped
-            if !self.active_animations.get(&animation_id)
+            if !self
+                .active_animations
+                .get(&animation_id)
                 .map(|anim| anim.is_running && !anim.is_paused)
                 .unwrap_or(false)
             {
                 debug!("Animation '{}' was stopped during loop", animation_id);
                 break;
             }
-            
+
             // Performance monitoring
             let frame_time = frame_start.elapsed();
             self.performance_monitor.frame_times.push(frame_time);
             if self.performance_monitor.frame_times.len() > 60 {
                 self.performance_monitor.frame_times.remove(0);
             }
-            
+
             // Frame timing debug (every 10th frame to avoid spam)
             if frame % 10 == 0 {
-                debug!("Animation '{}' frame {}/{}: progress={:.3}, frame_time={:.1}ms", 
-                       animation_id, frame + 1, total_frames, progress, frame_time.as_millis());
+                debug!(
+                    "Animation '{}' frame {}/{}: progress={:.3}, frame_time={:.1}ms",
+                    animation_id,
+                    frame + 1,
+                    total_frames,
+                    progress,
+                    frame_time.as_millis()
+                );
             }
-            
+
             // Maintain 60fps (16.67ms per frame)
             let target_frame_time = Duration::from_millis(16);
             if frame_time < target_frame_time {
                 sleep(target_frame_time - frame_time).await;
             }
         }
-        
+
         // Complete the animation
         self.complete_animation(&animation_id).await?;
-        info!("✅ Animation '{}' completed after {} frames", animation_id, total_frames);
-        
+        info!(
+            "✅ Animation '{}' completed after {} frames",
+            animation_id, total_frames
+        );
+
         Ok(())
     }
 
@@ -364,37 +378,54 @@ impl AnimationEngine {
                     let easing_name = prop_config.easing.as_deref().unwrap_or(default_easing);
                     let easing = EasingFunction::from_name(easing_name);
                     let eased_progress = easing.apply(raw_progress);
-                    
+
                     // Interpolate from configured 'from' to configured 'to' value
-                    let interpolated = prop_config.from.interpolate(&prop_config.to, eased_progress);
-                    
-                    debug!("Property '{}': easing={}, progress={:.3}, eased={:.3}, value={:?}",
-                           prop_config.property, easing_name, raw_progress, eased_progress, interpolated);
-                    
-                    animation.properties.insert(prop_config.property.clone(), interpolated);
+                    let interpolated = prop_config
+                        .from
+                        .interpolate(&prop_config.to, eased_progress);
+
+                    debug!(
+                        "Property '{}': easing={}, progress={:.3}, eased={:.3}, value={:?}",
+                        prop_config.property,
+                        easing_name,
+                        raw_progress,
+                        eased_progress,
+                        interpolated
+                    );
+
+                    animation
+                        .properties
+                        .insert(prop_config.property.clone(), interpolated);
                 }
             } else {
                 // Single-property animation (legacy behavior)
                 let easing = EasingFunction::from_name(default_easing);
                 let eased_progress = easing.apply(raw_progress);
-                
+
                 // Debug easing for bounce animations
                 if animation.config.animation_type == "bounce" && raw_progress > 0.6 {
-                    debug!("BOUNCE EASING: raw={:.3}, eased={:.6}, easing={}", 
-                           raw_progress, eased_progress, default_easing);
+                    debug!(
+                        "BOUNCE EASING: raw={:.3}, eased={:.6}, easing={}",
+                        raw_progress, eased_progress, default_easing
+                    );
                 }
-                
+
                 for (property_name, target_value) in &animation.target_properties.clone() {
                     if let Some(start_value) = animation.start_properties.get(property_name) {
                         let interpolated = start_value.interpolate(target_value, eased_progress);
-                        
+
                         // Debug Y position for bounce animations
-                        if animation.config.animation_type == "bounce" && property_name == "y" && raw_progress > 0.6 {
+                        if animation.config.animation_type == "bounce"
+                            && property_name == "y"
+                            && raw_progress > 0.6
+                        {
                             debug!("Y INTERPOLATION: from={:?}, to={:?}, eased_progress={:.6}, result={:?}",
                                    start_value, target_value, eased_progress, interpolated);
                         }
-                        
-                        animation.properties.insert(property_name.clone(), interpolated);
+
+                        animation
+                            .properties
+                            .insert(property_name.clone(), interpolated);
                     }
                 }
             }
@@ -408,7 +439,12 @@ impl AnimationEngine {
         animation_id: &str,
         progress: f32,
     ) -> Result<()> {
-        Self::interpolate_properties_with_individual_easing(animations, animation_id, progress, "linear")
+        Self::interpolate_properties_with_individual_easing(
+            animations,
+            animation_id,
+            progress,
+            "linear",
+        )
     }
 
     /// Apply sophisticated easing functions with validation
@@ -423,17 +459,40 @@ impl AnimationEngine {
         // List of all supported easing functions
         let valid_easings = [
             "linear",
-            "ease", "ease-in", "ease-out", "ease-in-out",
-            "ease-in-sine", "ease-out-sine", "ease-in-out-sine",
-            "ease-in-quad", "ease-out-quad", "ease-in-out-quad",
-            "ease-in-cubic", "ease-out-cubic", "ease-in-out-cubic",
-            "ease-in-quart", "ease-out-quart", "ease-in-out-quart",
-            "ease-in-quint", "ease-out-quint", "ease-in-out-quint",
-            "ease-in-expo", "ease-out-expo", "ease-in-out-expo",
-            "ease-in-circ", "ease-out-circ", "ease-in-out-circ",
-            "ease-in-back", "ease-out-back", "ease-in-out-back",
-            "ease-in-elastic", "ease-out-elastic", "ease-in-out-elastic",
-            "ease-in-bounce", "ease-out-bounce", "ease-in-out-bounce",
+            "ease",
+            "ease-in",
+            "ease-out",
+            "ease-in-out",
+            "ease-in-sine",
+            "ease-out-sine",
+            "ease-in-out-sine",
+            "ease-in-quad",
+            "ease-out-quad",
+            "ease-in-out-quad",
+            "ease-in-cubic",
+            "ease-out-cubic",
+            "ease-in-out-cubic",
+            "ease-in-quart",
+            "ease-out-quart",
+            "ease-in-out-quart",
+            "ease-in-quint",
+            "ease-out-quint",
+            "ease-in-out-quint",
+            "ease-in-expo",
+            "ease-out-expo",
+            "ease-in-out-expo",
+            "ease-in-circ",
+            "ease-out-circ",
+            "ease-in-out-circ",
+            "ease-in-back",
+            "ease-out-back",
+            "ease-in-out-back",
+            "ease-in-elastic",
+            "ease-out-elastic",
+            "ease-in-out-elastic",
+            "ease-in-bounce",
+            "ease-out-bounce",
+            "ease-in-out-bounce",
             "spring",
         ];
 
@@ -445,7 +504,10 @@ impl AnimationEngine {
             if easing_name.starts_with("cubic-bezier(") && easing_name.ends_with(')') {
                 easing_name.to_string() // Assume custom bezier is valid
             } else {
-                warn!("⚠️  Unknown easing function '{}', falling back to 'linear'", easing_name);
+                warn!(
+                    "⚠️  Unknown easing function '{}', falling back to 'linear'",
+                    easing_name
+                );
                 "linear".to_string()
             }
         }
@@ -523,20 +585,24 @@ impl AnimationEngine {
                 // Calculate elapsed time
                 let elapsed = animation.start_time.elapsed();
                 let duration = Duration::from_millis(animation.config.duration as u64);
-                
+
                 // Calculate progress (0.0 to 1.0)
                 let raw_progress = if duration.is_zero() {
                     1.0
                 } else {
                     (elapsed.as_millis() as f32 / duration.as_millis() as f32).min(1.0)
                 };
-                
-                (raw_progress, raw_progress >= 1.0, animation.config.easing.clone())
+
+                (
+                    raw_progress,
+                    raw_progress >= 1.0,
+                    animation.config.easing.clone(),
+                )
             } else {
                 return None;
             }
         };
-        
+
         if duration_completed {
             // Animation completed
             if let Some(animation) = self.active_animations.get_mut(animation_id) {
@@ -545,15 +611,16 @@ impl AnimationEngine {
             }
             return None; // Signal completion
         }
-        
+
         // Update animation properties in real-time
         Self::interpolate_properties_with_individual_easing(
             &mut self.active_animations,
             animation_id,
             raw_progress,
             &easing_name,
-        ).ok()?;
-        
+        )
+        .ok()?;
+
         // Return cloned properties
         self.active_animations
             .get(animation_id)
@@ -570,17 +637,40 @@ impl AnimationEngine {
     pub fn get_supported_easings(&self) -> Vec<&'static str> {
         vec![
             "linear",
-            "ease", "ease-in", "ease-out", "ease-in-out",
-            "ease-in-sine", "ease-out-sine", "ease-in-out-sine",
-            "ease-in-quad", "ease-out-quad", "ease-in-out-quad",
-            "ease-in-cubic", "ease-out-cubic", "ease-in-out-cubic",
-            "ease-in-quart", "ease-out-quart", "ease-in-out-quart",
-            "ease-in-quint", "ease-out-quint", "ease-in-out-quint",
-            "ease-in-expo", "ease-out-expo", "ease-in-out-expo",
-            "ease-in-circ", "ease-out-circ", "ease-in-out-circ",
-            "ease-in-back", "ease-out-back", "ease-in-out-back",
-            "ease-in-elastic", "ease-out-elastic", "ease-in-out-elastic",
-            "ease-in-bounce", "ease-out-bounce", "ease-in-out-bounce",
+            "ease",
+            "ease-in",
+            "ease-out",
+            "ease-in-out",
+            "ease-in-sine",
+            "ease-out-sine",
+            "ease-in-out-sine",
+            "ease-in-quad",
+            "ease-out-quad",
+            "ease-in-out-quad",
+            "ease-in-cubic",
+            "ease-out-cubic",
+            "ease-in-out-cubic",
+            "ease-in-quart",
+            "ease-out-quart",
+            "ease-in-out-quart",
+            "ease-in-quint",
+            "ease-out-quint",
+            "ease-in-out-quint",
+            "ease-in-expo",
+            "ease-out-expo",
+            "ease-in-out-expo",
+            "ease-in-circ",
+            "ease-out-circ",
+            "ease-in-out-circ",
+            "ease-in-back",
+            "ease-out-back",
+            "ease-in-out-back",
+            "ease-in-elastic",
+            "ease-out-elastic",
+            "ease-in-out-elastic",
+            "ease-in-bounce",
+            "ease-out-bounce",
+            "ease-in-out-bounce",
             "spring",
         ]
     }

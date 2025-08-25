@@ -1142,7 +1142,9 @@ impl ScratchpadsPlugin {
         client.spawn_app(&expanded_command).await?;
 
         // Wait for the window to appear and configure it immediately
-        let window = self.wait_for_window_and_configure(name, config, 10000).await?;
+        let window = self
+            .wait_for_window_and_configure(name, config, 10000)
+            .await?;
 
         // Update state
         let state = self.states.entry(name.to_string()).or_default();
@@ -2463,7 +2465,8 @@ impl ScratchpadsPlugin {
 
             // Wait for window to appear
             //tokio::time::sleep(Duration::from_millis(500)).await;
-            self.wait_for_window_to_appear(&client, &config.class, 5000).await?;
+            self.wait_for_window_to_appear(&client, &config.class, 5000)
+                .await?;
 
             let new_windows = client.find_windows_by_class(&config.class).await?;
             new_windows

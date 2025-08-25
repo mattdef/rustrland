@@ -333,7 +333,10 @@ impl HyprlandClient {
 
     /// Move window to exact pixel coordinates (for animations)
     pub async fn move_window_pixel(&self, address: &str, x: i32, y: i32) -> Result<()> {
-        debug!("📍 Moving window {} to exact pixel position ({}, {})", address, x, y);
+        debug!(
+            "📍 Moving window {} to exact pixel position ({}, {})",
+            address, x, y
+        );
 
         // Use hyprctl with movewindowpixel exact for precise positioning
         let address = address.to_string();
@@ -392,7 +395,6 @@ impl HyprlandClient {
 
         Ok(())
     }
-
 
     /// Get window properties for animation calculations
     pub async fn get_window_properties(&self, address: &str) -> Result<WindowProperties> {

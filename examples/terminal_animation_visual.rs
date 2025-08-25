@@ -1,8 +1,6 @@
-use rustrland::animation::
-    easing::EasingFunction
-;
-use std::time::Duration;
+use rustrland::animation::easing::EasingFunction;
 use std::io::{self, Write};
+use std::time::Duration;
 use tokio::time::sleep;
 
 /// Terminal Visual Animation - Shows animations in terminal with visual bars
@@ -72,13 +70,13 @@ async fn demo_easing_interactive() -> anyhow::Result<()> {
         }
         println!("   {:2}. Quit", easing_functions.len() + 1);
         println!("   ─────────────────────────────────────");
-        
+
         print!("   Enter your choice (1-{}): ", easing_functions.len() + 1);
         io::stdout().flush()?;
 
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
-        
+
         let choice = match input.trim().parse::<usize>() {
             Ok(n) => n,
             Err(_) => {
@@ -86,9 +84,12 @@ async fn demo_easing_interactive() -> anyhow::Result<()> {
                 continue;
             }
         };
-        
+
         if choice == 0 || choice > easing_functions.len() + 1 {
-            println!("   ❌ Invalid choice. Please enter a number between 1 and {}\n", easing_functions.len() + 1);
+            println!(
+                "   ❌ Invalid choice. Please enter a number between 1 and {}\n",
+                easing_functions.len() + 1
+            );
             continue;
         }
 
@@ -98,41 +99,47 @@ async fn demo_easing_interactive() -> anyhow::Result<()> {
         }
 
         let (easing_name, display_name) = &easing_functions[choice - 1];
-        
+
         println!("\n   🎨 Testing {} Easing:", display_name);
         println!("   Time    │ Progress Bar                    │ Value");
         println!("   ──────────────────────────────────────────────────");
-        
+
         let easing = EasingFunction::from_name(easing_name);
-        
+
         for i in 0..=20 {
             let time = i as f32 / 20.0; // 0.0 to 1.0
             let eased_value = easing.apply(time);
-            
+
             // Handle overshoot visualization (values > 1.0)
             let bar_length = if eased_value <= 1.0 {
                 (eased_value * 30.0) as usize
             } else {
                 30 + ((eased_value - 1.0) * 10.0) as usize // Extra chars for overshoot
             };
-            
+
             let bar = if eased_value <= 1.0 {
                 "█".repeat(bar_length.min(30)) + &"░".repeat(30 - bar_length.min(30))
             } else {
                 "█".repeat(30) + &"▓".repeat((bar_length - 30).min(10)) // Different char for overshoot
             };
-            
-            let overshoot_indicator = if eased_value > 1.0 { " ← OVERSHOOT!" } else { "" };
-            
-            println!("   {:.2}     │ {} │ {:.3}{}", 
-                    time, bar, eased_value, overshoot_indicator);
-            
+
+            let overshoot_indicator = if eased_value > 1.0 {
+                " ← OVERSHOOT!"
+            } else {
+                ""
+            };
+
+            println!(
+                "   {:.2}     │ {} │ {:.3}{}",
+                time, bar, eased_value, overshoot_indicator
+            );
+
             sleep(Duration::from_millis(100)).await;
         }
-        
+
         println!("   ──────────────────────────────────────────────────");
         println!("   ✅ {} animation complete!\n", display_name);
-        
+
         // Small pause before showing menu again
         sleep(Duration::from_millis(500)).await;
     }
