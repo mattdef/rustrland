@@ -5,12 +5,19 @@ use rustrland::ipc::HyprlandClient;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::info;
+use tracing_subscriber;
 
 /// Foot Floating Test - Simple demo_basic_directional with foot terminal
 /// Run with: cargo run --example foot_floating_test
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Initialize tracing subscriber to see debug logs
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_target(true)
+        .init();
+
     println!("🎬 Foot Terminal OVERSHOOT Animation Test");
     println!("==========================================");
     println!("Testing demo_basic_directional with spectacular OVERSHOOT effect!");
@@ -22,8 +29,8 @@ async fn main() -> anyhow::Result<()> {
     }
     
     // Demo 1: Basic directional animation (like Pyprland but smoother)
-    demo_manual_directional().await?;
-    sleep(Duration::from_secs(2)).await;
+    //demo_manual_directional().await?;
+    //sleep(Duration::from_secs(2)).await;
 
     println!("");
     println!("");
@@ -129,7 +136,7 @@ async fn demo_animator_directional() -> anyhow::Result<()> {
     info!("✅ Connected to Hyprland - ready for real animations!");
 
     let config = AnimationConfig {
-        animation_type: "fromTop".to_string(),
+        animation_type: "bounce".to_string(),
         duration: 800, // 2 seconds to see all the different easings clearly
         easing: "ease-out-back".to_string(), // Will be overridden per property
         ..Default::default()
@@ -137,7 +144,7 @@ async fn demo_animator_directional() -> anyhow::Result<()> {
     println!("Config > animation: {} - duration: {} - easing: {}", config.animation_type, config.duration, config.easing);
 
     //let windows = animator.show_animated_window("foot", (560, 540), (800, 600), config).await?;
-    let windows = animator.show_window("foot", (560, 540), (800, 600), config).await?;
+    let windows = animator.show_window("foot", (880, 420), (800, 600), config).await?;
     println!("Animation started");
     if let Some(client) = windows {
 

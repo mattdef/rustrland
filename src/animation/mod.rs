@@ -107,6 +107,7 @@ pub struct AnimationState {
     pub timeline: Timeline,
     pub properties: HashMap<String, PropertyValue>,
     pub target_properties: HashMap<String, PropertyValue>,
+    pub start_properties: HashMap<String, PropertyValue>, // Fixed start values for proper interpolation
 }
 
 /// Advanced animation engine
@@ -168,11 +169,11 @@ impl AnimationEngine {
             info!("Multi-property animation with {} properties", multi_initial.len());
             (multi_initial, multi_targets)
         } else {
-            // Traditional single-property animation - LOGIC CORRECTED
-            // initial_properties = where window should START (off-screen)
-            // targets = where window should END (final position)
+            // Traditional single-property animation
+            // initial_properties = where window should END (final position)  
+            // We need to calculate where it should START and swap them
             let start_properties = self.calculate_start_properties(&config, &initial_properties)?;
-            (start_properties, initial_properties) // SWAPPED: start->final
+            (start_properties, initial_properties) // start_properties = where to START, initial_properties = where to END
         };
 
         let state = AnimationState {
@@ -182,6 +183,7 @@ impl AnimationEngine {
             is_running: true,
             is_paused: false,
             timeline: Timeline::new(Duration::from_millis(config.duration as u64)),
+            start_properties: final_initial_properties.clone(), // Keep original start values
             properties: final_initial_properties,
             target_properties,
         };
@@ -248,10 +250,16 @@ impl AnimationEngine {
             "scale" => {
                 start_props.insert("scale".to_string(), PropertyValue::Float(config.scale_from));
             }
-            "bounce" | "elastic" | "spring" => {
-                // Physics-based animations will be handled by spring dynamics
-                if let Some(spring) = &config.spring {
-                    self.setup_spring_animation(&mut start_props, spring)?;
+            "bounce" => {
+                // Bounce animations start from top, completely off-screen
+                if let Some(height) = start_props.get("height") {
+                    // Start above screen: -window_height - extra_offset
+                    let window_height = height.as_pixels();
+                    let extra_offset = 100; // Extra space to ensure completely hidden
+                    start_props.insert(
+                        "y".to_string(),
+                        PropertyValue::Pixels(-window_height - extra_offset),
+                    );
                 }
             }
             _ => {
@@ -370,9 +378,22 @@ impl AnimationEngine {
                 let easing = EasingFunction::from_name(default_easing);
                 let eased_progress = easing.apply(raw_progress);
                 
+                // Debug easing for bounce animations
+                if animation.config.animation_type == "bounce" && raw_progress > 0.6 {
+                    debug!("BOUNCE EASING: raw={:.3}, eased={:.6}, easing={}", 
+                           raw_progress, eased_progress, default_easing);
+                }
+                
                 for (property_name, target_value) in &animation.target_properties.clone() {
-                    if let Some(current_value) = animation.properties.get(property_name) {
-                        let interpolated = current_value.interpolate(target_value, eased_progress);
+                    if let Some(start_value) = animation.start_properties.get(property_name) {
+                        let interpolated = start_value.interpolate(target_value, eased_progress);
+                        
+                        // Debug Y position for bounce animations
+                        if animation.config.animation_type == "bounce" && property_name == "y" && raw_progress > 0.6 {
+                            debug!("Y INTERPOLATION: from={:?}, to={:?}, eased_progress={:.6}, result={:?}",
+                                   start_value, target_value, eased_progress, interpolated);
+                        }
+                        
                         animation.properties.insert(property_name.clone(), interpolated);
                     }
                 }
@@ -467,17 +488,6 @@ impl AnimationEngine {
         } else {
             Ok(offset.parse::<f32>()?)
         }
-    }
-
-    /// Setup spring physics for bounce/elastic animations
-    fn setup_spring_animation(
-        &self,
-        _targets: &mut HashMap<String, PropertyValue>,
-        _spring: &SpringConfig,
-    ) -> Result<()> {
-        // Spring physics implementation would go here
-        // This would calculate spring dynamics for realistic physics-based animation
-        Ok(())
     }
 
     /// Stop an animation
