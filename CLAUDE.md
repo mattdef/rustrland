@@ -167,58 +167,127 @@ bind = SUPER_SHIFT, R, exec, rustr reload           # Super + Shift + R (hot rel
 
 See `KEYBINDINGS.md` for complete setup guide and alternative key schemes.
 
-## System Notifier Plugin Architecture
+## API Reference
 
-The system_notifier plugin implements a dual-mode notification system to balance compatibility and functionality:
+**⚠️ BEFORE IMPLEMENTING: Check this section for existing functions to avoid duplication**
 
-### **Standard Mode** (Default)
-- **Purpose**: Full compatibility with Pyprland's system_notifier plugin
-- **Dependencies**: None - works out-of-the-box
-- **Features**: 
-  - Basic text notifications
-  - Log monitoring and parsing
-  - Hyprland's built-in overlay system
-  - Configuration compatibility with Pyprland
-- **Target**: Users migrating from Pyprland who need immediate compatibility
-- **Implementation**: Uses Hyprland's native overlay notifications without external dependencies
+### Animation System (`src/animation/`)
 
-### **Custom Mode** (Advanced)
-- **Purpose**: Enhanced notification system with advanced features
-- **Dependencies**: Third-party applications (rofi, dunst, etc.)
-- **Features**:
-  - Rich animations and transitions
-  - Advanced visual styling and themes
-  - Multi-media notifications (icons, sounds, progress bars)
-  - Interactive notifications with actions
-  - Custom positioning and layouts
-  - Animation integration with the existing animation system
-- **Target**: Power users who want desktop-class notification features
-- **Implementation**: Leverages external tools like rofi for maximum flexibility
+#### Core Engine
+- `AnimationEngine::new()` - Create animation engine
+- `AnimationEngine::start_animation()` - Start new animation
+- `AnimationEngine::stop_animation()` - Stop animation by ID
+- `AnimationEngine::pause_animation()` - Pause/resume animation
+- `AnimationEngine::get_current_properties()` - Get animation properties
+- `AnimationEngine::is_easing_supported()` - Check easing support
+- `AnimationEngine::get_supported_easings()` - List all easing functions
+- `AnimationEngine::get_performance_stats()` - Get performance metrics
 
-### **Configuration**
-Both modes share the same base configuration structure but Custom mode enables additional options:
+#### Easing Functions
+- `EasingFunction::from_name()` - Parse easing from string (36+ types)
+- `EasingFunction::apply()` - Apply easing to progress value
 
-```toml
-[system_notifier]
-mode = "standard"  # or "custom"
-use_overlay = true
-position = "top_right"
-# Standard mode stops here
+#### Timeline System
+- `Timeline::new()` - Create timeline with duration
+- `Timeline::with_keyframes()` - Timeline with initial keyframes
+- `Timeline::add_keyframe()` - Add keyframe at time
+- `Timeline::get_progress()` - Get current progress
+- `Timeline::get_value_at_progress()` - Interpolate value
+- `Timeline::fade_timeline()` - Pre-built fade animation
+- `Timeline::scale_timeline()` - Pre-built scale animation
+- `Timeline::slide_timeline()` - Pre-built slide animation
+- `Timeline::bounce_timeline()` - Pre-built bounce animation
+- `Timeline::elastic_timeline()` - Pre-built elastic animation
+- `TimelineBuilder::new()` - Fluent timeline builder
 
-# Custom mode additional options
-[system_notifier.custom]
-animation_duration = 300
-theme = "dark"
-icons = true
-sounds = true
-backend = "rofi"  # or "dunst", "mako"
-```
+#### Property System
+- `PropertyValue::interpolate()` - Interpolate between values
+- `PropertyValue::from_string()` - Parse property from string
+- `Color::new()` - Create RGBA color
+- `Color::interpolate()` - Smooth color transitions
+- `Color::from_rgb_string()` / `from_rgba_string()` / `from_hex_string()` - Color parsing
+- `Transform::new()` - Create 2D transform
+- `Transform::interpolate()` - Transform interpolation
 
-### **Implementation Priority**
-1. **Phase 1**: Complete Standard mode implementation (Pyprland compatibility)
-2. **Phase 2**: Design Custom mode architecture and backend abstraction
-3. **Phase 3**: Implement Custom mode with rofi backend
-4. **Phase 4**: Add support for additional backends (dunst, mako, etc.)
+#### Window Animator
+- `WindowAnimator::new()` - Create window animator
+- `WindowAnimator::is_animating()` - Check if window animating
+- `WindowAnimator::calculate_offscreen_position()` - Calculate positions
+
+### IPC System (`src/ipc/`)
+
+#### Enhanced Client
+- `EnhancedHyprlandClient::new()` - Create enhanced client with reconnection
+- `EnhancedHyprlandClient::get_hyprland_instance()` - Get Hyprland socket info
+
+#### Core Client
+- `HyprlandClient::new()` - Basic Hyprland client
+- `HyprlandClient::connect()` - Connect to Hyprland
+- `HyprlandClient::get_windows()` - Get window list
+- `HyprlandClient::get_monitors()` - Get monitor info
+- `HyprlandClient::dispatch()` - Send Hyprland command
+
+#### Protocol
+- `get_socket_path()` - Get IPC socket path
+- `ClientMessage::from_args()` - Parse client command
+
+#### Server
+- `IpcServer::new()` - Create IPC server for daemon
+
+### Configuration System (`src/config/`)
+
+#### Config Management
+- `Config::from_toml_value()` - Parse TOML configuration
+- `Config::get_plugins()` - Get enabled plugins list
+- `Config::get_variables()` - Get config variables
+- `Config::uses_rustrland_config()` - Check format type
+- `Config::uses_pyprland_config()` - Check format type
+
+#### Data Structures
+- `RustrlandConfig` - Native config format
+- `PyprlandConfig` - Pyprland compatibility format
+
+### Core System (`src/core/`)
+
+#### Daemon Management
+- `Daemon::new()` - Create daemon with config path
+- `Daemon::run()` - Start daemon event loop
+
+#### Plugin Management
+- `PluginManager::new()` - Create plugin manager
+- `PluginManager::load_plugins()` - Load plugins from config
+- `PluginManager::handle_event()` - Process Hyprland events
+- `PluginManager::handle_command()` - Process client commands
+- `PluginManager::get_plugin_count()` - Get loaded plugin count
+- `PluginManager::get_global_cache()` - Access shared cache
+
+#### Hot Reload System
+- `HotReloadManager::new()` - Create hot reload manager
+- `HotReloadManager::start()` - Start file watching
+- `HotReloadManager::reload_now()` - Manual reload trigger
+- `HotReloadManager::stop()` - Stop file watching
+- `HotReloadManager::get_stats()` - Get reload statistics
+- `HotReloadManager::subscribe()` - Subscribe to reload events
+- `HotReloadable` trait - Plugin hot reload interface
+- `ConfigExt` trait - Config extension methods
+
+#### Global Cache System
+- `GlobalStateCache::new()` - Create global cache
+- `GlobalStateCache::get_monitor()` - Get monitor by name
+- `GlobalStateCache::get_workspace()` - Get workspace by ID
+- `GlobalStateCache::update_monitors()` - Update monitor cache
+- `GlobalStateCache::is_cache_valid()` - Check cache validity
+- `GlobalStateCache::get_monitor_cache()` - Access monitor cache
+- `GlobalStateCache::get_workspace_cache()` - Access workspace cache
+- `GlobalStateCache::store_config()` - Store plugin config
+- `GlobalStateCache::get_config()` - Retrieve plugin config
+- `GlobalStateCache::store_variables()` - Store config variables
+- `GlobalStateCache::get_variables()` - Access config variables
+- `GlobalStateCache::get_memory_stats()` - Get memory usage stats
+
+#### Event Handling
+- `EventHandler::new()` - Create event handler
+- `EventHandler::handle_event()` - Process system events
 
 ## Key Dependencies
 
@@ -229,48 +298,9 @@ backend = "rofi"  # or "dunst", "mako"
 - **tracing**: Structured logging
 - **anyhow/thiserror**: Error handling
 
-## Current Status (v0.3.4)
-
-### ✅ Fully Implemented
-- **Production-Ready Scratchpad System**: Complete scratchpad functionality with comprehensive enhancements
-  - Multi-monitor support with intelligent caching (90% API call reduction)
-  - Enhanced event handling with proper comma parsing in window titles
-  - Socket reconnection logic with exponential backoff for production reliability
-  - Geometry synchronization for real-time window tracking
-  - Pyprland compatibility layer with lazy loading, pinning, and exclusion logic
-  - 20 comprehensive tests covering all enhanced functionality
-- **Enhanced IPC Client**: Production-ready enhanced client with robust connection management
-  - Automatic reconnection with configurable retry limits and backoff
-  - Event filtering for performance optimization
-  - Proper event parsing handling edge cases with commas
-  - Connection statistics and health monitoring
-- **Animation System**: Complete animation framework ready for integration
-  - Keyframe-based animation timelines with easing support
-  - Comprehensive easing functions library (16+ easing types)
-  - Animation property interpolation with color and transform support
-  - Timeline builder with fluent API for complex animations
-  - All 16 animation tests passing
-- **Hot Reload System**: ✅ **PRODUCTION READY** - Complete file watching and configuration hot-reloading
-  - Real-time plugin state preservation during reloads
-  - Automatic configuration backup with timestamped files  
-  - File system watching with configurable debouncing (500ms default)
-  - Complete plugin manager integration with HotReloadable trait
-  - Manual reload command (`rustr reload`) with detailed diff reporting
-  - 9 comprehensive unit tests covering all functionality
-- **Expose Plugin**: Mission Control-style window overview with grid layout, navigation, and selection
-- **Workspaces Follow Focus**: Multi-monitor workspace management with cross-monitor switching
-- **Magnify Plugin**: Viewport zooming with smooth animations and external tool support
-- **Multi-Application Support**: Works with terminals (foot), browsers (Firefox), file managers (Thunar)  
-- **Variable Expansion**: Configuration variable substitution (e.g., `[term_classed]` → `foot --app-id`)
-- **Window Management**: Window detection, positioning, and special workspace integration
-- **IPC Communication**: Full client-daemon architecture with Unix sockets and JSON protocol
-- **Command Interface**: Complete CLI with toggle, list, status, expose, workspace, magnify commands
-- **Keyboard Integration**: Full keybinding support with installation scripts
-
 ### 🔧 System Integration Status
 - **Hot Reload System**: ✅ **FULLY INTEGRATED** - Production-ready with daemon integration complete
 - **Animation System**: Available and functional, ready for plugin integration
-- **Enhanced Scratchpad Plugin**: Production-ready with all systems verified working together
 
 ## Development Notes
 
@@ -279,48 +309,3 @@ backend = "rofi"  # or "dunst", "mako"
 - Client-daemon architecture allows for hot-reloading of configuration
 - Plugin system designed for extensibility with async trait support
 - Requires `HYPRLAND_INSTANCE_SIGNATURE` environment variable to be set
-- Version 0.2.0 marks the completion of core scratchpad functionality
-
-## Testing
-
-### Production-Ready Test Coverage
-
-**Scratchpad Plugin (20 tests)**:
-- **Core functionality**: Plugin initialization, configuration validation, and state management
-- **Enhanced features**: Multi-monitor geometry calculation, event filtering, and performance caching
-- **Window management**: Focus tracking, workspace changes, and bulk geometry synchronization
-- **Event handling**: Window opened/closed/moved events with enhanced client integration
-- **Real-world scenarios**: Terminal (foot), browser (Firefox), and file manager (Thunar) integration
-
-**Animation System (16 tests)**:
-- **Timeline management**: Basic timelines, keyframe interpolation, and loop animations
-- **Easing functions**: Linear, bezier curves, bounce, elastic, and custom easing validation
-- **Property interpolation**: Color parsing, transform interpolation, and value parsing
-- **Timeline builder**: Fluent API with keyframe management and direction control
-
-**Hot Reload System (9 tests)**:
-- **Configuration management**: TOML parsing, validation, and hot reload configuration
-- **File watching**: Real-time file change detection with debouncing
-- **Backup and rollback**: Automatic configuration backup with cleanup and restore capabilities  
-- **State preservation**: Plugin state capture and restoration across reloads
-- **Integration testing**: Full daemon integration with manual and automatic reload modes
-
-**Enhanced IPC Client**:
-- **Connection management**: Reconnection logic, health monitoring, and statistics tracking
-- **Event parsing**: Proper comma handling, malformed event validation, and complex scenarios
-- **Performance optimization**: Event filtering and connection state management
-
-### Test Execution
-```bash
-# Run all tests with coverage
-cargo test --lib                    # 57 tests passing (includes 9 hot reload tests)
-cargo test --lib scratchpads       # 20 scratchpad tests
-cargo test --lib animation         # 16 animation tests
-cargo test --lib enhanced_client   # Enhanced client tests
-
-# Specific test categories
-cargo test test_enhanced_event_handling
-cargo test test_geometry_caching  
-cargo test test_malformed_events
-cargo test hot_reload              # 9 hot reload tests
-```

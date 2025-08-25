@@ -1,10 +1,8 @@
-use rustrland::animation::{
-    AnimationConfig, AnimationEngine,
-    properties::PropertyValue,
-    easing::EasingFunction,
-};
-use std::collections::HashMap;
+use rustrland::animation::
+    easing::EasingFunction
+;
 use std::time::Duration;
+use std::io::{self, Write};
 use tokio::time::sleep;
 
 /// Terminal Visual Animation - Shows animations in terminal with visual bars
@@ -17,79 +15,91 @@ async fn main() -> anyhow::Result<()> {
     println!("=================================");
     println!("Visual representation of demo_basic_directional animation\n");
 
-    // Test the actual demo_basic_directional logic
-    demo_basic_directional_visual().await?;
-
-    // Also test easing functions visually
-    demo_easing_visual().await?;
+    // Interactive easing function selector
+    demo_easing_interactive().await?;
 
     Ok(())
 }
 
-async fn demo_basic_directional_visual() -> anyhow::Result<()> {
-    println!("1️⃣  Visual demo_basic_directional Animation");
-    println!("   300ms duration, ease-out-cubic easing, fromTop animation\n");
-
-    let mut engine = AnimationEngine::new();
-
-    // Exact same config as demo_basic_directional
-    let config = AnimationConfig {
-        animation_type: "fromTop".to_string(),
-        duration: 300,
-        easing: "ease-out-cubic".to_string(),
-        offset: "100px".to_string(),
-        ..Default::default()
-    };
-
-    let mut properties = HashMap::new();
-    properties.insert("x".to_string(), PropertyValue::Pixels(100));
-    properties.insert("y".to_string(), PropertyValue::Pixels(-200)); // Start off-screen
-
-    println!("   🎯 Target: Y moves from -200px to -100px (100px offset)");
-    println!("   ⏱️  Duration: 300ms with ease-out-cubic easing\n");
-
-    engine.start_animation("demo1".to_string(), config, properties).await?;
-
-    // Visual representation
-    println!("   Animation Progress:");
-    println!("   Y Position  │ Progress Bar                    │ Frame");
-    println!("   ──────────────────────────────────────────────────────");
-
-    for frame in 0..25 {
-        if let Some(props) = engine.get_current_properties("demo1") {
-            if let Some(PropertyValue::Pixels(y)) = props.get("y") {
-                let progress = ((y + 200) as f32 / 100.0).clamp(0.0, 1.0);
-                let bar_length = (progress * 30.0) as usize;
-                let bar = "█".repeat(bar_length) + &"░".repeat(30 - bar_length);
-                
-                println!("   {:4}px      │ {} │ {:2}", 
-                        y, bar, frame);
-            }
-        }
-        sleep(Duration::from_millis(12)).await; // ~80fps for smooth terminal animation
-    }
-
-    engine.stop_animation("demo1")?;
-    println!("   ──────────────────────────────────────────────────────");
-    println!("   ✅ Animation completed visually!\n");
-
-    Ok(())
-}
-
-async fn demo_easing_visual() -> anyhow::Result<()> {
-    println!("2️⃣  Visual Easing Function Comparison");
-    println!("   Comparing different easing functions over time\n");
+async fn demo_easing_interactive() -> anyhow::Result<()> {
+    println!("2️⃣  Interactive Easing Function Demo");
+    println!("   Choose an easing function to visualize\n");
 
     let easing_functions = vec![
         ("linear", "Linear"),
-        ("ease-out-cubic", "Ease Out Cubic"),
+        ("ease", "Ease"),
+        ("ease-in", "Ease In"),
+        ("ease-out", "Ease Out"),
         ("ease-in-out", "Ease In Out"),
-        ("ease-out-bounce", "Bounce"),
-        ("ease-out-back", "Back (Overshoot)"),
+        ("ease-in-sine", "Ease In Sine"),
+        ("ease-out-sine", "Ease Out Sine"),
+        ("ease-in-out-sine", "Ease In Out Sine"),
+        ("ease-in-quad", "Ease In Quad"),
+        ("ease-out-quad", "Ease Out Quad"),
+        ("ease-in-out-quad", "Ease In Out Quad"),
+        ("ease-in-cubic", "Ease In Cubic"),
+        ("ease-out-cubic", "Ease Out Cubic"),
+        ("ease-in-out-cubic", "Ease In Out Cubic"),
+        ("ease-in-quart", "Ease In Quart"),
+        ("ease-out-quart", "Ease Out Quart"),
+        ("ease-in-out-quart", "Ease In Out Quart"),
+        ("ease-in-quint", "Ease In Quint"),
+        ("ease-out-quint", "Ease Out Quint"),
+        ("ease-in-out-quint", "Ease In Out Quint"),
+        ("ease-in-expo", "Ease In Expo"),
+        ("ease-out-expo", "Ease Out Expo"),
+        ("ease-in-out-expo", "Ease In Out Expo"),
+        ("ease-in-circ", "Ease In Circ"),
+        ("ease-out-circ", "Ease Out Circ"),
+        ("ease-in-out-circ", "Ease In Out Circ"),
+        ("ease-in-back", "Ease In Back"),
+        ("ease-out-back", "Ease Out Back"),
+        ("ease-in-out-back", "Ease In Out Back"),
+        ("ease-in-elastic", "Ease In Elastic"),
+        ("ease-out-elastic", "Ease Out Elastic"),
+        ("ease-in-out-elastic", "Ease In Out Elastic"),
+        ("ease-in-bounce", "Ease In Bounce"),
+        ("ease-out-bounce", "Ease Out Bounce"),
+        ("ease-in-out-bounce", "Ease In Out Bounce"),
+        ("spring", "Spring"),
     ];
 
-    for (easing_name, display_name) in easing_functions {
-        println!("   🎨 {} Easing:", display_name);
+    loop {
+        println!("   Available easing functions:");
+        println!("   ─────────────────────────────────────");
+        for (i, (_, display_name)) in easing_functions.iter().enumerate() {
+            println!("   {:2}. {}", i + 1, display_name);
+        }
+        println!("   {:2}. Quit", easing_functions.len() + 1);
+        println!("   ─────────────────────────────────────");
+        
+        print!("   Enter your choice (1-{}): ", easing_functions.len() + 1);
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        
+        let choice = match input.trim().parse::<usize>() {
+            Ok(n) => n,
+            Err(_) => {
+                println!("   ❌ Please enter a valid number\n");
+                continue;
+            }
+        };
+        
+        if choice == 0 || choice > easing_functions.len() + 1 {
+            println!("   ❌ Invalid choice. Please enter a number between 1 and {}\n", easing_functions.len() + 1);
+            continue;
+        }
+
+        if choice == easing_functions.len() + 1 {
+            println!("   👋 Goodbye!");
+            break;
+        }
+
+        let (easing_name, display_name) = &easing_functions[choice - 1];
+        
+        println!("\n   🎨 Testing {} Easing:", display_name);
         println!("   Time    │ Progress Bar                    │ Value");
         println!("   ──────────────────────────────────────────────────");
         
@@ -117,12 +127,14 @@ async fn demo_easing_visual() -> anyhow::Result<()> {
             println!("   {:.2}     │ {} │ {:.3}{}", 
                     time, bar, eased_value, overshoot_indicator);
             
-            sleep(Duration::from_millis(50)).await;
+            sleep(Duration::from_millis(100)).await;
         }
         
         println!("   ──────────────────────────────────────────────────");
-        println!("   ✅ {} complete\n", display_name);
-        sleep(Duration::from_millis(200)).await;
+        println!("   ✅ {} animation complete!\n", display_name);
+        
+        // Small pause before showing menu again
+        sleep(Duration::from_millis(500)).await;
     }
 
     Ok(())
