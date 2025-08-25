@@ -6,8 +6,8 @@ use tokio::time::{sleep, Duration};
 use tracing::{debug, info, warn};
 
 use super::{properties::PropertyValue, AnimationConfig, AnimationEngine};
-use crate::ipc::HyprlandClient;
 use crate::animation::easing::EasingFunction;
+use crate::ipc::HyprlandClient;
 
 /// Manages animations for Hyprland windows
 pub struct WindowAnimator {
@@ -62,26 +62,40 @@ impl WindowAnimator {
         );
 
         // Convert relative coordinates to absolute coordinates for current monitor
-        let absolute_target_position = self.convert_to_absolute_coordinates(target_position).await?;
-        println!("Target position converted from relative {:?} to absolute {:?}", target_position, absolute_target_position);
+        let absolute_target_position = self
+            .convert_to_absolute_coordinates(target_position)
+            .await?;
+        println!(
+            "Target position converted from relative {:?} to absolute {:?}",
+            target_position, absolute_target_position
+        );
 
         // Calculate starting position based on animation type
         let start_position = self
             .calculate_start_position(absolute_target_position, target_size, &config)
             .await?;
-        println!("Start position from x:{} and y:{}", start_position.0, start_position.1);
+        println!(
+            "Start position from x:{} and y:{}",
+            start_position.0, start_position.1
+        );
 
-        self.spawn_window_offscreen(&app, start_position.0, start_position.1, target_size.0, target_size.1).await?;
-        let window = self.wait_for_window_by_class(&app, 5000).await?;
+        self.spawn_window_offscreen(
+            app,
+            start_position.0,
+            start_position.1,
+            target_size.0,
+            target_size.1,
+        )
+        .await?;
+        let window = self.wait_for_window_by_class(app, 5000).await?;
 
         if let Some(window) = window {
-
             let address = window.address.to_string();
-            
+
             // Add window rule to prevent automatic workspace switching during animation
             self.prevent_workspace_switching(&address).await?;
 
-            // Set window to starting position instantly  
+            // Set window to starting position instantly
             self.set_window_properties(&address, start_position, target_size, 0.0)
                 .await?;
 
@@ -103,8 +117,14 @@ impl WindowAnimator {
             // Prepare animation properties - CORRECTED: Pass final position as initial_properties
             // AnimationEngine expects final position and calculates start position internally
             let mut initial_properties = HashMap::new();
-            initial_properties.insert("x".to_string(), PropertyValue::Pixels(absolute_target_position.0));
-            initial_properties.insert("y".to_string(), PropertyValue::Pixels(absolute_target_position.1));
+            initial_properties.insert(
+                "x".to_string(),
+                PropertyValue::Pixels(absolute_target_position.0),
+            );
+            initial_properties.insert(
+                "y".to_string(),
+                PropertyValue::Pixels(absolute_target_position.1),
+            );
             initial_properties.insert("width".to_string(), PropertyValue::Pixels(target_size.0));
             initial_properties.insert("height".to_string(), PropertyValue::Pixels(target_size.1));
 
@@ -118,7 +138,8 @@ impl WindowAnimator {
 
             // Add scale for scale animations
             if config.animation_type.contains("scale") {
-                initial_properties.insert("scale".to_string(), PropertyValue::Float(config.scale_from));
+                initial_properties
+                    .insert("scale".to_string(), PropertyValue::Float(config.scale_from));
             }
 
             // Store animation type before moving config
@@ -141,10 +162,7 @@ impl WindowAnimator {
     }
 
     // Close a window
-    pub async fn close_window(
-        &mut self,
-        window_adress: &str,
-    ) -> Result<()> {
+    pub async fn close_window(&mut self, window_adress: &str) -> Result<()> {
         // Close window
         tokio::process::Command::new("hyprctl")
             .arg("dispatch")
@@ -285,7 +303,7 @@ impl WindowAnimator {
         tokio::spawn(async move {
             debug!("🎯 Animation loop started for window {}", window_address);
             let mut frame_count = 0;
-            
+
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_millis(16)).await; // 60fps
                 frame_count += 1;
@@ -296,34 +314,50 @@ impl WindowAnimator {
                         Some(props) => {
                             // Animation running smoothly
                             props
-                        },
+                        }
                         None => {
-                            debug!("✅ Animation {} completed naturally, ending loop", animation_id);
+                            debug!(
+                                "✅ Animation {} completed naturally, ending loop",
+                                animation_id
+                            );
                             break; // Animation completed
                         }
                     }
                 };
 
                 // Apply properties to window with animation type context
-                if let Err(e) =
-                    Self::apply_properties_to_window(&hyprland_client, &window_address, &properties, &animation_type)
-                        .await
+                if let Err(e) = Self::apply_properties_to_window(
+                    &hyprland_client,
+                    &window_address,
+                    &properties,
+                    &animation_type,
+                )
+                .await
                 {
                     warn!("Failed to apply animation properties: {}", e);
                 }
             }
 
-            debug!("✅ Animation loop completed for window {} after {} frames", window_address, frame_count);
-            
+            debug!(
+                "✅ Animation loop completed for window {} after {} frames",
+                window_address, frame_count
+            );
+
             // Unpin window after animation completes
-            let unpin_cmd = format!("hyprctl keyword windowrulev2 unset pin,address:{}", window_address_for_unpin);
+            let unpin_cmd = format!(
+                "hyprctl keyword windowrulev2 unset pin,address:{}",
+                window_address_for_unpin
+            );
             tokio::process::Command::new("sh")
                 .arg("-c")
                 .arg(&unpin_cmd)
                 .output()
                 .await
                 .ok();
-            debug!("📌 Unpinned window {} after animation", window_address_for_unpin);
+            debug!(
+                "📌 Unpinned window {} after animation",
+                window_address_for_unpin
+            );
         });
 
         Ok(())
@@ -358,10 +392,10 @@ impl WindowAnimator {
 
         // Move window using precise pixel positioning (required for animations)
         client.move_window_pixel(window_address, x, y).await?;
-        
+
         // Resize window for scale animations
         client.resize_window(window_address, width, height).await?;
-        
+
         // Handle opacity changes ONLY for fade/scale animations to prevent transparency issues
         if animation_type.contains("fade") || animation_type.contains("scale") {
             if let Some(PropertyValue::Float(opacity)) = properties.get("opacity") {
@@ -409,7 +443,10 @@ impl WindowAnimator {
     }
 
     /// Convert relative coordinates (relative to current monitor) to absolute coordinates
-    async fn convert_to_absolute_coordinates(&self, relative_pos: (i32, i32)) -> Result<(i32, i32)> {
+    async fn convert_to_absolute_coordinates(
+        &self,
+        relative_pos: (i32, i32),
+    ) -> Result<(i32, i32)> {
         // Get current monitor info using hyprctl
         let output = tokio::process::Command::new("hyprctl")
             .arg("monitors")
@@ -427,14 +464,16 @@ impl WindowAnimator {
                     // Extract monitor position and size
                     let x_offset = monitor.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                     let y_offset = monitor.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                    
+
                     // Convert relative coordinates to absolute
                     let absolute_x = x_offset + relative_pos.0;
                     let absolute_y = y_offset + relative_pos.1;
-                    
-                    debug!("Monitor offset: ({}, {}), relative: {:?}, absolute: ({}, {})", 
-                           x_offset, y_offset, relative_pos, absolute_x, absolute_y);
-                    
+
+                    debug!(
+                        "Monitor offset: ({}, {}), relative: {:?}, absolute: ({}, {})",
+                        x_offset, y_offset, relative_pos, absolute_x, absolute_y
+                    );
+
                     return Ok((absolute_x, absolute_y));
                 }
             }
@@ -487,22 +526,29 @@ impl WindowAnimator {
         width: i32,
         height: i32,
     ) -> Result<()> {
-        info!("🚀 Spawning {} off-screen at ({}, {}) with size {}x{}", 
-              app, spawn_x, spawn_y, width, height);
-        
-        let spawn_cmd = format!("[float; move {} {}; size {} {}] {}", 
-                               spawn_x, spawn_y, width, height, app);
-        
+        info!(
+            "🚀 Spawning {} off-screen at ({}, {}) with size {}x{}",
+            app, spawn_x, spawn_y, width, height
+        );
+
+        let spawn_cmd = format!(
+            "[float; move {} {}; size {} {}] {}",
+            spawn_x, spawn_y, width, height, app
+        );
+
         debug!("Commande d'affichage hyprctl: {}", spawn_cmd);
-        
+
         tokio::process::Command::new("hyprctl")
             .arg("dispatch")
             .arg("exec")
             .arg(&spawn_cmd)
             .output()
             .await?;
-            
-        info!("✅ Spawned {} using intelligent off-screen positioning", app);
+
+        info!(
+            "✅ Spawned {} using intelligent off-screen positioning",
+            app
+        );
         Ok(())
     }
 
@@ -512,38 +558,51 @@ impl WindowAnimator {
         class: &str,
         timeout_ms: u64,
     ) -> Result<Option<hyprland::data::Client>> {
-        debug!("🔍 Waiting for {} window (timeout: {}ms)", class, timeout_ms);
-        
+        debug!(
+            "🔍 Waiting for {} window (timeout: {}ms)",
+            class, timeout_ms
+        );
+
         let client_guard = self.hyprland_client.lock().await;
         let client = match client_guard.as_ref() {
             Some(client) => client,
             None => return Ok(None),
         };
-        
+
         let max_attempts = timeout_ms / 100;
-        
+
         for attempt in 1..=max_attempts {
             let windows = client.get_windows().await?;
-            
-            if let Some(window) = windows.iter()
+
+            if let Some(window) = windows
+                .iter()
                 .find(|w| w.class.to_lowercase().contains(&class.to_lowercase()))
                 .cloned()
             {
-                info!("✅ Found {} window after {}ms: {}", 
-                      class, attempt * 100, window.address);
+                info!(
+                    "✅ Found {} window after {}ms: {}",
+                    class,
+                    attempt * 100,
+                    window.address
+                );
                 return Ok(Some(window));
             }
-            
+
             // Progress logging every 500ms to avoid spam
             if attempt % 5 == 0 {
-                debug!("Still waiting for {} window... attempt {}/{}", 
-                       class, attempt, max_attempts);
+                debug!(
+                    "Still waiting for {} window... attempt {}/{}",
+                    class, attempt, max_attempts
+                );
             }
-            
+
             sleep(Duration::from_millis(100)).await;
         }
-        
-        warn!("⏰ Timeout waiting for {} window after {}ms", class, timeout_ms);
+
+        warn!(
+            "⏰ Timeout waiting for {} window after {}ms",
+            class, timeout_ms
+        );
         Ok(None)
     }
 
@@ -554,32 +613,37 @@ impl WindowAnimator {
         expected_condition: impl Fn(i16, i16) -> bool,
         timeout_ms: u64,
     ) -> Result<bool> {
-        debug!("🎯 Waiting for window {} to reach expected position", address);
-        
+        debug!(
+            "🎯 Waiting for window {} to reach expected position",
+            address
+        );
+
         let client_guard = self.hyprland_client.lock().await;
         let client = match client_guard.as_ref() {
             Some(client) => client,
             None => return Ok(false),
         };
-        
+
         let max_attempts = timeout_ms / 50;
-        
+
         for attempt in 1..=max_attempts {
             let windows = client.get_windows().await?;
-            
-            if let Some(window) = windows.iter()
-                .find(|w| w.address.to_string() == address)
-            {
+
+            if let Some(window) = windows.iter().find(|w| w.address.to_string() == address) {
                 if expected_condition(window.at.0, window.at.1) {
-                    info!("✅ Window positioned correctly at ({}, {}) after {}ms", 
-                          window.at.0, window.at.1, attempt * 50);
+                    info!(
+                        "✅ Window positioned correctly at ({}, {}) after {}ms",
+                        window.at.0,
+                        window.at.1,
+                        attempt * 50
+                    );
                     return Ok(true);
                 }
             }
-            
+
             sleep(Duration::from_millis(50)).await;
         }
-        
+
         warn!("⏰ Window positioning timeout after {}ms", timeout_ms);
         Ok(false)
     }
@@ -593,7 +657,7 @@ impl WindowAnimator {
         offset: i32,
     ) -> (i32, i32) {
         let screen_size = (1920, 1080); // TODO: Get actual screen size
-        
+
         match animation_type {
             "fromTop" => (target_position.0, -window_size.1 - offset),
             "fromBottom" => (target_position.0, screen_size.1 + offset),
@@ -610,20 +674,29 @@ impl WindowAnimator {
     /// Prevent automatic workspace switching during animation
     async fn prevent_workspace_switching(&self, window_address: &str) -> Result<()> {
         // Pin window to current workspace to prevent automatic movement
-        let pin_cmd = format!("hyprctl keyword windowrulev2 'pin,address:{}'", window_address);
+        let pin_cmd = format!(
+            "hyprctl keyword windowrulev2 'pin,address:{}'",
+            window_address
+        );
         tokio::process::Command::new("sh")
             .arg("-c")
             .arg(&pin_cmd)
             .output()
             .await?;
 
-        debug!("📌 Pinned window {} to prevent workspace switching", window_address);
+        debug!(
+            "📌 Pinned window {} to prevent workspace switching",
+            window_address
+        );
         Ok(())
     }
 
     /// Remove workspace switching prevention after animation
     async fn allow_workspace_switching(&self, window_address: &str) -> Result<()> {
-        let unpin_cmd = format!("hyprctl keyword windowrulev2 unset pin,address:{}", window_address);
+        let unpin_cmd = format!(
+            "hyprctl keyword windowrulev2 unset pin,address:{}",
+            window_address
+        );
         tokio::process::Command::new("sh")
             .arg("-c")
             .arg(&unpin_cmd)
@@ -633,5 +706,4 @@ impl WindowAnimator {
         debug!("📌 Unpinned window {} after animation", window_address);
         Ok(())
     }
-
 }
