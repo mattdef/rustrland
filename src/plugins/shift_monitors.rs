@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
-use crate::ipc::{HyprlandClient, HyprlandEvent};
+use crate::ipc::{HyprlandClient, HyprlandEvent, MonitorInfo, WorkspaceInfo};
 use crate::plugins::Plugin;
 
 use hyprland::data::{Monitors, Workspaces};
@@ -59,26 +59,6 @@ impl Default for ShiftMonitorsConfig {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct MonitorInfo {
-    pub id: i128,
-    pub name: String,
-    pub focused: bool,
-    pub active_workspace: i32,
-    pub width: u16,
-    pub height: u16,
-    pub x: i32,
-    pub y: i32,
-}
-
-#[derive(Debug, Clone)]
-pub struct WorkspaceInfo {
-    pub id: i32,
-    pub name: String,
-    pub monitor: String,
-    pub windows: u16,
-}
-
 pub struct ShiftMonitorsPlugin {
     config: ShiftMonitorsConfig,
     monitors: HashMap<String, MonitorInfo>,
@@ -109,12 +89,14 @@ impl ShiftMonitorsPlugin {
             let monitor_info = MonitorInfo {
                 id: monitor.id,
                 name: monitor.name.clone(),
-                focused: monitor.focused,
-                active_workspace: monitor.active_workspace.id,
+                is_focused: monitor.focused,
+                active_workspace_id: monitor.active_workspace.id,
                 width: monitor.width,
                 height: monitor.height,
                 x: monitor.x,
                 y: monitor.y,
+                scale: monitor.scale,
+                refresh_rate: monitor.refresh_rate,
             };
 
             self.monitors.insert(monitor.name, monitor_info);
@@ -140,6 +122,7 @@ impl ShiftMonitorsPlugin {
                 name: workspace.name.clone(),
                 monitor: workspace.monitor.clone(),
                 windows: workspace.windows,
+                last_window_addr: workspace.last_window.to_string(),
             };
 
             self.workspaces.insert(workspace.id, workspace_info);
@@ -204,7 +187,7 @@ impl ShiftMonitorsPlugin {
             let ordered_monitors = self.get_ordered_monitors();
             ordered_monitors
                 .iter()
-                .map(|m| (m.name.clone(), m.active_workspace))
+                .map(|m| (m.name.clone(), m.active_workspace_id))
                 .collect()
         };
 
@@ -307,18 +290,18 @@ impl ShiftMonitorsPlugin {
         let ordered_monitors = self.get_ordered_monitors();
 
         for monitor in ordered_monitors {
-            let focused_marker = if monitor.focused { "🎯" } else { "  " };
+            let focused_marker = if monitor.is_focused { "🎯" } else { "  " };
             status.push_str(&format!(
                 "{} {}: Workspace {} ({}x{} @ {},{}) - {} windows\n",
                 focused_marker,
                 monitor.name,
-                monitor.active_workspace,
+                monitor.active_workspace_id,
                 monitor.width,
                 monitor.height,
                 monitor.x,
                 monitor.y,
                 self.workspaces
-                    .get(&monitor.active_workspace)
+                    .get(&monitor.active_workspace_id)
                     .map(|w| w.windows)
                     .unwrap_or(0)
             ));
@@ -345,10 +328,10 @@ impl ShiftMonitorsPlugin {
         let ordered_monitors = self.get_ordered_monitors();
 
         for (index, monitor) in ordered_monitors.iter().enumerate() {
-            let focused_marker = if monitor.focused { "🎯" } else { "  " };
+            let focused_marker = if monitor.is_focused { "🎯" } else { "  " };
             let workspace_info = self
                 .workspaces
-                .get(&monitor.active_workspace)
+                .get(&monitor.active_workspace_id)
                 .map(|w| format!("({} windows)", w.windows))
                 .unwrap_or_else(|| "(0 windows)".to_string());
 
@@ -361,7 +344,7 @@ impl ShiftMonitorsPlugin {
                 monitor.height,
                 monitor.x,
                 monitor.y,
-                monitor.active_workspace,
+                monitor.active_workspace_id,
                 workspace_info
             ));
         }
@@ -535,16 +518,18 @@ mod tests {
 
         // Add test monitors in random order
         plugin.monitors.insert(
-            "DP-2".to_string(),
+            "DP-3".to_string(),
             MonitorInfo {
                 id: 1,
                 name: "DP-2".to_string(),
-                focused: false,
-                active_workspace: 2,
+                is_focused: false,
+                active_workspace_id: 2,
                 width: 1920,
                 height: 1080,
                 x: 1920, // Second monitor position
                 y: 0,
+                scale: 1.0,
+                refresh_rate: 60.0,
             },
         );
 
@@ -553,12 +538,14 @@ mod tests {
             MonitorInfo {
                 id: 0,
                 name: "DP-1".to_string(),
-                focused: true,
-                active_workspace: 1,
+                is_focused: true,
+                active_workspace_id: 1,
                 width: 1920,
                 height: 1080,
                 x: 0, // First monitor position
                 y: 0,
+                scale: 1.0,
+                refresh_rate: 60.0,
             },
         );
 
@@ -577,17 +564,19 @@ mod tests {
         let monitor = MonitorInfo {
             id: 0,
             name: "DP-1".to_string(),
-            focused: true,
-            active_workspace: 1,
+            is_focused: true,
+            active_workspace_id: 1,
             width: 1920,
             height: 1080,
             x: 0,
             y: 0,
+            scale: 1.0,
+            refresh_rate: 60.0,
         };
 
         assert_eq!(monitor.name, "DP-1");
-        assert!(monitor.focused);
-        assert_eq!(monitor.active_workspace, 1);
+        assert!(monitor.is_focused);
+        assert_eq!(monitor.active_workspace_id, 1);
         assert_eq!(monitor.width, 1920);
         assert_eq!(monitor.height, 1080);
     }
@@ -599,6 +588,7 @@ mod tests {
             name: "1".to_string(),
             monitor: "DP-1".to_string(),
             windows: 3,
+            last_window_addr: String::from(""),
         };
 
         assert_eq!(workspace.id, 1);

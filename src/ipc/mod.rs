@@ -1,6 +1,8 @@
 use anyhow::Result;
 use hyprland::data::{Client, Clients, Monitor, Monitors};
-use hyprland::dispatch::{Dispatch, DispatchType};
+use hyprland::dispatch;
+use hyprland::dispatch::{Corner, Dispatch, DispatchType, FullscreenType, WorkspaceIdentifierWithSpecial};
+use hyprland::dispatch::DispatchType::*;
 use hyprland::event_listener::EventListener;
 use hyprland::shared::{HyprData, HyprDataActiveOptional, WorkspaceType};
 use std::sync::Arc;
@@ -29,6 +31,41 @@ where
         .map_err(|_| anyhow::anyhow!("Hyprland API call timeout after {:?}", HYPRLAND_API_TIMEOUT))?
         .map_err(|e| anyhow::anyhow!("Failed to spawn Hyprland task: {}", e))?
         .map_err(|e| anyhow::anyhow!("Hyprland API error: {}", e))
+}
+
+/// Window properties for animations
+#[derive(Debug, Clone)]
+pub struct WindowProperties {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub workspace: String,
+}
+
+/// Monitor information for multi-monitor support
+#[derive(Debug, Clone)]
+pub struct MonitorInfo {
+    pub id: i128,
+    pub name: String,
+    pub width: u16,
+    pub height: u16,
+    pub x: i32,
+    pub y: i32,
+    pub scale: f32,
+    pub is_focused: bool,
+    pub active_workspace_id: i32,
+    pub refresh_rate: f32,
+}
+
+/// Workspace information 
+#[derive(Debug, Clone)]
+pub struct WorkspaceInfo {
+    pub id: i32,
+    pub name: String,
+    pub monitor: String,
+    pub windows: u16,
+    pub last_window_addr: String,
 }
 
 // Define a basic event type for now
@@ -185,12 +222,11 @@ impl HyprlandClient {
     }
 
     /// Spawn a new application
-    pub async fn spawn_app(&self, command: &str) -> Result<()> {
+    pub async fn spawn_app(&self, command: &str) -> hyprland::Result<()> {
         info!("🚀 Spawning application: {}", command);
 
-        let command = command.to_string();
-        self.dispatch(DispatchType::Exec(Box::leak(command.into_boxed_str())))
-            .await?;
+        let str_command = command.to_string();
+        dispatch!(async; Exec, &str_command).await?;
 
         Ok(())
     }
@@ -313,64 +349,64 @@ impl HyprlandClient {
 
     /// Move window to specific position (for animations)
     pub async fn move_window(&self, address: &str, x: i32, y: i32) -> Result<()> {
+        use hyprland::dispatch::{DispatchType, Position, WindowIdentifier};
+        use hyprland::shared::Address;
+
+        let window_id = WindowIdentifier::Address(Address::new(Box::leak(
+            address.to_string().into_boxed_str(),
+        )));
+
+        // Move the window to the specified position using pixel coordinates
         debug!("📍 Moving window {} to position ({}, {})", address, x, y);
-
-        // Use hyprctl to move window
-        let address = address.to_string();
-
-        tokio::task::spawn_blocking(move || {
-            std::process::Command::new("hyprctl")
-                .arg("dispatch")
-                .arg("movewindow")
-                .arg(format!("address:{address}"))
-                .arg(format!("{x} {y}"))
-                .output()
-        })
-        .await??;
+        self.dispatch(DispatchType::MoveWindowPixel(
+            Position::Exact(x as i16, y as i16),
+            window_id,
+        ))
+        .await?;
 
         Ok(())
     }
 
     /// Move window to exact pixel coordinates (for animations)
     pub async fn move_window_pixel(&self, address: &str, x: i32, y: i32) -> Result<()> {
+        use hyprland::dispatch::{DispatchType, Position, WindowIdentifier};
+        use hyprland::shared::Address;
+
+        let window_id = WindowIdentifier::Address(Address::new(Box::leak(
+            address.to_string().into_boxed_str(),
+        )));
+
         debug!(
             "📍 Moving window {} to exact pixel position ({}, {})",
             address, x, y
         );
-
-        // Use hyprctl with movewindowpixel exact for precise positioning
-        let address = address.to_string();
-
-        tokio::task::spawn_blocking(move || {
-            std::process::Command::new("hyprctl")
-                .arg("dispatch")
-                .arg("movewindowpixel")
-                .arg(format!("exact {} {},address:{}", x, y, address))
-                .output()
-        })
-        .await??;
+        self.dispatch(DispatchType::MoveWindowPixel(
+            Position::Exact(x as i16, y as i16),
+            window_id,
+        ))
+        .await?;
 
         Ok(())
     }
 
     /// Resize window to specific size (for animations)
     pub async fn resize_window(&self, address: &str, width: i32, height: i32) -> Result<()> {
+        use hyprland::dispatch::{DispatchType, Position, WindowIdentifier};
+        use hyprland::shared::Address;
+
+        let window_id = WindowIdentifier::Address(Address::new(Box::leak(
+            address.to_string().into_boxed_str(),
+        )));
+
         debug!(
             "📏 Resizing window {} to size ({}x{})",
             address, width, height
         );
-
-        let address = address.to_string();
-
-        tokio::task::spawn_blocking(move || {
-            std::process::Command::new("hyprctl")
-                .arg("dispatch")
-                .arg("resizewindow")
-                .arg(format!("address:{address}"))
-                .arg(format!("{width} {height}"))
-                .output()
-        })
-        .await??;
+        self.dispatch(DispatchType::ResizeWindowPixel(
+            Position::Exact(width as i16, height as i16),
+            window_id,
+        ))
+        .await?;
 
         Ok(())
     }
@@ -382,16 +418,10 @@ impl HyprlandClient {
         let address = address.to_string();
         let opacity_value = (opacity * 255.0) as u8;
 
-        tokio::task::spawn_blocking(move || {
-            std::process::Command::new("hyprctl")
-                .arg("dispatch")
-                .arg("setprop")
-                .arg(format!("address:{address}"))
-                .arg("alpha")
-                .arg(format!("{opacity_value}"))
-                .output()
-        })
-        .await??;
+        // Use hyprland-rs Custom dispatch for setprop
+        let args = format!("address:{} alpha {}", address, opacity_value);
+        self.dispatch(DispatchType::Custom("setprop", Box::leak(args.into_boxed_str())))
+            .await?;
 
         Ok(())
     }
@@ -521,30 +551,24 @@ impl HyprlandClient {
         Ok(())
     }
 
-    /// Move window to specific position
-    pub async fn move_window_to_position(&self, address: &str, x: i32, y: i32) -> Result<()> {
-        debug!("📍 Moving window {} to position ({}, {})", address, x, y);
-
-        // Use hyprctl movewindowpixel for exact positioning
-        let address = address.to_string();
-
-        tokio::task::spawn_blocking(move || {
-            std::process::Command::new("hyprctl")
-                .arg("dispatch")
-                .arg("movewindowpixel")
-                .arg(format!("exact {x} {y},address:{address}"))
-                .output()
-        })
-        .await??;
-
-        Ok(())
-    }
-
     /// Show a window
     pub async fn show_window(&self, address: &str) -> Result<()> {
         debug!("👁️ Showing window: {}", address);
 
-        let address = address.to_string();
+        use hyprland::dispatch::{DispatchType, Position, WindowIdentifier};
+        use hyprland::shared::Address;
+
+        let window_id = WindowIdentifier::Address(Address::new(Box::leak(
+            address.to_string().into_boxed_str(),
+        )));
+
+        self.dispatch(DispatchType::MoveToWorkspace(
+            hyprland::dispatch::WorkspaceIdentifierWithSpecial::Empty,
+            Some(window_id),
+        ))
+        .await?;
+
+        /*let address = address.to_string();
         tokio::task::spawn_blocking(move || {
             std::process::Command::new("hyprctl")
                 .arg("dispatch")
@@ -553,7 +577,7 @@ impl HyprlandClient {
                 .arg(format!("address:{address}"))
                 .output()
         })
-        .await??;
+        .await??;*/
 
         Ok(())
     }
@@ -562,16 +586,19 @@ impl HyprlandClient {
     pub async fn hide_window(&self, address: &str) -> Result<()> {
         debug!("🙈 Hiding window: {}", address);
 
-        let address = address.to_string();
-        tokio::task::spawn_blocking(move || {
-            std::process::Command::new("hyprctl")
-                .arg("dispatch")
-                .arg("movetoworkspace")
-                .arg("special:hidden")
-                .arg(format!("address:{address}"))
-                .output()
-        })
-        .await??;
+        use hyprland::dispatch::{WindowIdentifier, WorkspaceIdentifierWithSpecial};
+        use hyprland::shared::Address;
+
+        let window_id = WindowIdentifier::Address(Address::new(Box::leak(
+            address.to_string().into_boxed_str(),
+        )));
+        let workspace_id = WorkspaceIdentifierWithSpecial::Special(Some("hidden"));
+
+        self.dispatch(DispatchType::MoveToWorkspaceSilent(
+            workspace_id,
+            Some(window_id),
+        ))
+        .await?;
 
         Ok(())
     }
@@ -580,15 +607,14 @@ impl HyprlandClient {
     pub async fn close_window(&self, address: &str) -> Result<()> {
         debug!("❌ Closing window: {}", address);
 
-        let address = address.to_string();
-        tokio::task::spawn_blocking(move || {
-            std::process::Command::new("hyprctl")
-                .arg("dispatch")
-                .arg("closewindow")
-                .arg(format!("address:{address}"))
-                .output()
-        })
-        .await??;
+        use hyprland::dispatch::WindowIdentifier;
+        use hyprland::shared::Address;
+
+        let window_id = WindowIdentifier::Address(Address::new(Box::leak(
+            address.to_string().into_boxed_str(),
+        )));
+
+        self.dispatch(DispatchType::CloseWindow(window_id)).await?;
 
         Ok(())
     }
@@ -597,39 +623,17 @@ impl HyprlandClient {
     pub async fn toggle_floating(&self, address: &str) -> Result<()> {
         debug!("🎈 Toggling floating for window: {}", address);
 
-        let address = address.to_string();
-        tokio::task::spawn_blocking(move || {
-            std::process::Command::new("hyprctl")
-                .arg("dispatch")
-                .arg("togglefloating")
-                .arg(format!("address:{address}"))
-                .output()
-        })
-        .await??;
+        use hyprland::dispatch::WindowIdentifier;
+        use hyprland::shared::Address;
+
+        let window_id = WindowIdentifier::Address(Address::new(Box::leak(
+            address.to_string().into_boxed_str(),
+        )));
+
+        self.dispatch(DispatchType::ToggleFloating(Some(window_id)))
+            .await?;
 
         Ok(())
     }
 }
 
-/// Window properties for animations
-#[derive(Debug, Clone)]
-pub struct WindowProperties {
-    pub x: i32,
-    pub y: i32,
-    pub width: i32,
-    pub height: i32,
-    pub workspace: String,
-}
-
-/// Monitor information for multi-monitor support
-#[derive(Debug, Clone)]
-pub struct MonitorInfo {
-    pub name: String,
-    pub width: i32,
-    pub height: i32,
-    pub x: i32,
-    pub y: i32,
-    pub scale: f32,
-    pub is_focused: bool,
-    pub active_workspace_id: i32,
-}

@@ -4,7 +4,7 @@ use rustrland::animation::{
     properties::PropertyValue,
     timeline::{AnimationDirection, TimelineBuilder},
     window_animator::WindowAnimator,
-    AnimationConfig, AnimationEngine, AnimationPropertyConfig, SpringConfig,
+    AnimationConfig, AnimationEngine, AnimationPropertyConfig,
 };
 use rustrland::ipc::HyprlandClient;
 use std::collections::HashMap;
@@ -91,7 +91,7 @@ async fn demo_basic_directional(
     // Spawn foot terminal off-screen
     println!("   🚀 Spawning foot terminal for demo...");
     animator
-        .spawn_window_offscreen("foot", 200, -600, 800, 600)
+        .spawn_window_offscreen(&client, "foot", (200, -600), (800, 600))
         .await?;
     //spawn_window_offscreen("foot", 560, -400).await?;
 
@@ -148,7 +148,7 @@ async fn demo_basic_directional(
         sleep(Duration::from_secs(2)).await; // Let user see result
 
         // Close window
-        animator.close_window(&address).await?;
+        animator.close_window(&client, &address).await?;
 
         println!("   🧹 Cleaned up demo window\n");
     } else {
@@ -169,7 +169,7 @@ async fn demo_spring_physics(
     // Spawn kitty terminal off-screen for variety
     println!("   🚀 Spawning foot terminal for spring demo...");
     animator
-        .spawn_window_offscreen("foot", 200, -600, 800, 600)
+        .spawn_window_offscreen(&client, "foot", (200, -600), (800, 600))
         .await?;
     //spawn_window_offscreen("foot", 400, -500).await?;
 
@@ -223,7 +223,7 @@ async fn demo_spring_physics(
         sleep(Duration::from_secs(2)).await;
 
         // Close window
-        animator.close_window(&address).await?;
+        animator.close_window(client, &address).await?;
 
         println!("   🧹 Cleaned up spring demo window\n");
     } else {
@@ -244,7 +244,7 @@ async fn demo_multi_property(
     // Spawn thunar file manager for this demo
     println!("   🚀 Spawning thunar file manager for multi-property demo...");
     animator
-        .spawn_window_offscreen("thunar", 200, -600, 800, 600)
+        .spawn_window_offscreen(&client, "thunar", (200, -600), (800, 600))
         .await?;
     //spawn_window_offscreen("thunar", -200, 150).await?;
 
@@ -307,7 +307,7 @@ async fn demo_multi_property(
         sleep(Duration::from_secs(2)).await;
 
         // Close window
-        animator.close_window(&address).await?;
+        animator.close_window(&client, &address).await?;
 
         println!("   🧹 Cleaned up multi-property demo window\n");
     } else {
@@ -328,7 +328,7 @@ async fn demo_custom_easing(
     // Quick demonstration with one spectacular easing
     println!("   🚀 Spawning terminal for bounce showcase...");
     animator
-        .spawn_window_offscreen("foot", 200, -600, 800, 600)
+        .spawn_window_offscreen(&client, "foot", (200, -600), (800, 600))
         .await?;
     //spawn_window_offscreen("foot", 300, -300).await?;
 
@@ -375,7 +375,7 @@ async fn demo_custom_easing(
         sleep(Duration::from_secs(1)).await;
 
         // Close window
-        animator.close_window(&address).await?;
+        animator.close_window(&client, &address).await?;
 
         println!("   🧹 Cleaned up easing demo window");
     } else {
@@ -399,7 +399,7 @@ async fn demo_animation_sequence(
     // Spawn foot terminal for sequence demo
     println!("   🚀 Spawning terminal for sequence demo...");
     animator
-        .spawn_window_offscreen("foot", 200, -600, 800, 600)
+        .spawn_window_offscreen(&client, "foot", (200, -600), (800, 600))
         .await?;
     //spawn_window_offscreen("foot", 100, -300).await?;
 
@@ -535,13 +535,13 @@ async fn demo_performance_monitoring(
 
     // Spawn multiple windows off-screen at different positions
     animator
-        .spawn_window_offscreen("foot", 100, -600, 800, 600)
+        .spawn_window_offscreen(&client, "foot", (100, -600), (800, 600))
         .await?;
     animator
-        .spawn_window_offscreen("foot", 200, -600, 800, 600)
+        .spawn_window_offscreen(&client, "foot", (200, -600), (800, 600))
         .await?;
     animator
-        .spawn_window_offscreen("foot", 300, -600, 800, 600)
+        .spawn_window_offscreen(&client, "foot", (300, -600), (800, 600))
         .await?;
     //spawn_window_offscreen("foot", 200, -400).await?;
     //spawn_window_offscreen("foot", 400, -400).await?;
@@ -646,7 +646,7 @@ async fn demo_performance_monitoring(
         // Clean up all windows
         for window in &foot_windows {
             animator
-                .close_window(&format!("{}", window.address))
+                .close_window(&client, &format!("{}", window.address))
                 .await?;
         }
 
