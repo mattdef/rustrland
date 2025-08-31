@@ -87,6 +87,7 @@ struct PerformanceMonitor {
     frame_times: Vec<Duration>,
     target_frame_time: Duration,
     adaptive_quality: bool,
+    resolution: (i32, i32),
 }
 
 impl Default for AnimationEngine {
@@ -103,6 +104,7 @@ impl AnimationEngine {
                 frame_times: Vec::with_capacity(60),
                 target_frame_time: Duration::from_millis(16), // 60fps
                 adaptive_quality: true,
+                resolution: (1980, 1080),
             },
         }
     }
@@ -115,7 +117,7 @@ impl AnimationEngine {
         initial_properties: HashMap<String, PropertyValue>,
         end_properties: HashMap<String, PropertyValue>,
     ) -> Result<()> {
-        println!(
+        debug!(
             "🎬 Starting animation '{}' with type '{}', duration: {}ms",
             id, config.animation_type, config.duration
         );
@@ -147,12 +149,12 @@ impl AnimationEngine {
         };
 
         // Debug animation properties
-        println!("🎯 Animation setup:");
+        debug!("🎯 Animation setup:");
         for (key, value) in &final_initial_properties {
-            println!("   Start {}: {:?}", key, value);
+            debug!("   Start {}: {:?}", key, value);
         }
         for (key, value) in &target_properties {
-            println!("   Target {}: {:?}", key, value);
+            debug!("   Target {}: {:?}", key, value);
         }
 
         let state = AnimationState {
@@ -170,7 +172,7 @@ impl AnimationEngine {
         self.active_animations.insert(id.clone(), state);
 
         // Don't start animation loop here - let start_window_animation_loop handle it
-        println!("✅ Animation '{}' initialized and ready", id);
+        debug!("✅ Animation '{}' initialized and ready", id);
 
         Ok(())
     }
@@ -386,7 +388,7 @@ impl AnimationEngine {
                         let interpolated = start_value.interpolate(target_value, eased_progress);
 
                         // Debug X position for fromLeft animations
-                        if animation.config.animation_type == "fromLeft"
+                        if (animation.config.animation_type == "fromLeft" || animation.config.easing == EasingFunction::EaseOutBack)
                             && property_name == "x"
                         {
                             debug!("X INTERPOLATION: from={:?}, to={:?}, raw_progress={:.3}, eased_progress={:.3}, result={:?}",
@@ -489,11 +491,11 @@ impl AnimationEngine {
             let percent = offset.trim_end_matches('%').parse::<f32>()?;
             // Get screen dimension (simplified - would use actual screen resolution)
             let screen_size = match dimension {
-                "width" => 1920.0,
-                "height" => 1080.0,
-                _ => 1920.0,
+                "width" => self.performance_monitor.resolution.0,
+                "height" => self.performance_monitor.resolution.1,
+                _ => 1920,
             };
-            Ok(screen_size * percent / 100.0)
+            Ok(screen_size as f32 * percent / 100.0)
         } else if offset.ends_with("px") {
             Ok(offset.trim_end_matches("px").parse::<f32>()?)
         } else {
@@ -531,9 +533,17 @@ impl AnimationEngine {
     ) -> Option<HashMap<String, PropertyValue>> {
         let (raw_progress, duration_completed, easing_function) = {
             if let Some(animation) = self.active_animations.get(animation_id) {
-                // Calculate elapsed time
-                let elapsed = animation.start_time.elapsed();
+                let now = Instant::now();
                 let duration = Duration::from_millis(animation.config.duration as u64);
+                
+                // Check if animation should have started (handle delay properly)
+                if now < animation.start_time {
+                    // Animation hasn't started yet due to delay
+                    return Some(animation.start_properties.clone());
+                }
+                
+                // Calculate elapsed time since animation actually started
+                let elapsed = now.duration_since(animation.start_time);
 
                 // Calculate progress (0.0 to 1.0)
                 let raw_progress = if duration.is_zero() {

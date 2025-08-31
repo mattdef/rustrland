@@ -1067,6 +1067,14 @@ impl ScratchpadsPlugin {
         if windows.is_empty() {
             Ok(format!("No windows found for scratchpad '{}'", name))
         } else {
+            // Debug: log all windows found
+            for window in &windows {
+                info!(
+                    "🔍 DEBUG: Found window {} on workspace '{}'",
+                    window.address, window.workspace.name
+                );
+            }
+            
             // For auto-hide: find ANY scratchpad window that's not already in special workspace
             let active_window = windows
                 .iter()
@@ -1080,7 +1088,18 @@ impl ScratchpadsPlugin {
                 // Hide the active window (even if on different workspace)
                 self.hide_scratchpad_window(&client, window, name).await
             } else {
-                Ok(format!("Scratchpad '{}' is already hidden", name))
+                info!("🔍 DEBUG: No active window found (all in special workspaces), checking if any window is actually visible");
+                // If no window found that's not in special workspace, check if any window is actually visible
+                // and hide the first one we find
+                if let Some(window) = windows.first() {
+                    info!(
+                        "🔍 Forcing hide of window {} on workspace '{}'",
+                        window.address, window.workspace.name
+                    );
+                    self.hide_scratchpad_window(&client, window, name).await
+                } else {
+                    Ok(format!("Scratchpad '{}' is already hidden", name))
+                }
             }
         }
     }
@@ -2404,6 +2423,7 @@ impl ScratchpadsPlugin {
                 client.close_window(&window.address.to_string()).await?;
             } else {
                 client.hide_window(&window.address.to_string()).await?;
+                //self.animate_window_hide(&window, &config, monitor).await?;
             }
         }
 
@@ -3234,10 +3254,8 @@ impl ScratchpadsPlugin {
     /// Animate window show with configured animation
     async fn animate_window_show(
         &self,
-        client: &HyprlandClient,
         window: &hyprland::data::Client,
         config: &ValidatedConfig,
-        monitor: &MonitorInfo,
     ) -> Result<()> {
         let mut animator = self.window_animator.lock().await;
 
@@ -3259,13 +3277,14 @@ impl ScratchpadsPlugin {
         };
 
         // Get target geometry
-        let target_geometry = GeometryCalculator::calculate_geometry(config, monitor)?;
+        let target_geometry = {
+            let monitor = animator.active_monitor.lock().await;
+            GeometryCalculator::calculate_geometry(config, &monitor)?
+        };
 
         // Trigger show animation
         animator
             .show_window_with_animation(
-                &client,
-                &monitor,
                 &window.address.to_string(),
                 (target_geometry.x, target_geometry.y),
                 (target_geometry.width, target_geometry.height),
@@ -3281,7 +3300,6 @@ impl ScratchpadsPlugin {
         &self,
         window: &hyprland::data::Client,
         config: &ValidatedConfig,
-        monitor: &MonitorInfo,
     ) -> Result<()> {
         let mut animator = self.window_animator.lock().await;
 
@@ -3306,14 +3324,9 @@ impl ScratchpadsPlugin {
         let current_position = (window.at.0 as i32, window.at.1 as i32);
         let current_size = (window.size.0 as i32, window.size.1 as i32);
 
-        // Get Hyprland client
-        let client = self.get_hyprland_client().await?;
-
         // Trigger hide animation
         animator
             .hide_window(
-                (*client).clone(),
-                &monitor,
                 &window.address.to_string(),
                 current_position,
                 current_size,
@@ -3529,7 +3542,7 @@ impl ScratchpadsPlugin {
                 .find(|w| w.address.to_string() == window_address)
             {
                 if let Err(e) = self
-                    .animate_window_show(&client, &window, validated_config, monitor)
+                    .animate_window_show(&window, validated_config)
                     .await
                 {
                     warn!("Failed to animate window show: {}", e);

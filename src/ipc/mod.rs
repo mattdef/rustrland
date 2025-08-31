@@ -58,6 +58,29 @@ pub struct MonitorInfo {
     pub refresh_rate: f32,
 }
 
+impl Default for MonitorInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MonitorInfo {
+    pub fn new() -> Self {
+        Self {
+            active_workspace_id: 0,
+            height: 0,
+            id: 0,
+            is_focused: false,
+            name: String::new(),
+            refresh_rate: 0.0,
+            scale: 0.0,
+            width: 0,
+            x: 0,
+            y: 0,
+        }
+    }
+}
+
 /// Workspace information 
 #[derive(Debug, Clone)]
 pub struct WorkspaceInfo {

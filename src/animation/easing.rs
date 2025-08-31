@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 
 /// Advanced easing functions for smooth animations
 /// Supports traditional CSS easing plus physics-based functions
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum EasingFunction {
     Linear,
     Ease,

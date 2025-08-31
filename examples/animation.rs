@@ -5,9 +5,14 @@ use rustrland::animation::WindowAnimator;
 use rustrland::ipc::{HyprlandClient, MonitorInfo};
 use rustrland::{AnimationConfig, EasingFunction};
 use tokio::time::sleep;
+use tracing::{debug};
+use tracing_subscriber;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Initialize tracing subscriber to see debug logs
+    tracing_subscriber::fmt::init();
+    
     println!("🎬 Simple window Animation Test");
     println!("=================================");
     println!("Visual representation of a window animation\n");
@@ -48,6 +53,12 @@ async fn demo(client: &HyprlandClient, monitor: &Monitor) -> anyhow::Result<()> 
         ("fromRight", "From Right"),
         ("fromTop", "From Top"),
         ("fromBottom", "From Bottom"),
+        ("fromTopLeft", "From Top Left"),
+        ("fromTopRight", "From Top Right"),
+        ("fromBottomLeft", "From Bottom Left"),
+        ("fromBottomRight", "From Bottom Right"),
+        ("fade", "Fade"),
+        ("scale", "Scale"),
     ];
 
     let monitor_info = MonitorInfo {
@@ -98,20 +109,23 @@ async fn demo(client: &HyprlandClient, monitor: &Monitor) -> anyhow::Result<()> 
             println!("   👋 Goodbye!");
             break;
         }
-
+        
         let (option_name, display_name) = &from_functions[choice - 1];
-        println!("\n   🎨 Testing {} Option:", display_name);
+        debug!("\n   🎨 Testing {} Option:", display_name);
         
         let mut animator = WindowAnimator::new();
-        //animator
-        //    .set_hyprland_client(std::sync::Arc::new(client.clone()))
-        //    .await;
+        animator
+            .set_hyprland_client(std::sync::Arc::new(client.clone()))
+            .await;
+
+        // Initialize the animator with the correct monitor info
+        animator.set_active_monitor(&monitor_info).await;
 
         let config = AnimationConfig {
             animation_type: option_name.to_string(),
-            duration: 1000,
-            easing: EasingFunction::EaseIn,
-            offset: "100px".to_string(),
+            duration: 800, // Very slow animation to see the bounce effect clearly
+            easing: EasingFunction::EaseOutBack,
+            offset: "100px".to_string(), // Larger offset for more dramatic effect
             ..Default::default()
         };
 
@@ -119,36 +133,47 @@ async fn demo(client: &HyprlandClient, monitor: &Monitor) -> anyhow::Result<()> 
         let app = "foot";
 
         // show_animated_window("foot", "DP-1", (800, 600), config, &mut animator).await?;
-        println!(
+        debug!(
             "🚀 Launching {} on {} with {} animation",
             app, monitor.name, config.animation_type
         );
-        println!("   📐 Size: {}x{}", size.0, size.1);
-        println!("   ⏱️  Duration: {}ms", config.duration);
-        println!("   📈 Easing: {:?}", config.easing);
+        debug!("   📐 Size: {}x{}", size.0, size.1);
+        debug!("   ⏱️  Duration: {}ms", config.duration);
+        debug!("   📈 Easing: {:?}", config.easing);
 
         // Get monitor info and calculate center position
         // let target_position =  animator.calculate_monitor_center_position(&monitor_info, size).await?;
         let target_position =  
             ((monitor.width as i32 - size.0) / 2, (monitor.height as i32 - size.1) / 2);
-        println!( "   📍 Target position: ({}, {})", target_position.0, target_position.1);
+        debug!( "   📍 Target position: ({}, {})", target_position.0, target_position.1);
 
         // Launch the animated window
         let window = animator
-            .show_window_with_animation(&client, &monitor_info, app, target_position, size, config)
+            .show_window_with_animation(app, target_position, size, config)
             .await?;
 
         if let Some(ref window) = window {
-            println!("✅ Window launched successfully: {}", window.address);
-            println!("   🔍 Class: {}, Title: {}", window.class, window.title);
-            println!("   📍 Position: ({}, {})", window.at.0, window.at.1);
-            println!("   📐 Size: {}x{}", window.size.0, window.size.1);
-            println!("   🎯 Floating: {}", window.floating);
+            debug!("✅ Window launched successfully: {}", window.address);
+            debug!("   🔍 Class: {}, Title: {}", window.class, window.title);
+            debug!("   📍 Position: ({}, {})", window.at.0, window.at.1);
+            debug!("   📐 Size: {}x{}", window.size.0, window.size.1);
+            debug!("   🎯 Floating: {}", window.floating);
 
             // Wait longer to see animation, then close window
-            println!("⏳ Waiting 4 seconds to observe the animation...");
+            debug!("⏳ Waiting 4 seconds to observe the animation...");
             sleep(Duration::from_secs(4)).await;
-            animator.close_window(&client, &window.address.to_string()).await?;
+
+            let hide_config = AnimationConfig {
+                animation_type: "toTop".to_string(),
+                duration: 500,
+                easing: EasingFunction::EaseIn,
+                offset: "100px".to_string(),
+                ..Default::default()
+            };
+            animator.hide_window(&window.address.to_string(), target_position, size, hide_config).await?;
+            
+            sleep(Duration::from_secs(1)).await;
+            animator.close_window(&window.address.to_string()).await?;
             println!("🔴 Window closed");
         } else {
             println!("❌ Failed to launch window");
