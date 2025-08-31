@@ -1,6 +1,5 @@
 use anyhow::Result;
 use rustrland::animation::{easing::EasingFunction, properties::PropertyValue};
-use std::collections::HashMap;
 
 fn main() -> Result<()> {
     println!("🔍 Debugging EaseOutBack Animation Interpolation");
