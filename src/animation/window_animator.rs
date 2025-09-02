@@ -1,19 +1,19 @@
 use anyhow::{Error, Result};
 use hyprland::data::Monitor;
-use tracing_subscriber::fmt::format;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, info, warn};
 use tracing_subscriber;
+use tracing_subscriber::fmt::format;
 
 use super::{properties::PropertyValue, AnimationConfig, AnimationEngine};
 use crate::animation::easing::EasingFunction;
 use crate::ipc::{self, HyprlandClient, MonitorInfo};
 use crate::plugins::monitors;
-use hyprland::keyword::{Keyword, OptionValue};
 use hyprland::ctl::Color;
+use hyprland::keyword::{Keyword, OptionValue};
 
 #[derive(Debug, Clone)]
 pub struct HyprlandStyle {
@@ -95,7 +95,6 @@ impl WindowAnimator {
         target_size: (i32, i32),
         config: AnimationConfig,
     ) -> Result<Option<hyprland::data::Client>> {
-
         // Calculate starting position based on animation type
         let start_position = self
             .calculate_start_position(target_position, target_size, &config)
@@ -110,43 +109,34 @@ impl WindowAnimator {
 
         // Get Hyprland style for consistent appearance
         let style = self.get_hyprland_style().await;
-        
+
         // Create windowrulev2 rules with explicit priorities to override defaults
         let popup_float_rule = format!(
             "hyprctl keyword windowrulev2 'float, class:^{}$'",
             app_class
         );
-        
+
         // Use completely disabled decorations initially
         let popup_nodeco_rule = format!(
             "hyprctl keyword windowrulev2 'nodecoration, class:^{}$'",
             app_class
         );
-        
-        let popup_pin_rule = format!(
-            "hyprctl keyword windowrulev2 'pin, class:^{}$'",
-            app_class
-        );
-        
+
+        let popup_pin_rule = format!("hyprctl keyword windowrulev2 'pin, class:^{}$'", app_class);
+
         // Try removing all existing window rules first
-        let clear_rules_cmd = format!(
-            "hyprctl keyword windowrulev2 unset,class:^{}$",
-            app_class
-        );
+        let clear_rules_cmd = format!("hyprctl keyword windowrulev2 unset,class:^{}$", app_class);
 
         // Clear existing rules first
         tokio::process::Command::new("sh")
             .arg("-c")
             .arg(&clear_rules_cmd)
             .output()
-            .await.ok();
-        
+            .await
+            .ok();
+
         // Apply all rules with error handling
-        let rules = vec![
-            &popup_float_rule,
-            &popup_nodeco_rule,
-            &popup_pin_rule,
-        ];
+        let rules = vec![&popup_float_rule, &popup_nodeco_rule, &popup_pin_rule];
 
         for rule in rules {
             if let Err(e) = tokio::process::Command::new("sh")
@@ -161,7 +151,7 @@ impl WindowAnimator {
 
         if !style.drop_shadow {
             let popup_shadow_rule = format!(
-                "hyprctl keyword windowrulev2 'noshadow, class:^{}$'", 
+                "hyprctl keyword windowrulev2 'noshadow, class:^{}$'",
                 app_class
             );
 
@@ -192,15 +182,21 @@ impl WindowAnimator {
         if let Some(window) = window {
             let address = window.address.to_string();
 
-            debug!("🎨 Window {} created with popup rule automatically applied", address);
-            
+            debug!(
+                "🎨 Window {} created with popup rule automatically applied",
+                address
+            );
+
             // Apply decorations directly to the window to override defaults
             self.apply_popup_decorations(&address, &style).await;
 
             // Set window to starting position instantly
             let start_offset_position = self.get_offscreen_position(start_position).await;
             let target_offset_position = self.get_offscreen_position(target_position).await;
-            debug!("🎬 Setting window to start position: ({}, {})", start_offset_position.0, start_offset_position.1);
+            debug!(
+                "🎬 Setting window to start position: ({}, {})",
+                start_offset_position.0, start_offset_position.1
+            );
             //self.set_window_properties(&client, &address, start_offset_position, target_size, 0.0)
             //    .await?;
 
@@ -236,16 +232,12 @@ impl WindowAnimator {
 
             // Add opacity for fade animations
             if config.animation_type.contains("fade") {
-                end_properties.insert(
-                    "opacity".to_string(),
-                    PropertyValue::Float(1.0),
-                );
+                end_properties.insert("opacity".to_string(), PropertyValue::Float(1.0));
             }
 
             // Add scale for scale animations
             if config.animation_type.contains("scale") {
-                end_properties
-                    .insert("scale".to_string(), PropertyValue::Float(1.0));
+                end_properties.insert("scale".to_string(), PropertyValue::Float(1.0));
             }
 
             initial_properties.insert(
@@ -261,6 +253,10 @@ impl WindowAnimator {
 
             // Add opacity for fade animations
             if config.animation_type.contains("fade") {
+                debug!(
+                    "🎭 Setting up fade animation: opacity_from={} -> 1.0",
+                    config.opacity_from
+                );
                 initial_properties.insert(
                     "opacity".to_string(),
                     PropertyValue::Float(config.opacity_from),
@@ -278,18 +274,33 @@ impl WindowAnimator {
 
             // Start the animation
             let mut engine = self.animation_engine.lock().await;
+            debug!(
+                "🎬 Starting animation '{}' with {} initial properties",
+                animation_id,
+                initial_properties.len()
+            );
             engine
-                .start_animation(animation_id.clone(), config, initial_properties, end_properties)
+                .start_animation(
+                    animation_id.clone(),
+                    config,
+                    initial_properties,
+                    end_properties,
+                )
                 .await?;
+            debug!("✅ Animation '{}' started successfully", animation_id);
 
             let monitor = &self.active_monitor.lock().await;
             // Start window update loop
-            self.start_window_animation_loop(address.to_string(), animation_id, animation_type, monitor.refresh_rate)
-                .await?;
+            self.start_window_animation_loop(
+                address.to_string(),
+                animation_id,
+                animation_type,
+                monitor.refresh_rate,
+            )
+            .await?;
 
             return Ok(Some(window));
-        }
-        else {
+        } else {
             println!("Window not found");
         }
 
@@ -325,7 +336,10 @@ impl WindowAnimator {
 
         let absolute_current_position = {
             let monitor = self.active_monitor.lock().await;
-            (monitor.x + current_position.0, monitor.y + current_position.1)
+            (
+                monitor.x + current_position.0,
+                monitor.y + current_position.1,
+            )
         };
 
         // Calculate ending position based on animation type
@@ -333,7 +347,10 @@ impl WindowAnimator {
             .calculate_end_position(absolute_current_position, current_size, &config)
             .await?;
 
-        println!("End position: x:{} and y:{}", end_position.0, end_position.1);
+        println!(
+            "End position: x:{} and y:{}",
+            end_position.0, end_position.1
+        );
 
         // Create animation state
         let animation_id = format!("hide_{window_address}");
@@ -352,8 +369,14 @@ impl WindowAnimator {
 
         // Prepare animation properties
         let mut initial_properties = HashMap::new();
-        initial_properties.insert("x".to_string(), PropertyValue::Pixels(absolute_current_position.0));
-        initial_properties.insert("y".to_string(), PropertyValue::Pixels(absolute_current_position.1));
+        initial_properties.insert(
+            "x".to_string(),
+            PropertyValue::Pixels(absolute_current_position.0),
+        );
+        initial_properties.insert(
+            "y".to_string(),
+            PropertyValue::Pixels(absolute_current_position.1),
+        );
         initial_properties.insert("width".to_string(), PropertyValue::Pixels(current_size.0));
         initial_properties.insert("height".to_string(), PropertyValue::Pixels(current_size.1));
         initial_properties.insert("opacity".to_string(), PropertyValue::Float(1.0));
@@ -372,7 +395,12 @@ impl WindowAnimator {
         // Start the animation
         let mut engine = self.animation_engine.lock().await;
         engine
-            .start_animation(animation_id.clone(), config, initial_properties, target_properties)
+            .start_animation(
+                animation_id.clone(),
+                config,
+                initial_properties,
+                target_properties,
+            )
             .await?;
 
         let refresh_rate = {
@@ -381,8 +409,13 @@ impl WindowAnimator {
         };
 
         // Start window update loop
-        self.start_window_animation_loop(window_address.to_string(), animation_id, animation_type, refresh_rate)
-            .await?;
+        self.start_window_animation_loop(
+            window_address.to_string(),
+            animation_id,
+            animation_type,
+            refresh_rate,
+        )
+        .await?;
 
         Ok(())
     }
@@ -399,9 +432,15 @@ impl WindowAnimator {
 
         match config.animation_type.as_str() {
             "fromTop" => Ok((target_position.0, -target_size.1 - offset_pixels)),
-            "fromBottom" => Ok((target_position.0, target_size.1 + offset_pixels + monitor.height as i32)),
+            "fromBottom" => Ok((
+                target_position.0,
+                target_size.1 + offset_pixels + monitor.height as i32,
+            )),
             "fromLeft" => Ok((-target_size.0 - offset_pixels, target_position.1)),
-            "fromRight" => Ok((monitor.width as i32 + target_size.0 + offset_pixels, target_position.1)),
+            "fromRight" => Ok((
+                monitor.width as i32 + target_size.0 + offset_pixels,
+                target_position.1,
+            )),
             "fromTopLeft" => Ok((
                 -target_size.0 - offset_pixels,
                 -target_size.1 - offset_pixels,
@@ -414,7 +453,10 @@ impl WindowAnimator {
                 -target_size.0 - offset_pixels,
                 target_size.1 + offset_pixels + monitor.height as i32,
             )),
-            "fromBottomRight" => Ok((monitor.width as i32 + target_size.0 + offset_pixels, target_size.1 + offset_pixels + monitor.height as i32)),
+            "fromBottomRight" => Ok((
+                monitor.width as i32 + target_size.0 + offset_pixels,
+                target_size.1 + offset_pixels + monitor.height as i32,
+            )),
             "bounce" => Ok((target_position.0, -target_size.1 - offset_pixels)), // Start completely above screen
             "fade" => Ok((target_position.0, target_position.1)), // No position change for fade
             "scale" => Ok((target_position.0, target_position.1)), // No position change for scale
@@ -435,9 +477,13 @@ impl WindowAnimator {
 
         match config.animation_type.as_str() {
             "toTop" | "fromTop" => Ok((current_position.0, -current_size.1 - offset_pixels)),
-            "toBottom" | "fromBottom" => Ok((current_position.0, screen_size.1 as i32 + offset_pixels)),
+            "toBottom" | "fromBottom" => {
+                Ok((current_position.0, screen_size.1 as i32 + offset_pixels))
+            }
             "toLeft" | "fromLeft" => Ok((-current_size.0 - offset_pixels, current_position.1)),
-            "toRight" | "fromRight" => Ok((screen_size.0 as i32 + offset_pixels, current_position.1)),
+            "toRight" | "fromRight" => {
+                Ok((screen_size.0 as i32 + offset_pixels, current_position.1))
+            }
             "fade" => Ok(current_position), // No position change for fade
             "scale" => Ok(current_position), // No position change for scale
             _ => Ok(current_position),      // Default to current position
@@ -474,7 +520,7 @@ impl WindowAnimator {
             None => return Ok(()),
         };
         drop(client_guard); // Release the lock before spawning
-        
+
         let engine = Arc::clone(&self.animation_engine);
         let window_address_for_unpin = window_address.clone();
 
@@ -492,12 +538,13 @@ impl WindowAnimator {
                     match engine_guard.get_current_properties(&animation_id) {
                         Some(props) => {
                             // Animation running smoothly
+                            debug!("📊 Frame {}: Got properties from engine", frame_count);
                             props
                         }
                         None => {
                             debug!(
-                                "✅ Animation {} completed naturally, ending loop",
-                                animation_id
+                                "✅ Animation {} completed naturally after {} frames, ending loop",
+                                animation_id, frame_count
                             );
                             break; // Animation completed
                         }
@@ -527,14 +574,14 @@ impl WindowAnimator {
                 "hyprctl keyword windowrulev2 unset pin,address:{}",
                 window_address_for_unpin
             );
-            
+
             tokio::process::Command::new("sh")
                 .arg("-c")
                 .arg(&unpin_cmd)
                 .output()
                 .await
                 .ok();
-                
+
             debug!(
                 "📌 Unpinned window {} after animation",
                 window_address_for_unpin
@@ -565,22 +612,24 @@ impl WindowAnimator {
             .map(|p| p.as_pixels())
             .unwrap_or(600);
 
-        debug!("🪟 WINDOW POSITION: x={} y={} (animation_type: {})", x, y, animation_type);
+        debug!(
+            "🪟 WINDOW POSITION: x={} y={} (animation_type: {})",
+            x, y, animation_type
+        );
 
         // Move window using precise pixel positioning (required for animations)
         client.move_window_pixel(window_address, x, y).await?;
 
         // Resize window for scale animations
-        client.resize_window(window_address, width, height).await?;
+        if animation_type.contains("scale") {
+            client.resize_window(window_address, width, height).await?;
+        }
 
         // Handle opacity changes ONLY for fade animations to prevent visual artifacts
         if animation_type.contains("fade") {
             if let Some(PropertyValue::Float(opacity)) = properties.get("opacity") {
                 client.set_window_opacity(window_address, *opacity).await?;
             }
-        } else {
-            // For non-fade animations, don't modify opacity to prevent visual artifacts
-            // Hyprland handles window opacity better when not constantly changed during animations
         }
 
         Ok(())
@@ -599,7 +648,8 @@ impl WindowAnimator {
             None => return Ok(()),
         };
 
-        Self::apply_properties_to_window_static(client, window_address, properties, animation_type).await
+        Self::apply_properties_to_window_static(client, window_address, properties, animation_type)
+            .await
     }
 
     /// Set window properties directly
@@ -625,7 +675,10 @@ impl WindowAnimator {
             client.set_window_opacity(window_address, opacity).await?;
         }
 
-        debug!("   🎬 Window {} moved to ({}, {}) and resized to {}x{} with opacity {}", window_address, position.0, position.1, size.0, size.1, opacity);
+        debug!(
+            "   🎬 Window {} moved to ({}, {}) and resized to {}x{} with opacity {}",
+            window_address, position.0, position.1, size.0, size.1, opacity
+        );
 
         Ok(())
     }
@@ -684,9 +737,7 @@ impl WindowAnimator {
         // Add border colors to prevent style flash
         let exec_command = format!(
             "[move {} {};size {} {}] {}",
-            spawn.0, spawn.1, 
-            window_size.0, window_size.1, 
-            app
+            spawn.0, spawn.1, window_size.0, window_size.1, app
         );
 
         match client.spawn_app(exec_command.as_str()).await {
@@ -804,10 +855,7 @@ impl WindowAnimator {
     }
 
     /// Calculate optimal off-screen position for animation type
-    pub async fn get_offscreen_position(
-        &self,
-        position: (i32, i32),
-    ) -> (i32, i32) {
+    pub async fn get_offscreen_position(&self, position: (i32, i32)) -> (i32, i32) {
         let monitor = &self.active_monitor.lock().await;
 
         (monitor.x + position.0, monitor.y + position.1)
@@ -816,14 +864,14 @@ impl WindowAnimator {
     /// Get current Hyprland style configuration
     async fn get_hyprland_style(&self) -> HyprlandStyle {
         let mut style = HyprlandStyle::default();
-        
+
         // Get border size
         if let Ok(border_size) = Keyword::get("general:border_size") {
             if let OptionValue::Int(size) = border_size.value {
                 style.border_size = size as i32;
             }
         }
-        
+
         // Try to get border colors via hyprctl command as fallback
         if let Ok(output) = tokio::process::Command::new("hyprctl")
             .arg("getoption")
@@ -837,7 +885,7 @@ impl WindowAnimator {
                 style.active_border_color = self.hex_to_rgba(&hex_part);
             }
         }
-        
+
         if let Ok(output) = tokio::process::Command::new("hyprctl")
             .arg("getoption")
             .arg("general:col.inactive_border")
@@ -850,38 +898,38 @@ impl WindowAnimator {
                 style.inactive_border_color = self.hex_to_rgba(&hex_part);
             }
         }
-        
+
         // Get shadow settings
         if let Ok(drop_shadow) = Keyword::get("decoration:shadow:enabled") {
             if let OptionValue::Int(shadow) = drop_shadow.value {
                 style.drop_shadow = shadow != 0;
             }
         }
-        
+
         if let Ok(shadow_range) = Keyword::get("decoration:shadow:range") {
             if let OptionValue::Int(range) = shadow_range.value {
                 style.shadow_range = range as i32;
             }
         }
-        
+
         if let Ok(shadow_power) = Keyword::get("decoration:shadow:render_power") {
             if let OptionValue::Int(power) = shadow_power.value {
                 style.shadow_render_power = power as i32;
             }
         }
-        
+
         if let Ok(shadow_color) = Keyword::get("decoration:shadow:color") {
             if let OptionValue::Int(color_int) = shadow_color.value {
                 // Convert integer color to rgba format
                 style.shadow_color = self.int_color_to_rgba(color_int);
             }
         }
-        
+
         debug!("🎨 Retrieved Hyprland style: {:?}", style);
         style
     }
-    
-    /// Parse Hyprland color string format 
+
+    /// Parse Hyprland color string format
     fn parse_color_string(&self, color_str: &str) -> String {
         // Handle various Hyprland color formats
         if color_str.starts_with("rgba(") {
@@ -893,7 +941,7 @@ impl WindowAnimator {
             format!("rgba({})", color_str)
         }
     }
-    
+
     /// Convert Hyprland integer color to RGBA format
     fn int_color_to_rgba(&self, color_int: i64) -> String {
         let color = color_int as u32;
@@ -903,7 +951,7 @@ impl WindowAnimator {
         let a = color & 0xFF;
         format!("rgba({}, {}, {}, {})", r, g, b, a)
     }
-    
+
     /// Convert hex color (like "aa7c7674") to RGBA format
     fn hex_to_rgba(&self, hex: &str) -> String {
         if hex.len() == 8 {
@@ -919,7 +967,7 @@ impl WindowAnimator {
         // Fallback to default
         format!("rgba({})", hex)
     }
-    
+
     /// Extract hex color from hyprctl output like "custom type: aa7c7674 0deg"
     fn extract_hex_from_hyprctl_output(&self, output: &str) -> Option<String> {
         // Look for hex pattern after "custom type:" or in the output
@@ -936,7 +984,6 @@ impl WindowAnimator {
         }
         None
     }
-    
 
     /// Remove workspace switching prevention after animation
     async fn allow_workspace_switching(&self, window_address: &str) -> Result<()> {
@@ -949,20 +996,23 @@ impl WindowAnimator {
             "hyprctl keyword windowrulev2 'bordersize 1,address:{}'",
             window_address
         );
-        
+
         tokio::process::Command::new("sh")
             .arg("-c")
             .arg(&unpin_cmd)
             .output()
             .await?;
-            
+
         tokio::process::Command::new("sh")
             .arg("-c")
             .arg(&restore_border_cmd)
             .output()
             .await?;
 
-        debug!("📌 Unpinned window {} and restored borders after animation", window_address);
+        debug!(
+            "📌 Unpinned window {} and restored borders after animation",
+            window_address
+        );
         Ok(())
     }
 
@@ -973,29 +1023,29 @@ impl WindowAnimator {
             "hyprctl keyword windowrulev2 unset,address:{}",
             window_address
         );
-        
+
         tokio::process::Command::new("sh")
             .arg("-c")
             .arg(&remove_decorations_cmd)
             .output()
             .await
             .ok();
-            
-        debug!("🗑️ Removed existing decoration rules for window {}", window_address);
-        
+
+        debug!(
+            "🗑️ Removed existing decoration rules for window {}",
+            window_address
+        );
+
         // Small delay to let the removal take effect
         sleep(Duration::from_millis(100)).await;
 
         // Now try direct property setting with more specific commands
         let decoration_commands = vec![
-            // Set border size to 0 to completely disable borders initially
-            format!("hyprctl setprop address:{} bordersize 0", window_address),
-            // Force no rounding
-            format!("hyprctl setprop address:{} rounding 0", window_address),
-            // Force no shadow
-            format!("hyprctl setprop address:{} forcenodropshallow 1", window_address),
             // Now set the desired border size if > 0
-            format!("hyprctl setprop address:{} bordersize {}", window_address, style.border_size),
+            format!(
+                "hyprctl setprop address:{} bordersize {}",
+                window_address, style.border_size
+            ),
             // Set border colors
             format!(
                 "hyprctl setprop address:{} activebordercolor {}",
@@ -1018,7 +1068,7 @@ impl WindowAnimator {
             } else {
                 debug!("✅ Applied decoration {}: {}", i + 1, cmd);
             }
-            
+
             // Longer delay between critical commands
             sleep(Duration::from_millis(50)).await;
         }
@@ -1031,15 +1081,15 @@ impl WindowAnimator {
             .output()
             .await
             .ok();
-            
+
         sleep(Duration::from_millis(50)).await;
-        
+
         // One final attempt to set border size
         let final_border_cmd = format!(
             "hyprctl setprop address:{} bordersize {}",
             window_address, style.border_size
         );
-        
+
         if let Err(e) = tokio::process::Command::new("sh")
             .arg("-c")
             .arg(&final_border_cmd)
@@ -1051,46 +1101,9 @@ impl WindowAnimator {
             debug!("✅ Final border size set to {}", style.border_size);
         }
 
-        debug!("🎨 Completed all popup decoration attempts for window {}", window_address);
-    }
-
-    /// Reapply decorations using only setprop commands as a final override
-    async fn reapply_decorations_with_setprop(&self, window_address: &str, style: &HyprlandStyle) {
-        debug!("🔄 Reapplying decorations with setprop for window {}", window_address);
-        
-        // Ultra-aggressive approach: set bordersize to 0 first, then to desired value
-        let reset_border_cmd = format!("hyprctl setprop address:{} bordersize 0", window_address);
-        let set_border_cmd = format!("hyprctl setprop address:{} bordersize {}", window_address, style.border_size);
-        
-        // Execute reset
-        tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(&reset_border_cmd)
-            .output()
-            .await.ok();
-            
-        sleep(Duration::from_millis(100)).await;
-        
-        // Execute set
-        if let Ok(output) = tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(&set_border_cmd)
-            .output()
-            .await
-        {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            debug!("Border setprop result - stdout: '{}', stderr: '{}'", stdout, stderr);
-        }
-        
-        // Force rounding to 0
-        let rounding_cmd = format!("hyprctl setprop address:{} rounding 0", window_address);
-        tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(&rounding_cmd)
-            .output()
-            .await.ok();
-            
-        debug!("✅ Reapplied decorations with setprop for window {}", window_address);
+        debug!(
+            "🎨 Completed all popup decoration attempts for window {}",
+            window_address
+        );
     }
 }

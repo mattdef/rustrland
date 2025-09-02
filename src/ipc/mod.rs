@@ -1,8 +1,10 @@
 use anyhow::Result;
 use hyprland::data::{Client, Clients, Monitor, Monitors};
 use hyprland::dispatch;
-use hyprland::dispatch::{Corner, Dispatch, DispatchType, FullscreenType, WorkspaceIdentifierWithSpecial};
 use hyprland::dispatch::DispatchType::*;
+use hyprland::dispatch::{
+    Corner, Dispatch, DispatchType, FullscreenType, WorkspaceIdentifierWithSpecial,
+};
 use hyprland::event_listener::EventListener;
 use hyprland::shared::{HyprData, HyprDataActiveOptional, WorkspaceType};
 use std::sync::Arc;
@@ -81,7 +83,7 @@ impl MonitorInfo {
     }
 }
 
-/// Workspace information 
+/// Workspace information
 #[derive(Debug, Clone)]
 pub struct WorkspaceInfo {
     pub id: i32,
@@ -439,12 +441,18 @@ impl HyprlandClient {
         debug!("🌟 Setting window {} opacity to {}", address, opacity);
 
         let address = address.to_string();
-        let opacity_value = (opacity * 255.0) as u8;
 
-        // Use hyprland-rs Custom dispatch for setprop
-        let args = format!("address:{} alpha {}", address, opacity_value);
-        self.dispatch(DispatchType::Custom("setprop", Box::leak(args.into_boxed_str())))
-            .await?;
+        // Clamp opacity between 0.0 and 1.0 to prevent issues
+        let clamped_opacity = opacity.clamp(0.0, 1.0);
+
+        // Use setprop with alpha expecting float value between 0.0 and 1.0
+        // Adding 'override' flag to prevent multiplication with global opacity settings
+        let args = format!("address:{} alpha override {}", address, clamped_opacity);
+        self.dispatch(DispatchType::Custom(
+            "setprop",
+            Box::leak(args.into_boxed_str()),
+        ))
+        .await?;
 
         Ok(())
     }
@@ -659,4 +667,3 @@ impl HyprlandClient {
         Ok(())
     }
 }
-
