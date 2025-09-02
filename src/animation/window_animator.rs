@@ -12,6 +12,33 @@ use super::{properties::PropertyValue, AnimationConfig, AnimationEngine};
 use crate::animation::easing::EasingFunction;
 use crate::ipc::{self, HyprlandClient, MonitorInfo};
 use crate::plugins::monitors;
+use hyprland::keyword::{Keyword, OptionValue};
+use hyprland::ctl::Color;
+
+#[derive(Debug, Clone)]
+pub struct HyprlandStyle {
+    pub border_size: i32,
+    pub active_border_color: String,
+    pub inactive_border_color: String,
+    pub drop_shadow: bool,
+    pub shadow_range: i32,
+    pub shadow_render_power: i32,
+    pub shadow_color: String,
+}
+
+impl Default for HyprlandStyle {
+    fn default() -> Self {
+        Self {
+            border_size: 1,
+            active_border_color: "rgba(777777AA)".to_string(),
+            inactive_border_color: "rgba(595959AA)".to_string(),
+            drop_shadow: true,
+            shadow_range: 4,
+            shadow_render_power: 3,
+            shadow_color: "rgba(1a1a1aee)".to_string(),
+        }
+    }
+}
 
 /// Manages animations for Hyprland windows
 pub struct WindowAnimator {
@@ -78,8 +105,80 @@ impl WindowAnimator {
             start_position.0, start_position.1
         );
 
-        let app_class = format!("toggle_{app}");
+        let app_class = format!("{app}_toggle");
         let app_command = format!("{} --app-id {}", app, app_class);
+
+        // Get Hyprland style for consistent appearance
+        let style = self.get_hyprland_style().await;
+        
+        // Create windowrulev2 rules with explicit priorities to override defaults
+        let popup_float_rule = format!(
+            "hyprctl keyword windowrulev2 'float, class:^{}$'",
+            app_class
+        );
+        
+        // Use completely disabled decorations initially
+        let popup_nodeco_rule = format!(
+            "hyprctl keyword windowrulev2 'nodecoration, class:^{}$'",
+            app_class
+        );
+        
+        let popup_pin_rule = format!(
+            "hyprctl keyword windowrulev2 'pin, class:^{}$'",
+            app_class
+        );
+        
+        // Try removing all existing window rules first
+        let clear_rules_cmd = format!(
+            "hyprctl keyword windowrulev2 unset,class:^{}$",
+            app_class
+        );
+
+        // Clear existing rules first
+        tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&clear_rules_cmd)
+            .output()
+            .await.ok();
+        
+        // Apply all rules with error handling
+        let rules = vec![
+            &popup_float_rule,
+            &popup_nodeco_rule,
+            &popup_pin_rule,
+        ];
+
+        for rule in rules {
+            if let Err(e) = tokio::process::Command::new("sh")
+                .arg("-c")
+                .arg(rule)
+                .output()
+                .await
+            {
+                warn!("Failed to apply windowrule: {}", e);
+            }
+        }
+
+        if !style.drop_shadow {
+            let popup_shadow_rule = format!(
+                "hyprctl keyword windowrulev2 'noshadow, class:^{}$'", 
+                app_class
+            );
+
+            if let Err(e) = tokio::process::Command::new("sh")
+                .arg("-c")
+                .arg(&popup_shadow_rule)
+                .output()
+                .await
+            {
+                warn!("Failed to apply shadow rule: {}", e);
+            }
+        }
+
+        // Small delay to ensure rules are processed
+        sleep(Duration::from_millis(50)).await;
+
+        debug!("🎨 Applied global popup window rule for all *_popup windows");
 
         self.spawn_window_offscreen(
             &app_command,
@@ -93,8 +192,10 @@ impl WindowAnimator {
         if let Some(window) = window {
             let address = window.address.to_string();
 
-            // Add window rule to prevent automatic workspace switching during animation
-            self.prevent_workspace_switching(&address).await?;
+            debug!("🎨 Window {} created with popup rule automatically applied", address);
+            
+            // Apply decorations directly to the window to override defaults
+            self.apply_popup_decorations(&address, &style).await;
 
             // Set window to starting position instantly
             let start_offset_position = self.get_offscreen_position(start_position).await;
@@ -421,17 +522,19 @@ impl WindowAnimator {
                 window_address, frame_count
             );
 
-            // Unpin window after animation completes
+            // Clean up window rules after animation completes
             let unpin_cmd = format!(
                 "hyprctl keyword windowrulev2 unset pin,address:{}",
                 window_address_for_unpin
             );
+            
             tokio::process::Command::new("sh")
                 .arg("-c")
                 .arg(&unpin_cmd)
                 .output()
                 .await
                 .ok();
+                
             debug!(
                 "📌 Unpinned window {} after animation",
                 window_address_for_unpin
@@ -470,14 +573,14 @@ impl WindowAnimator {
         // Resize window for scale animations
         client.resize_window(window_address, width, height).await?;
 
-        // Handle opacity changes ONLY for fade/scale animations to prevent transparency issues
-        if animation_type.contains("fade") || animation_type.contains("scale") {
+        // Handle opacity changes ONLY for fade animations to prevent visual artifacts
+        if animation_type.contains("fade") {
             if let Some(PropertyValue::Float(opacity)) = properties.get("opacity") {
                 client.set_window_opacity(window_address, *opacity).await?;
             }
         } else {
-            // For non-fade animations, explicitly ensure opacity stays at 1.0 to prevent hover transparency
-            client.set_window_opacity(window_address, 1.0).await.ok();
+            // For non-fade animations, don't modify opacity to prevent visual artifacts
+            // Hyprland handles window opacity better when not constantly changed during animations
         }
 
         Ok(())
@@ -578,9 +681,12 @@ impl WindowAnimator {
             app, spawn.0, spawn.1, window_size.0, window_size.1
         );
 
+        // Add border colors to prevent style flash
         let exec_command = format!(
-            "[float; move {} {}; size {} {}] {}",
-            spawn.0, spawn.1, window_size.0, window_size.1, app
+            "[move {} {};size {} {}] {}",
+            spawn.0, spawn.1, 
+            window_size.0, window_size.1, 
+            app
         );
 
         match client.spawn_app(exec_command.as_str()).await {
@@ -707,39 +813,284 @@ impl WindowAnimator {
         (monitor.x + position.0, monitor.y + position.1)
     }
 
-    /// Prevent automatic workspace switching during animation
-    async fn prevent_workspace_switching(&self, window_address: &str) -> Result<()> {
-        // Pin window to current workspace to prevent automatic movement
-        let pin_cmd = format!(
-            "hyprctl keyword windowrulev2 'pin,address:{}'",
-            window_address
-        );
-        tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(&pin_cmd)
+    /// Get current Hyprland style configuration
+    async fn get_hyprland_style(&self) -> HyprlandStyle {
+        let mut style = HyprlandStyle::default();
+        
+        // Get border size
+        if let Ok(border_size) = Keyword::get("general:border_size") {
+            if let OptionValue::Int(size) = border_size.value {
+                style.border_size = size as i32;
+            }
+        }
+        
+        // Try to get border colors via hyprctl command as fallback
+        if let Ok(output) = tokio::process::Command::new("hyprctl")
+            .arg("getoption")
+            .arg("general:col.active_border")
             .output()
-            .await?;
-
-        debug!(
-            "📌 Pinned window {} to prevent workspace switching",
-            window_address
-        );
-        Ok(())
+            .await
+        {
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            if let Some(hex_part) = self.extract_hex_from_hyprctl_output(&output_str) {
+                debug!("🎨 Active border from hyprctl: {}", hex_part);
+                style.active_border_color = self.hex_to_rgba(&hex_part);
+            }
+        }
+        
+        if let Ok(output) = tokio::process::Command::new("hyprctl")
+            .arg("getoption")
+            .arg("general:col.inactive_border")
+            .output()
+            .await
+        {
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            if let Some(hex_part) = self.extract_hex_from_hyprctl_output(&output_str) {
+                debug!("🎨 Inactive border from hyprctl: {}", hex_part);
+                style.inactive_border_color = self.hex_to_rgba(&hex_part);
+            }
+        }
+        
+        // Get shadow settings
+        if let Ok(drop_shadow) = Keyword::get("decoration:shadow:enabled") {
+            if let OptionValue::Int(shadow) = drop_shadow.value {
+                style.drop_shadow = shadow != 0;
+            }
+        }
+        
+        if let Ok(shadow_range) = Keyword::get("decoration:shadow:range") {
+            if let OptionValue::Int(range) = shadow_range.value {
+                style.shadow_range = range as i32;
+            }
+        }
+        
+        if let Ok(shadow_power) = Keyword::get("decoration:shadow:render_power") {
+            if let OptionValue::Int(power) = shadow_power.value {
+                style.shadow_render_power = power as i32;
+            }
+        }
+        
+        if let Ok(shadow_color) = Keyword::get("decoration:shadow:color") {
+            if let OptionValue::Int(color_int) = shadow_color.value {
+                // Convert integer color to rgba format
+                style.shadow_color = self.int_color_to_rgba(color_int);
+            }
+        }
+        
+        debug!("🎨 Retrieved Hyprland style: {:?}", style);
+        style
     }
+    
+    /// Parse Hyprland color string format 
+    fn parse_color_string(&self, color_str: &str) -> String {
+        // Handle various Hyprland color formats
+        if color_str.starts_with("rgba(") {
+            color_str.to_string()
+        } else if color_str.starts_with("rgb(") {
+            color_str.to_string()
+        } else {
+            // Default fallback
+            format!("rgba({})", color_str)
+        }
+    }
+    
+    /// Convert Hyprland integer color to RGBA format
+    fn int_color_to_rgba(&self, color_int: i64) -> String {
+        let color = color_int as u32;
+        let r = (color >> 24) & 0xFF;
+        let g = (color >> 16) & 0xFF;
+        let b = (color >> 8) & 0xFF;
+        let a = color & 0xFF;
+        format!("rgba({}, {}, {}, {})", r, g, b, a)
+    }
+    
+    /// Convert hex color (like "aa7c7674") to RGBA format
+    fn hex_to_rgba(&self, hex: &str) -> String {
+        if hex.len() == 8 {
+            // Format: AARRGGBB (alpha, red, green, blue)
+            if let Ok(color) = u32::from_str_radix(hex, 16) {
+                let a = (color >> 24) & 0xFF;
+                let r = (color >> 16) & 0xFF;
+                let g = (color >> 8) & 0xFF;
+                let b = color & 0xFF;
+                return format!("rgba({}, {}, {}, {})", r, g, b, a);
+            }
+        }
+        // Fallback to default
+        format!("rgba({})", hex)
+    }
+    
+    /// Extract hex color from hyprctl output like "custom type: aa7c7674 0deg"
+    fn extract_hex_from_hyprctl_output(&self, output: &str) -> Option<String> {
+        // Look for hex pattern after "custom type:" or in the output
+        for line in output.lines() {
+            if line.contains("custom type:") {
+                // Extract hex from "custom type: aa7c7674 0deg"
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                for part in parts {
+                    if part.len() == 8 && part.chars().all(|c| c.is_ascii_hexdigit()) {
+                        return Some(part.to_string());
+                    }
+                }
+            }
+        }
+        None
+    }
+    
 
     /// Remove workspace switching prevention after animation
     async fn allow_workspace_switching(&self, window_address: &str) -> Result<()> {
+        // Remove pin rule and restore normal border
         let unpin_cmd = format!(
             "hyprctl keyword windowrulev2 unset pin,address:{}",
             window_address
         );
+        let restore_border_cmd = format!(
+            "hyprctl keyword windowrulev2 'bordersize 1,address:{}'",
+            window_address
+        );
+        
         tokio::process::Command::new("sh")
             .arg("-c")
             .arg(&unpin_cmd)
             .output()
             .await?;
+            
+        tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&restore_border_cmd)
+            .output()
+            .await?;
 
-        debug!("📌 Unpinned window {} after animation", window_address);
+        debug!("📌 Unpinned window {} and restored borders after animation", window_address);
         Ok(())
+    }
+
+    /// Apply popup decorations directly to a window using hyprctl commands
+    async fn apply_popup_decorations(&self, window_address: &str, style: &HyprlandStyle) {
+        // First, try to remove ALL existing decoration rules for this window
+        let remove_decorations_cmd = format!(
+            "hyprctl keyword windowrulev2 unset,address:{}",
+            window_address
+        );
+        
+        tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&remove_decorations_cmd)
+            .output()
+            .await
+            .ok();
+            
+        debug!("🗑️ Removed existing decoration rules for window {}", window_address);
+        
+        // Small delay to let the removal take effect
+        sleep(Duration::from_millis(100)).await;
+
+        // Now try direct property setting with more specific commands
+        let decoration_commands = vec![
+            // Set border size to 0 to completely disable borders initially
+            format!("hyprctl setprop address:{} bordersize 0", window_address),
+            // Force no rounding
+            format!("hyprctl setprop address:{} rounding 0", window_address),
+            // Force no shadow
+            format!("hyprctl setprop address:{} forcenodropshallow 1", window_address),
+            // Now set the desired border size if > 0
+            format!("hyprctl setprop address:{} bordersize {}", window_address, style.border_size),
+            // Set border colors
+            format!(
+                "hyprctl setprop address:{} activebordercolor {}",
+                window_address, style.active_border_color
+            ),
+            format!(
+                "hyprctl setprop address:{} inactivebordercolor {}",
+                window_address, style.inactive_border_color
+            ),
+        ];
+
+        for (i, cmd) in decoration_commands.iter().enumerate() {
+            if let Err(e) = tokio::process::Command::new("sh")
+                .arg("-c")
+                .arg(cmd)
+                .output()
+                .await
+            {
+                warn!("Failed to apply decoration command '{}': {}", cmd, e);
+            } else {
+                debug!("✅ Applied decoration {}: {}", i + 1, cmd);
+            }
+            
+            // Longer delay between critical commands
+            sleep(Duration::from_millis(50)).await;
+        }
+
+        // As a last resort, try using dispatch to focus and apply rules
+        let focus_cmd = format!("hyprctl dispatch focuswindow address:{}", window_address);
+        tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&focus_cmd)
+            .output()
+            .await
+            .ok();
+            
+        sleep(Duration::from_millis(50)).await;
+        
+        // One final attempt to set border size
+        let final_border_cmd = format!(
+            "hyprctl setprop address:{} bordersize {}",
+            window_address, style.border_size
+        );
+        
+        if let Err(e) = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&final_border_cmd)
+            .output()
+            .await
+        {
+            warn!("Final border setting failed: {}", e);
+        } else {
+            debug!("✅ Final border size set to {}", style.border_size);
+        }
+
+        debug!("🎨 Completed all popup decoration attempts for window {}", window_address);
+    }
+
+    /// Reapply decorations using only setprop commands as a final override
+    async fn reapply_decorations_with_setprop(&self, window_address: &str, style: &HyprlandStyle) {
+        debug!("🔄 Reapplying decorations with setprop for window {}", window_address);
+        
+        // Ultra-aggressive approach: set bordersize to 0 first, then to desired value
+        let reset_border_cmd = format!("hyprctl setprop address:{} bordersize 0", window_address);
+        let set_border_cmd = format!("hyprctl setprop address:{} bordersize {}", window_address, style.border_size);
+        
+        // Execute reset
+        tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&reset_border_cmd)
+            .output()
+            .await.ok();
+            
+        sleep(Duration::from_millis(100)).await;
+        
+        // Execute set
+        if let Ok(output) = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&set_border_cmd)
+            .output()
+            .await
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            debug!("Border setprop result - stdout: '{}', stderr: '{}'", stdout, stderr);
+        }
+        
+        // Force rounding to 0
+        let rounding_cmd = format!("hyprctl setprop address:{} rounding 0", window_address);
+        tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&rounding_cmd)
+            .output()
+            .await.ok();
+            
+        debug!("✅ Reapplied decorations with setprop for window {}", window_address);
     }
 }

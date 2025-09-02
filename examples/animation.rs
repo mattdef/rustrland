@@ -89,6 +89,7 @@ async fn demo(client: &HyprlandClient, monitor: &Monitor) -> anyhow::Result<()> 
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
 
+
         let choice = match input.trim().parse::<usize>() {
             Ok(n) => n,
             Err(_) => {
@@ -109,7 +110,7 @@ async fn demo(client: &HyprlandClient, monitor: &Monitor) -> anyhow::Result<()> 
             println!("   👋 Goodbye!");
             break;
         }
-        
+
         let (option_name, display_name) = &from_functions[choice - 1];
         debug!("\n   🎨 Testing {} Option:", display_name);
         
@@ -124,7 +125,7 @@ async fn demo(client: &HyprlandClient, monitor: &Monitor) -> anyhow::Result<()> 
         let config = AnimationConfig {
             animation_type: option_name.to_string(),
             duration: 800, // Very slow animation to see the bounce effect clearly
-            easing: EasingFunction::EaseOutBack,
+            easing: EasingFunction::EaseOutBounce,
             offset: "100px".to_string(), // Larger offset for more dramatic effect
             ..Default::default()
         };
