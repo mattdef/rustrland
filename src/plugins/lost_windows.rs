@@ -303,11 +303,11 @@ impl WindowPositioner {
 
             // Try different positions and find the one with minimal overlap
             let step = 50;
-            for y in
-                (monitor.y + margin..=monitor.y + monitor.height as i32 - height - margin).step_by(step)
+            for y in (monitor.y + margin..=monitor.y + monitor.height as i32 - height - margin)
+                .step_by(step)
             {
-                for x in
-                    (monitor.x + margin..=monitor.x + monitor.width as i32 - width - margin).step_by(step)
+                for x in (monitor.x + margin..=monitor.x + monitor.width as i32 - width - margin)
+                    .step_by(step)
                 {
                     let overlap_area =
                         Self::calculate_overlap_area(x, y, width, height, &used_positions);
@@ -586,10 +586,7 @@ impl LostWindowsPlugin {
             }
 
             // Set window position
-            if let Err(e) = client
-                .move_window(&window.address, new_x, new_y)
-                .await
-            {
+            if let Err(e) = client.move_window(&window.address, new_x, new_y).await {
                 warn!("Failed to move window to position: {}", e);
             } else {
                 debug!(
@@ -870,7 +867,7 @@ mod tests {
             scale: 1.0,
             is_focused: true,
             active_workspace_id: 1,
-            refresh_rate: 60.0
+            refresh_rate: 60.0,
         };
 
         let windows = vec![

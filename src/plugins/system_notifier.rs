@@ -11,7 +11,9 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
-use crate::animation::{AnimationConfig, AnimationEngine, EasingFunction, PropertyValue, WindowAnimator};
+use crate::animation::{
+    AnimationConfig, AnimationEngine, EasingFunction, PropertyValue, WindowAnimator,
+};
 use crate::ipc::{HyprlandClient, HyprlandEvent};
 use crate::plugins::Plugin;
 use std::sync::Arc;

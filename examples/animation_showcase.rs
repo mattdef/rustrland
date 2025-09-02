@@ -675,7 +675,12 @@ async fn demo_performance_monitoring(
             properties.insert("x".to_string(), PropertyValue::Pixels(i * 100));
 
             engine
-                .start_animation(format!("perf_test_{}", i), config, properties.clone(), properties)
+                .start_animation(
+                    format!("perf_test_{}", i),
+                    config,
+                    properties.clone(),
+                    properties,
+                )
                 .await?;
         }
 

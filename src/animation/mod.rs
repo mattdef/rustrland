@@ -189,7 +189,10 @@ impl AnimationEngine {
             "fromTop" => {
                 let offset_pixels = self.parse_offset(&config.offset, "height")?;
                 // Get window height to calculate proper off-screen position
-                let window_height = start_props.get("height").map(|h| h.as_pixels()).unwrap_or(600);
+                let window_height = start_props
+                    .get("height")
+                    .map(|h| h.as_pixels())
+                    .unwrap_or(600);
                 // Start from completely off-screen at the top: -window_height - offset
                 start_props.insert(
                     "y".to_string(),
@@ -200,7 +203,7 @@ impl AnimationEngine {
                 let offset_pixels = self.parse_offset(&config.offset, "height")?;
                 // Get screen height to calculate proper off-screen position (simplified to 1080)
                 let screen_height = 1080; // TODO: Get actual screen height
-                // Start from completely off-screen at the bottom: screen_height + offset
+                                          // Start from completely off-screen at the bottom: screen_height + offset
                 start_props.insert(
                     "y".to_string(),
                     PropertyValue::Pixels(screen_height + offset_pixels as i32),
@@ -209,7 +212,10 @@ impl AnimationEngine {
             "fromLeft" => {
                 let offset_pixels = self.parse_offset(&config.offset, "width")?;
                 // Get window width to calculate proper off-screen position
-                let window_width = start_props.get("width").map(|w| w.as_pixels()).unwrap_or(800);
+                let window_width = start_props
+                    .get("width")
+                    .map(|w| w.as_pixels())
+                    .unwrap_or(800);
                 // Start from completely off-screen to the left: -window_width - offset
                 start_props.insert(
                     "x".to_string(),
@@ -220,7 +226,7 @@ impl AnimationEngine {
                 let offset_pixels = self.parse_offset(&config.offset, "width")?;
                 // Get screen width to calculate proper off-screen position (simplified to 1920)
                 let screen_width = 1920; // TODO: Get actual screen width
-                // Start from completely off-screen to the right: screen_width + offset
+                                         // Start from completely off-screen to the right: screen_width + offset
                 start_props.insert(
                     "x".to_string(),
                     PropertyValue::Pixels(screen_width + offset_pixels as i32),
@@ -360,11 +366,7 @@ impl AnimationEngine {
 
                     debug!(
                         "Property '{}': easing={:?}, progress={:.3}, eased={:.3}, value={:?}",
-                        prop_config.property,
-                        easing,
-                        raw_progress,
-                        eased_progress,
-                        interpolated
+                        prop_config.property, easing, raw_progress, eased_progress, interpolated
                     );
 
                     animation
@@ -388,7 +390,8 @@ impl AnimationEngine {
                         let interpolated = start_value.interpolate(target_value, eased_progress);
 
                         // Debug X position for fromLeft animations
-                        if (animation.config.animation_type == "fromLeft" || animation.config.easing == EasingFunction::EaseOutBack)
+                        if (animation.config.animation_type == "fromLeft"
+                            || animation.config.easing == EasingFunction::EaseOutBack)
                             && property_name == "x"
                         {
                             debug!("X INTERPOLATION: from={:?}, to={:?}, raw_progress={:.3}, eased_progress={:.3}, result={:?}",
@@ -535,13 +538,13 @@ impl AnimationEngine {
             if let Some(animation) = self.active_animations.get(animation_id) {
                 let now = Instant::now();
                 let duration = Duration::from_millis(animation.config.duration as u64);
-                
+
                 // Check if animation should have started (handle delay properly)
                 if now < animation.start_time {
                     // Animation hasn't started yet due to delay
                     return Some(animation.start_properties.clone());
                 }
-                
+
                 // Calculate elapsed time since animation actually started
                 let elapsed = now.duration_since(animation.start_time);
 

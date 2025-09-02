@@ -12,7 +12,7 @@ use tracing::{debug, error, info, warn};
 pub type ScratchpadConfigRef = Arc<ScratchpadConfig>;
 pub type ValidatedConfigRef = Arc<ValidatedConfig>;
 
-use crate::animation::{WindowAnimator, EasingFunction};
+use crate::animation::{EasingFunction, WindowAnimator};
 use crate::ipc::{
     EnhancedHyprlandClient, HyprlandClient, HyprlandEvent, MonitorInfo, WindowGeometry,
 };
@@ -258,8 +258,12 @@ impl GeometryCalculator {
         };
 
         // Ensure window stays within monitor bounds
-        let final_x = x.max(monitor.x).min(monitor.x + (monitor.width as i32) - width);
-        let final_y = y.max(monitor.y).min(monitor.y + (monitor.height as i32) - height);
+        let final_x = x
+            .max(monitor.x)
+            .min(monitor.x + (monitor.width as i32) - width);
+        let final_y = y
+            .max(monitor.y)
+            .min(monitor.y + (monitor.height as i32) - height);
 
         Ok(WindowGeometry {
             x: final_x,
@@ -1074,7 +1078,7 @@ impl ScratchpadsPlugin {
                     window.address, window.workspace.name
                 );
             }
-            
+
             // For auto-hide: find ANY scratchpad window that's not already in special workspace
             let active_window = windows
                 .iter()
@@ -3541,10 +3545,7 @@ impl ScratchpadsPlugin {
                 .into_iter()
                 .find(|w| w.address.to_string() == window_address)
             {
-                if let Err(e) = self
-                    .animate_window_show(&window, validated_config)
-                    .await
-                {
+                if let Err(e) = self.animate_window_show(&window, validated_config).await {
                     warn!("Failed to animate window show: {}", e);
                 }
             }
