@@ -4,7 +4,7 @@ use rustrland::animation::{
     properties::PropertyValue,
     timeline::{AnimationDirection, TimelineBuilder},
     window_animator::WindowAnimator,
-    AnimationConfig, AnimationEngine, AnimationPropertyConfig, SpringConfig,
+    AnimationConfig, AnimationEngine, AnimationPropertyConfig,
 };
 use rustrland::ipc::HyprlandClient;
 use std::collections::HashMap;
@@ -91,7 +91,7 @@ async fn demo_basic_directional(
     // Spawn foot terminal off-screen
     println!("   🚀 Spawning foot terminal for demo...");
     animator
-        .spawn_window_offscreen("foot", 200, -600, 800, 600)
+        .spawn_window_offscreen("foot", (200, -600), (800, 600))
         .await?;
     //spawn_window_offscreen("foot", 560, -400).await?;
 
@@ -169,7 +169,7 @@ async fn demo_spring_physics(
     // Spawn kitty terminal off-screen for variety
     println!("   🚀 Spawning foot terminal for spring demo...");
     animator
-        .spawn_window_offscreen("foot", 200, -600, 800, 600)
+        .spawn_window_offscreen("foot", (200, -600), (800, 600))
         .await?;
     //spawn_window_offscreen("foot", 400, -500).await?;
 
@@ -244,7 +244,7 @@ async fn demo_multi_property(
     // Spawn thunar file manager for this demo
     println!("   🚀 Spawning thunar file manager for multi-property demo...");
     animator
-        .spawn_window_offscreen("thunar", 200, -600, 800, 600)
+        .spawn_window_offscreen("thunar", (200, -600), (800, 600))
         .await?;
     //spawn_window_offscreen("thunar", -200, 150).await?;
 
@@ -328,7 +328,7 @@ async fn demo_custom_easing(
     // Quick demonstration with one spectacular easing
     println!("   🚀 Spawning terminal for bounce showcase...");
     animator
-        .spawn_window_offscreen("foot", 200, -600, 800, 600)
+        .spawn_window_offscreen("foot", (200, -600), (800, 600))
         .await?;
     //spawn_window_offscreen("foot", 300, -300).await?;
 
@@ -399,7 +399,7 @@ async fn demo_animation_sequence(
     // Spawn foot terminal for sequence demo
     println!("   🚀 Spawning terminal for sequence demo...");
     animator
-        .spawn_window_offscreen("foot", 200, -600, 800, 600)
+        .spawn_window_offscreen("foot", (200, -600), (800, 600))
         .await?;
     //spawn_window_offscreen("foot", 100, -300).await?;
 
@@ -535,13 +535,13 @@ async fn demo_performance_monitoring(
 
     // Spawn multiple windows off-screen at different positions
     animator
-        .spawn_window_offscreen("foot", 100, -600, 800, 600)
+        .spawn_window_offscreen("foot", (100, -600), (800, 600))
         .await?;
     animator
-        .spawn_window_offscreen("foot", 200, -600, 800, 600)
+        .spawn_window_offscreen("foot", (200, -600), (800, 600))
         .await?;
     animator
-        .spawn_window_offscreen("foot", 300, -600, 800, 600)
+        .spawn_window_offscreen("foot", (300, -600), (800, 600))
         .await?;
     //spawn_window_offscreen("foot", 200, -400).await?;
     //spawn_window_offscreen("foot", 400, -400).await?;
@@ -675,7 +675,12 @@ async fn demo_performance_monitoring(
             properties.insert("x".to_string(), PropertyValue::Pixels(i * 100));
 
             engine
-                .start_animation(format!("perf_test_{}", i), config, properties)
+                .start_animation(
+                    format!("perf_test_{}", i),
+                    config,
+                    properties.clone(),
+                    properties,
+                )
                 .await?;
         }
 

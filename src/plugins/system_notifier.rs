@@ -11,7 +11,9 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
-use crate::animation::{AnimationConfig, AnimationEngine, PropertyValue, WindowAnimator};
+use crate::animation::{
+    AnimationConfig, AnimationEngine, EasingFunction, PropertyValue, WindowAnimator,
+};
 use crate::ipc::{HyprlandClient, HyprlandEvent};
 use crate::plugins::Plugin;
 use std::sync::Arc;
@@ -1039,7 +1041,7 @@ impl SystemNotifier {
                     appear: Some(AnimationConfig {
                         animation_type: "fade".to_string(),
                         duration: 300,
-                        easing: "easeOut".to_string(),
+                        easing: EasingFunction::EaseOut,
                         opacity_from: 0.0,
                         ..Default::default()
                     }),
@@ -1258,14 +1260,14 @@ mod tests {
                 appear: Some(AnimationConfig {
                     animation_type: "fade".to_string(),
                     duration: 300,
-                    easing: "easeOut".to_string(),
+                    easing: EasingFunction::EaseOut,
                     opacity_from: 0.0,
                     ..Default::default()
                 }),
                 disappear: Some(AnimationConfig {
                     animation_type: "fade".to_string(),
                     duration: 200,
-                    easing: "easeIn".to_string(),
+                    easing: EasingFunction::EaseIn,
                     opacity_from: 1.0,
                     ..Default::default()
                 }),

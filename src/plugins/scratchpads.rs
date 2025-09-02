@@ -12,7 +12,7 @@ use tracing::{debug, error, info, warn};
 pub type ScratchpadConfigRef = Arc<ScratchpadConfig>;
 pub type ValidatedConfigRef = Arc<ValidatedConfig>;
 
-use crate::animation::WindowAnimator;
+use crate::animation::{EasingFunction, WindowAnimator};
 use crate::ipc::{
     EnhancedHyprlandClient, HyprlandClient, HyprlandEvent, MonitorInfo, WindowGeometry,
 };
@@ -243,13 +243,13 @@ impl GeometryCalculator {
 
             // Center the window if no specific positioning
             let x = if offset_x == 0 && config.offset.is_none() {
-                monitor.x + (monitor.width - width) / 2
+                monitor.x + (monitor.width as i32 - width) / 2
             } else {
                 base_x
             };
 
             let y = if offset_y == 0 && config.offset.is_none() {
-                monitor.y + (monitor.height - height) / 2
+                monitor.y + (monitor.height as i32 - height) / 2
             } else {
                 base_y
             };
@@ -258,8 +258,12 @@ impl GeometryCalculator {
         };
 
         // Ensure window stays within monitor bounds
-        let final_x = x.max(monitor.x).min(monitor.x + monitor.width - width);
-        let final_y = y.max(monitor.y).min(monitor.y + monitor.height - height);
+        let final_x = x
+            .max(monitor.x)
+            .min(monitor.x + (monitor.width as i32) - width);
+        let final_y = y
+            .max(monitor.y)
+            .min(monitor.y + (monitor.height as i32) - height);
 
         Ok(WindowGeometry {
             x: final_x,
@@ -286,15 +290,15 @@ impl GeometryCalculator {
             ));
         }
 
-        let width = Self::parse_dimension(parts[0], monitor.width)?;
-        let height = Self::parse_dimension(parts[1], monitor.height)?;
+        let width = Self::parse_dimension(parts[0], monitor.width as i32)?;
+        let height = Self::parse_dimension(parts[1], monitor.height as i32)?;
 
         // Apply max_size constraints if specified
         if let Some(max_size_str) = max_size {
             let max_parts: Vec<&str> = max_size_str.split_whitespace().collect();
             if max_parts.len() == 2 {
-                let max_width = Self::parse_dimension(max_parts[0], monitor.width)?;
-                let max_height = Self::parse_dimension(max_parts[1], monitor.height)?;
+                let max_width = Self::parse_dimension(max_parts[0], monitor.width as i32)?;
+                let max_height = Self::parse_dimension(max_parts[1], monitor.height as i32)?;
                 return Ok((width.min(max_width), height.min(max_height)));
             }
         }
@@ -317,8 +321,8 @@ impl GeometryCalculator {
             ));
         }
 
-        let x = Self::parse_dimension(parts[0], monitor.width)?;
-        let y = Self::parse_dimension(parts[1], monitor.height)?;
+        let x = Self::parse_dimension(parts[0], monitor.width as i32)?;
+        let y = Self::parse_dimension(parts[1], monitor.height as i32)?;
 
         Ok((x, y))
     }
@@ -745,14 +749,16 @@ impl ScratchpadsPlugin {
         let monitor_infos: Vec<MonitorInfo> = monitors
             .iter()
             .map(|m| MonitorInfo {
+                id: m.id,
                 name: m.name.clone(),
-                width: m.width as i32,
-                height: m.height as i32,
+                width: m.width,
+                height: m.height,
                 x: m.x,
                 y: m.y,
                 scale: m.scale,
                 is_focused: m.focused,
                 active_workspace_id: m.active_workspace.id,
+                refresh_rate: m.refresh_rate,
             })
             .collect();
 
@@ -1065,6 +1071,14 @@ impl ScratchpadsPlugin {
         if windows.is_empty() {
             Ok(format!("No windows found for scratchpad '{}'", name))
         } else {
+            // Debug: log all windows found
+            for window in &windows {
+                info!(
+                    "🔍 DEBUG: Found window {} on workspace '{}'",
+                    window.address, window.workspace.name
+                );
+            }
+
             // For auto-hide: find ANY scratchpad window that's not already in special workspace
             let active_window = windows
                 .iter()
@@ -1078,7 +1092,18 @@ impl ScratchpadsPlugin {
                 // Hide the active window (even if on different workspace)
                 self.hide_scratchpad_window(&client, window, name).await
             } else {
-                Ok(format!("Scratchpad '{}' is already hidden", name))
+                info!("🔍 DEBUG: No active window found (all in special workspaces), checking if any window is actually visible");
+                // If no window found that's not in special workspace, check if any window is actually visible
+                // and hide the first one we find
+                if let Some(window) = windows.first() {
+                    info!(
+                        "🔍 Forcing hide of window {} on workspace '{}'",
+                        window.address, window.workspace.name
+                    );
+                    self.hide_scratchpad_window(&client, window, name).await
+                } else {
+                    Ok(format!("Scratchpad '{}' is already hidden", name))
+                }
             }
         }
     }
@@ -2402,6 +2427,7 @@ impl ScratchpadsPlugin {
                 client.close_window(&window.address.to_string()).await?;
             } else {
                 client.hide_window(&window.address.to_string()).await?;
+                //self.animate_window_hide(&window, &config, monitor).await?;
             }
         }
 
@@ -3234,7 +3260,6 @@ impl ScratchpadsPlugin {
         &self,
         window: &hyprland::data::Client,
         config: &ValidatedConfig,
-        monitor: &MonitorInfo,
     ) -> Result<()> {
         let mut animator = self.window_animator.lock().await;
 
@@ -3242,29 +3267,28 @@ impl ScratchpadsPlugin {
         let animation_config = if let Some(animation_type) = &config.animation {
             crate::animation::AnimationConfig {
                 animation_type: animation_type.clone(),
-                direction: None,
                 duration: 250, // Default duration
-                easing: "ease-out-cubic".to_string(),
+                easing: EasingFunction::EaseOutCubic,
                 delay: 0,
                 offset: config.offset.clone().unwrap_or("100px".to_string()),
                 scale_from: 1.0,
                 opacity_from: 0.0,
-                spring: None,
                 properties: None,
-                sequence: None,
                 target_fps: 60,
-                hardware_accelerated: true,
             }
         } else {
             return Ok(()); // No animation configured
         };
 
         // Get target geometry
-        let target_geometry = GeometryCalculator::calculate_geometry(config, monitor)?;
+        let target_geometry = {
+            let monitor = animator.active_monitor.lock().await;
+            GeometryCalculator::calculate_geometry(config, &monitor)?
+        };
 
         // Trigger show animation
         animator
-            .show_window(
+            .show_window_with_animation(
                 &window.address.to_string(),
                 (target_geometry.x, target_geometry.y),
                 (target_geometry.width, target_geometry.height),
@@ -3287,18 +3311,14 @@ impl ScratchpadsPlugin {
         let animation_config = if let Some(animation_type) = &config.animation {
             crate::animation::AnimationConfig {
                 animation_type: animation_type.clone(),
-                direction: None,
                 duration: 200, // Slightly faster for hide
-                easing: "ease-in-cubic".to_string(),
+                easing: EasingFunction::EaseInCubic,
                 delay: 0,
                 offset: config.offset.clone().unwrap_or("100px".to_string()),
                 scale_from: 1.0,
                 opacity_from: 1.0,
-                spring: None,
                 properties: None,
-                sequence: None,
                 target_fps: 60,
-                hardware_accelerated: true,
             }
         } else {
             return Ok(()); // No animation configured
@@ -3525,10 +3545,7 @@ impl ScratchpadsPlugin {
                 .into_iter()
                 .find(|w| w.address.to_string() == window_address)
             {
-                if let Err(e) = self
-                    .animate_window_show(&window, validated_config, monitor)
-                    .await
-                {
+                if let Err(e) = self.animate_window_show(&window, validated_config).await {
                     warn!("Failed to animate window show: {}", e);
                 }
             }
@@ -3775,6 +3792,7 @@ mod tests {
 
     fn create_test_monitor() -> MonitorInfo {
         MonitorInfo {
+            id: 0,
             name: "DP-1".to_string(),
             width: 1920,
             height: 1080,
@@ -3783,6 +3801,7 @@ mod tests {
             scale: 1.0,
             is_focused: true,
             active_workspace_id: 1,
+            refresh_rate: 60.0,
         }
     }
 

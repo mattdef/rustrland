@@ -205,8 +205,8 @@ impl WindowPositioner {
             return Vec::new();
         }
 
-        let usable_width = monitor.width - (margin * 2);
-        let usable_height = monitor.height - (margin * 2);
+        let usable_width = monitor.width as i32 - (margin * 2);
+        let usable_height = monitor.height as i32 - (margin * 2);
 
         let interval_x = usable_width / (count + 1);
         let interval_y = usable_height / (count + 1);
@@ -234,8 +234,8 @@ impl WindowPositioner {
         let cols = ((count as f32).sqrt().ceil() as i32).max(1);
         let rows = ((count as f32 / cols as f32).ceil() as i32).max(1);
 
-        let usable_width = monitor.width - (margin * 2);
-        let usable_height = monitor.height - (margin * 2);
+        let usable_width = monitor.width as i32 - (margin * 2);
+        let usable_height = monitor.height as i32 - (margin * 2);
 
         let cell_width = usable_width / cols;
         let cell_height = usable_height / rows;
@@ -272,8 +272,8 @@ impl WindowPositioner {
     }
 
     fn center_positions(windows: &[WindowInfo], monitor: &MonitorInfo) -> Vec<(i32, i32)> {
-        let center_x = monitor.x + monitor.width / 2;
-        let center_y = monitor.y + monitor.height / 2;
+        let center_x = monitor.x + monitor.width as i32 / 2;
+        let center_y = monitor.y + monitor.height as i32 / 2;
 
         windows.iter().map(|_| (center_x, center_y)).collect()
     }
@@ -303,11 +303,11 @@ impl WindowPositioner {
 
             // Try different positions and find the one with minimal overlap
             let step = 50;
-            for y in
-                (monitor.y + margin..=monitor.y + monitor.height - height - margin).step_by(step)
+            for y in (monitor.y + margin..=monitor.y + monitor.height as i32 - height - margin)
+                .step_by(step)
             {
-                for x in
-                    (monitor.x + margin..=monitor.x + monitor.width - width - margin).step_by(step)
+                for x in (monitor.x + margin..=monitor.x + monitor.width as i32 - width - margin)
+                    .step_by(step)
                 {
                     let overlap_area =
                         Self::calculate_overlap_area(x, y, width, height, &used_positions);
@@ -400,14 +400,16 @@ impl LostWindowsPlugin {
         let monitor_infos: Vec<MonitorInfo> = monitors
             .iter()
             .map(|m| MonitorInfo {
+                id: m.id,
                 name: m.name.clone(),
-                width: m.width as i32,
-                height: m.height as i32,
+                width: m.width,
+                height: m.height,
                 x: m.x,
                 y: m.y,
                 scale: m.scale,
                 is_focused: m.focused,
                 active_workspace_id: m.active_workspace.id,
+                refresh_rate: m.refresh_rate,
             })
             .collect();
 
@@ -454,9 +456,9 @@ impl LostWindowsPlugin {
         for monitor in monitors {
             // Check if window overlaps with monitor bounds
             let overlap_x =
-                (win_x + win_width).min(monitor.x + monitor.width) - win_x.max(monitor.x);
+                (win_x + win_width).min(monitor.x + monitor.width as i32) - win_x.max(monitor.x);
             let overlap_y =
-                (win_y + win_height).min(monitor.y + monitor.height) - win_y.max(monitor.y);
+                (win_y + win_height).min(monitor.y + monitor.height as i32) - win_y.max(monitor.y);
 
             // Consider window contained if there's significant overlap
             if overlap_x > win_width / 4 && overlap_y > win_height / 4 {
@@ -584,10 +586,7 @@ impl LostWindowsPlugin {
             }
 
             // Set window position
-            if let Err(e) = client
-                .move_window_to_position(&window.address, new_x, new_y)
-                .await
-            {
+            if let Err(e) = client.move_window(&window.address, new_x, new_y).await {
                 warn!("Failed to move window to position: {}", e);
             } else {
                 debug!(
@@ -859,6 +858,7 @@ mod tests {
     #[test]
     fn test_window_positioning_grid() {
         let monitor = MonitorInfo {
+            id: 0,
             name: "DP-1".to_string(),
             width: 1920,
             height: 1080,
@@ -867,6 +867,7 @@ mod tests {
             scale: 1.0,
             is_focused: true,
             active_workspace_id: 1,
+            refresh_rate: 60.0,
         };
 
         let windows = vec![
@@ -925,6 +926,7 @@ mod tests {
         };
 
         let monitor = MonitorInfo {
+            id: 0,
             name: "DP-1".to_string(),
             width: 1920,
             height: 1080,
@@ -933,6 +935,7 @@ mod tests {
             scale: 1.0,
             is_focused: true,
             active_workspace_id: 1,
+            refresh_rate: 60.0,
         };
 
         let monitors = vec![monitor];

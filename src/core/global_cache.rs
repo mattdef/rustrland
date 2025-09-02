@@ -1,6 +1,6 @@
 use crate::ipc::MonitorInfo;
 use crate::plugins::workspaces_follow_focus::{
-    MonitorCache, MonitorInfoRef, WorkspaceCache, WorkspaceInfo, WorkspaceInfoRef,
+    MonitorCache, MonitorInfoRef, WorkspaceCache, WorkspaceInfoRef,
 };
 use anyhow::Result;
 use std::collections::HashMap;
@@ -64,7 +64,7 @@ impl GlobalStateCache {
 
         // Convert and add new monitors as Arc<RwLock<T>>
         for monitor in new_monitors {
-            let _workspace_info = WorkspaceInfo {
+            let _workspace_info = crate::ipc::WorkspaceInfo {
                 id: 1, // Default workspace - would be populated from Hyprland data
                 name: "workspace_1".to_string(),
                 monitor: monitor.name.clone(),
@@ -72,15 +72,17 @@ impl GlobalStateCache {
                 last_window_addr: String::new(),
             };
 
-            let monitor_info = crate::plugins::workspaces_follow_focus::MonitorInfo {
-                id: 1, // Default id - would be populated from Hyprland data
+            let monitor_info = crate::ipc::MonitorInfo {
+                id: monitor.id, // Default id - would be populated from Hyprland data
                 name: monitor.name.clone(),
-                focused: monitor.is_focused,
-                active_workspace: 1, // Default active workspace
-                width: monitor.width as u16,
-                height: monitor.height as u16,
+                width: monitor.width,
+                height: monitor.height,
                 x: monitor.x,
                 y: monitor.y,
+                scale: monitor.scale,
+                is_focused: monitor.is_focused,
+                active_workspace_id: monitor.active_workspace_id,
+                refresh_rate: monitor.refresh_rate,
             };
 
             let monitor_ref = Arc::new(RwLock::new(monitor_info));

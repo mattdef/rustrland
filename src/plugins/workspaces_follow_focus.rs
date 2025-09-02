@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
-use crate::ipc::{HyprlandClient, HyprlandEvent};
+use crate::ipc::{HyprlandClient, HyprlandEvent, MonitorInfo, WorkspaceInfo};
 use crate::plugins::Plugin;
 // Simplified animation types to avoid circular dependency
 #[derive(Debug, Clone)]
@@ -110,27 +110,6 @@ impl Default for WorkspacesFollowFocusConfig {
     }
 }
 
-#[derive(Debug)]
-pub struct MonitorInfo {
-    pub id: i128,
-    pub name: String,
-    pub focused: bool,
-    pub active_workspace: i32,
-    pub width: u16,
-    pub height: u16,
-    pub x: i32,
-    pub y: i32,
-}
-
-#[derive(Debug)]
-pub struct WorkspaceInfo {
-    pub id: i32,
-    pub name: String,
-    pub monitor: String,
-    pub windows: u16,
-    pub last_window_addr: String,
-}
-
 pub struct WorkspacesFollowFocusPlugin {
     config: WorkspacesFollowFocusConfig,
     monitors: HashMap<String, MonitorInfo>,
@@ -167,12 +146,14 @@ impl WorkspacesFollowFocusPlugin {
             let monitor_info = MonitorInfo {
                 id: monitor.id,
                 name: monitor.name.clone(),
-                focused: monitor.focused,
-                active_workspace: monitor.active_workspace.id,
+                active_workspace_id: monitor.active_workspace.id,
                 width: monitor.width,
                 height: monitor.height,
                 x: monitor.x,
                 y: monitor.y,
+                scale: monitor.scale,
+                is_focused: monitor.focused,
+                refresh_rate: monitor.refresh_rate,
             };
 
             if monitor.focused {
@@ -394,7 +375,7 @@ impl WorkspacesFollowFocusPlugin {
         let current_workspace = self
             .monitors
             .get(&focused_monitor)
-            .map(|m| m.active_workspace)
+            .map(|m| m.active_workspace_id)
             .unwrap_or(1);
 
         let workspace_monitor = self.get_workspace_monitor(workspace_id);
@@ -491,7 +472,7 @@ impl WorkspacesFollowFocusPlugin {
         let current_workspace = self
             .monitors
             .get(&focused_monitor)
-            .map(|m| m.active_workspace)
+            .map(|m| m.active_workspace_id)
             .unwrap_or(1);
 
         let target_workspace = current_workspace + offset;
@@ -528,7 +509,7 @@ impl WorkspacesFollowFocusPlugin {
             let is_active = self
                 .monitors
                 .values()
-                .any(|m| m.active_workspace == workspace.id);
+                .any(|m| m.active_workspace_id == workspace.id);
 
             let active_marker = if is_active { "🎯" } else { "  " };
 
@@ -544,7 +525,7 @@ impl WorkspacesFollowFocusPlugin {
         monitor_list.sort_by_key(|m| &m.name);
 
         for monitor in monitor_list {
-            let focused_marker = if monitor.focused { "🎯" } else { "  " };
+            let focused_marker = if monitor.is_focused { "🎯" } else { "  " };
             output.push_str(&format!(
                 "{} {}: {}x{} @ ({},{}) - Workspace {}\n",
                 focused_marker,
@@ -553,7 +534,7 @@ impl WorkspacesFollowFocusPlugin {
                 monitor.height,
                 monitor.x,
                 monitor.y,
-                monitor.active_workspace
+                monitor.active_workspace_id
             ));
         }
 
@@ -851,17 +832,19 @@ mod tests {
         let monitor = MonitorInfo {
             id: 0,
             name: "DP-1".to_string(),
-            focused: true,
-            active_workspace: 1,
+            is_focused: true,
+            active_workspace_id: 1,
             width: 1920,
             height: 1080,
             x: 0,
             y: 0,
+            scale: 1.0,
+            refresh_rate: 60.0,
         };
 
         assert_eq!(monitor.name, "DP-1");
-        assert!(monitor.focused);
-        assert_eq!(monitor.active_workspace, 1);
+        assert!(monitor.is_focused);
+        assert_eq!(monitor.active_workspace_id, 1);
         assert_eq!(monitor.width, 1920);
         assert_eq!(monitor.height, 1080);
     }

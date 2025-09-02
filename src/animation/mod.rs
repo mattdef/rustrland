@@ -14,8 +14,6 @@ pub mod window_animator;
 pub use easing::EasingFunction;
 pub use properties::{AnimationProperty, Color, PropertyValue, Transform};
 pub use timeline::{AnimationDirection, Keyframe, Timeline, TimelineBuilder};
-
-// Types are available via pub use statements above
 pub use window_animator::WindowAnimator;
 
 /// Advanced animation configuration with physics support
@@ -24,16 +22,13 @@ pub struct AnimationConfig {
     /// Animation type (slide, fade, scale, bounce, elastic, physics)
     pub animation_type: String,
 
-    /// Direction for directional animations (top, bottom, left, right, topLeft, etc.)
-    pub direction: Option<String>,
-
     /// Duration in milliseconds
     #[serde(default = "default_duration")]
     pub duration: u32,
 
     /// Easing function (linear, ease, easeIn, easeOut, easeInOut, bounce, elastic, spring)
     #[serde(default = "default_easing")]
-    pub easing: String,
+    pub easing: EasingFunction,
 
     /// Delay before animation starts (ms)
     #[serde(default)]
@@ -51,41 +46,12 @@ pub struct AnimationConfig {
     #[serde(default)]
     pub opacity_from: f32,
 
-    /// Spring physics parameters
-    pub spring: Option<SpringConfig>,
-
     /// Multiple animation properties to animate simultaneously
     pub properties: Option<Vec<AnimationPropertyConfig>>,
-
-    /// Animation sequence/chain
-    pub sequence: Option<Vec<AnimationConfig>>,
 
     /// Performance settings
     #[serde(default)]
     pub target_fps: u32,
-
-    /// Whether to use hardware acceleration hints
-    #[serde(default = "default_true")]
-    pub hardware_accelerated: bool,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SpringConfig {
-    /// Spring stiffness (higher = snappier)
-    #[serde(default = "default_spring_stiffness")]
-    pub stiffness: f32,
-
-    /// Spring damping (higher = less bouncy)
-    #[serde(default = "default_spring_damping")]
-    pub damping: f32,
-
-    /// Initial velocity
-    #[serde(default)]
-    pub initial_velocity: f32,
-
-    /// Mass of the animated object
-    #[serde(default = "default_spring_mass")]
-    pub mass: f32,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -93,7 +59,7 @@ pub struct AnimationPropertyConfig {
     pub property: String, // x, y, width, height, opacity, scale, rotation
     pub from: PropertyValue,
     pub to: PropertyValue,
-    pub easing: Option<String>,
+    pub easing: Option<EasingFunction>,
 }
 
 /// Runtime animation state
@@ -121,6 +87,7 @@ struct PerformanceMonitor {
     frame_times: Vec<Duration>,
     target_frame_time: Duration,
     adaptive_quality: bool,
+    resolution: (i32, i32),
 }
 
 impl Default for AnimationEngine {
@@ -137,6 +104,7 @@ impl AnimationEngine {
                 frame_times: Vec::with_capacity(60),
                 target_frame_time: Duration::from_millis(16), // 60fps
                 adaptive_quality: true,
+                resolution: (1980, 1080),
             },
         }
     }
@@ -147,8 +115,9 @@ impl AnimationEngine {
         id: String,
         config: AnimationConfig,
         initial_properties: HashMap<String, PropertyValue>,
+        end_properties: HashMap<String, PropertyValue>,
     ) -> Result<()> {
-        info!(
+        debug!(
             "🎬 Starting animation '{}' with type '{}', duration: {}ms",
             id, config.animation_type, config.duration
         );
@@ -175,9 +144,18 @@ impl AnimationEngine {
             // Traditional single-property animation
             // initial_properties = where window should END (final position)
             // We need to calculate where it should START and swap them
-            let start_properties = self.calculate_start_properties(&config, &initial_properties)?;
-            (start_properties, initial_properties) // start_properties = where to START, initial_properties = where to END
+            //let start_properties = self.calculate_start_properties(&config, &initial_properties)?;
+            (initial_properties, end_properties) // start_properties = where to START, initial_properties = where to END
         };
+
+        // Debug animation properties
+        debug!("🎯 Animation setup:");
+        for (key, value) in &final_initial_properties {
+            debug!("   Start {}: {:?}", key, value);
+        }
+        for (key, value) in &target_properties {
+            debug!("   Target {}: {:?}", key, value);
+        }
 
         let state = AnimationState {
             config: config.clone(),
@@ -194,7 +172,7 @@ impl AnimationEngine {
         self.active_animations.insert(id.clone(), state);
 
         // Don't start animation loop here - let start_window_animation_loop handle it
-        info!("✅ Animation '{}' initialized and ready", id);
+        debug!("✅ Animation '{}' initialized and ready", id);
 
         Ok(())
     }
@@ -210,39 +188,49 @@ impl AnimationEngine {
         match config.animation_type.as_str() {
             "fromTop" => {
                 let offset_pixels = self.parse_offset(&config.offset, "height")?;
-                if let Some(y) = start_props.get("y") {
-                    start_props.insert(
-                        "y".to_string(),
-                        PropertyValue::Pixels(y.as_pixels() - offset_pixels as i32),
-                    );
-                }
+                // Get window height to calculate proper off-screen position
+                let window_height = start_props
+                    .get("height")
+                    .map(|h| h.as_pixels())
+                    .unwrap_or(600);
+                // Start from completely off-screen at the top: -window_height - offset
+                start_props.insert(
+                    "y".to_string(),
+                    PropertyValue::Pixels(-window_height - offset_pixels as i32),
+                );
             }
             "fromBottom" => {
                 let offset_pixels = self.parse_offset(&config.offset, "height")?;
-                if let Some(y) = start_props.get("y") {
-                    start_props.insert(
-                        "y".to_string(),
-                        PropertyValue::Pixels(y.as_pixels() + offset_pixels as i32),
-                    );
-                }
+                // Get screen height to calculate proper off-screen position (simplified to 1080)
+                let screen_height = 1080; // TODO: Get actual screen height
+                                          // Start from completely off-screen at the bottom: screen_height + offset
+                start_props.insert(
+                    "y".to_string(),
+                    PropertyValue::Pixels(screen_height + offset_pixels as i32),
+                );
             }
             "fromLeft" => {
                 let offset_pixels = self.parse_offset(&config.offset, "width")?;
-                if let Some(x) = start_props.get("x") {
-                    start_props.insert(
-                        "x".to_string(),
-                        PropertyValue::Pixels(x.as_pixels() - offset_pixels as i32),
-                    );
-                }
+                // Get window width to calculate proper off-screen position
+                let window_width = start_props
+                    .get("width")
+                    .map(|w| w.as_pixels())
+                    .unwrap_or(800);
+                // Start from completely off-screen to the left: -window_width - offset
+                start_props.insert(
+                    "x".to_string(),
+                    PropertyValue::Pixels(-window_width - offset_pixels as i32),
+                );
             }
             "fromRight" => {
                 let offset_pixels = self.parse_offset(&config.offset, "width")?;
-                if let Some(x) = start_props.get("x") {
-                    start_props.insert(
-                        "x".to_string(),
-                        PropertyValue::Pixels(x.as_pixels() + offset_pixels as i32),
-                    );
-                }
+                // Get screen width to calculate proper off-screen position (simplified to 1920)
+                let screen_width = 1920; // TODO: Get actual screen width
+                                         // Start from completely off-screen to the right: screen_width + offset
+                start_props.insert(
+                    "x".to_string(),
+                    PropertyValue::Pixels(screen_width + offset_pixels as i32),
+                );
             }
             "fade" => {
                 start_props.insert(
@@ -285,7 +273,7 @@ impl AnimationEngine {
         info!("🎬 Starting 60fps animation loop for '{}'", animation_id);
 
         // Get animation duration to calculate total frames
-        let (duration_ms, easing_name) = {
+        let (duration_ms, easing_function) = {
             let animation = match self.active_animations.get(&animation_id) {
                 Some(anim) => anim,
                 None => return Ok(()),
@@ -312,7 +300,7 @@ impl AnimationEngine {
                 &mut self.active_animations,
                 &animation_id,
                 progress, // Raw progress, not eased yet
-                &easing_name,
+                &easing_function,
             )?;
 
             // Check if animation was stopped
@@ -352,13 +340,6 @@ impl AnimationEngine {
             }
         }
 
-        // Complete the animation
-        self.complete_animation(&animation_id).await?;
-        info!(
-            "✅ Animation '{}' completed after {} frames",
-            animation_id, total_frames
-        );
-
         Ok(())
     }
 
@@ -367,7 +348,7 @@ impl AnimationEngine {
         animations: &mut HashMap<String, AnimationState>,
         animation_id: &str,
         raw_progress: f32,
-        default_easing: &str,
+        default_easing: &EasingFunction,
     ) -> Result<()> {
         if let Some(animation) = animations.get_mut(animation_id) {
             // Check if we have custom property configurations
@@ -375,8 +356,7 @@ impl AnimationEngine {
                 // Multi-property animation with individual easing
                 for prop_config in properties_config {
                     // Use property-specific easing or default
-                    let easing_name = prop_config.easing.as_deref().unwrap_or(default_easing);
-                    let easing = EasingFunction::from_name(easing_name);
+                    let easing = prop_config.easing.as_ref().unwrap_or(default_easing);
                     let eased_progress = easing.apply(raw_progress);
 
                     // Interpolate from configured 'from' to configured 'to' value
@@ -385,12 +365,8 @@ impl AnimationEngine {
                         .interpolate(&prop_config.to, eased_progress);
 
                     debug!(
-                        "Property '{}': easing={}, progress={:.3}, eased={:.3}, value={:?}",
-                        prop_config.property,
-                        easing_name,
-                        raw_progress,
-                        eased_progress,
-                        interpolated
+                        "Property '{}': easing={:?}, progress={:.3}, eased={:.3}, value={:?}",
+                        prop_config.property, easing, raw_progress, eased_progress, interpolated
                     );
 
                     animation
@@ -399,13 +375,12 @@ impl AnimationEngine {
                 }
             } else {
                 // Single-property animation (legacy behavior)
-                let easing = EasingFunction::from_name(default_easing);
-                let eased_progress = easing.apply(raw_progress);
+                let eased_progress = default_easing.apply(raw_progress);
 
                 // Debug easing for bounce animations
                 if animation.config.animation_type == "bounce" && raw_progress > 0.6 {
                     debug!(
-                        "BOUNCE EASING: raw={:.3}, eased={:.6}, easing={}",
+                        "BOUNCE EASING: raw={:.3}, eased={:.6}, easing={:?}",
                         raw_progress, eased_progress, default_easing
                     );
                 }
@@ -414,13 +389,13 @@ impl AnimationEngine {
                     if let Some(start_value) = animation.start_properties.get(property_name) {
                         let interpolated = start_value.interpolate(target_value, eased_progress);
 
-                        // Debug Y position for bounce animations
-                        if animation.config.animation_type == "bounce"
-                            && property_name == "y"
-                            && raw_progress > 0.6
+                        // Debug X position for fromLeft animations
+                        if (animation.config.animation_type == "fromLeft"
+                            || animation.config.easing == EasingFunction::EaseOutBack)
+                            && property_name == "x"
                         {
-                            debug!("Y INTERPOLATION: from={:?}, to={:?}, eased_progress={:.6}, result={:?}",
-                                   start_value, target_value, eased_progress, interpolated);
+                            debug!("X INTERPOLATION: from={:?}, to={:?}, raw_progress={:.3}, eased_progress={:.3}, result={:?}",
+                                   start_value, target_value, raw_progress, eased_progress, interpolated);
                         }
 
                         animation
@@ -443,7 +418,7 @@ impl AnimationEngine {
             animations,
             animation_id,
             progress,
-            "linear",
+            &EasingFunction::Linear,
         )
     }
 
@@ -513,38 +488,17 @@ impl AnimationEngine {
         }
     }
 
-    /// Complete an animation and trigger callbacks
-    async fn complete_animation(&mut self, animation_id: &str) -> Result<()> {
-        if let Some(mut animation) = self.active_animations.remove(animation_id) {
-            animation.is_running = false;
-            animation.current_progress = 1.0;
-
-            info!("✅ Animation '{}' completed", animation_id);
-
-            // Handle animation sequences
-            if let Some(sequence) = &animation.config.sequence {
-                if !sequence.is_empty() {
-                    debug!("🔄 Starting next animation in sequence");
-                    // Start next animation in sequence
-                    // Implementation would continue the sequence here
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     /// Parse offset string (pixels or percentage)
     fn parse_offset(&self, offset: &str, dimension: &str) -> Result<f32> {
         if offset.ends_with('%') {
             let percent = offset.trim_end_matches('%').parse::<f32>()?;
             // Get screen dimension (simplified - would use actual screen resolution)
             let screen_size = match dimension {
-                "width" => 1920.0,
-                "height" => 1080.0,
-                _ => 1920.0,
+                "width" => self.performance_monitor.resolution.0,
+                "height" => self.performance_monitor.resolution.1,
+                _ => 1920,
             };
-            Ok(screen_size * percent / 100.0)
+            Ok(screen_size as f32 * percent / 100.0)
         } else if offset.ends_with("px") {
             Ok(offset.trim_end_matches("px").parse::<f32>()?)
         } else {
@@ -580,11 +534,19 @@ impl AnimationEngine {
         &mut self,
         animation_id: &str,
     ) -> Option<HashMap<String, PropertyValue>> {
-        let (raw_progress, duration_completed, easing_name) = {
+        let (raw_progress, duration_completed, easing_function) = {
             if let Some(animation) = self.active_animations.get(animation_id) {
-                // Calculate elapsed time
-                let elapsed = animation.start_time.elapsed();
+                let now = Instant::now();
                 let duration = Duration::from_millis(animation.config.duration as u64);
+
+                // Check if animation should have started (handle delay properly)
+                if now < animation.start_time {
+                    // Animation hasn't started yet due to delay
+                    return Some(animation.start_properties.clone());
+                }
+
+                // Calculate elapsed time since animation actually started
+                let elapsed = now.duration_since(animation.start_time);
 
                 // Calculate progress (0.0 to 1.0)
                 let raw_progress = if duration.is_zero() {
@@ -617,7 +579,7 @@ impl AnimationEngine {
             &mut self.active_animations,
             animation_id,
             raw_progress,
-            &easing_name,
+            &easing_function,
         )
         .ok()?;
 
@@ -708,8 +670,8 @@ pub struct PerformanceStats {
 fn default_duration() -> u32 {
     300
 }
-fn default_easing() -> String {
-    "ease-out-cubic".to_string() // Better default for scratchpads
+fn default_easing() -> EasingFunction {
+    EasingFunction::EaseOutCubic // Better default for scratchpads
 }
 fn default_offset() -> String {
     "200px".to_string() // Plus réaliste pour les scratchpads
@@ -734,18 +696,14 @@ impl Default for AnimationConfig {
     fn default() -> Self {
         Self {
             animation_type: "fromTop".to_string(),
-            direction: None,
             duration: default_duration(),
             easing: default_easing(),
             delay: 0,
             offset: default_offset(),
             scale_from: default_scale(),
             opacity_from: 0.0,
-            spring: None,
             properties: None,
-            sequence: None,
             target_fps: 60,
-            hardware_accelerated: default_true(),
         }
     }
 }
