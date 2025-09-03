@@ -221,23 +221,48 @@ offset = "100px"                   # Fixed offset value
 #### 1.1 Replace Manual Animation Logic
 **Current Issue**: `scratchpads.rs` uses manual `apply_animation_positions()` with hardcoded delays
 
+**Critical Discovery**: 
+- **21 calls** to `apply_animation_positions()` in 3 different contexts:
+  1. **Hide animations** (9 calls): `hide_scratchpad_window()` 
+  2. **Show existing window** (9 calls): `show_scratchpad_window()`
+  3. **Spawn new window** (3 calls): `configure_new_scratchpad_window()`
+- Each call followed by `tokio::time::sleep(Duration::from_millis(250))`
+- Hard-coded screen dimensions: `1920x1080` in 14+ locations
+- `calculate_animation_offset()` helper method used throughout
+
+**Affected Functions**:
+- `hide_scratchpad_window()` - Lines 1430-1670
+- `show_scratchpad_window()` - Lines 1706-1972  
+- `configure_new_scratchpad_window()` - Lines 2200-2400
+
 **Action Required**:
 ```rust
-// BEFORE (lines 1430-1456 in scratchpads.rs)
+// BEFORE: Manual positioning with delays (21 occurrences)
 self.apply_animation_positions(client, &window_address, start_x, start_y, end_x, end_y, width, height).await?;
 tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
 
-// AFTER: Use WindowAnimator integration
+// AFTER: WindowAnimator integration
 let mut animator = self.window_animator.lock().await;
-let config = AnimationConfig {
+let animation_config = AnimationConfig {
     animation_type: animation_type.clone(),
-    duration: self.get_animation_duration(&config),
-    easing: self.get_animation_easing(&config),
-    offset: config.offset.clone().unwrap_or_default(),
+    duration: 300, // Replace hardcoded 250ms
+    easing: EasingFunction::EaseOutCubic,
+    offset: config.offset.clone().unwrap_or("200px".to_string()),
     ..Default::default()
 };
-animator.show_window_with_animation(app, target_position, size, config).await?;
+
+// For new windows
+animator.show_window_with_animation(app, target_position, size, animation_config).await?;
+
+// For existing windows (hide/show)  
+animator.hide_window(&window_address, current_position, size, hide_config).await?;
 ```
+
+**⚠️ Breaking Changes Required**:
+1. **Function signatures**: Remove position parameters from internal methods
+2. **State management**: Window tracking now handled by WindowAnimator  
+3. **Monitor detection**: Must use real dimensions, not hardcoded 1920x1080
+4. **Error handling**: WindowAnimator errors differ from current HyprlandClient errors
 
 #### 1.2 Enhanced Configuration Structure
 **Add Advanced Animation Options**:
@@ -518,10 +543,16 @@ impl ScratchpadsPlugin {
 ## Implementation Timeline
 
 ### Week 1: Core Integration
-- [ ] Replace manual animation logic with WindowAnimator
-- [ ] Update ScratchpadConfig structure
-- [ ] Implement basic WindowAnimator integration
-- [ ] Test with existing animation types
+- [ ] **Day 1-2**: Replace manual animation logic with WindowAnimator (21 occurrences)
+- [ ] **Day 3**: Update ScratchpadConfig structure + validation
+- [ ] **Day 4**: Implement basic WindowAnimator integration  
+- [ ] **Day 5**: Fix hard-coded screen dimensions (14+ locations)
+- [ ] **Weekend**: Test with existing animation types + regression testing
+
+**⚠️ Risk Mitigation**:
+- Keep `apply_animation_positions()` as fallback during transition
+- Add feature flag `use_legacy_animations` for rollback capability
+- Comprehensive testing of all 11 animation types before removal
 
 ### Week 2: Enhanced Features
 - [ ] Add all easing functions support

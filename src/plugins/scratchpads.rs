@@ -12,7 +12,7 @@ use tracing::{debug, error, info, warn};
 pub type ScratchpadConfigRef = Arc<ScratchpadConfig>;
 pub type ValidatedConfigRef = Arc<ValidatedConfig>;
 
-use crate::animation::{EasingFunction, WindowAnimator};
+use crate::animation::{AnimationConfig, EasingFunction, WindowAnimator};
 use crate::ipc::{
     EnhancedHyprlandClient, HyprlandClient, HyprlandEvent, MonitorInfo, WindowGeometry,
 };
@@ -2538,6 +2538,58 @@ impl ScratchpadsPlugin {
 
         self.window_to_scratchpad
             .insert(window_address.to_string(), scratchpad_name.to_string());
+    }
+
+    /// Helper: Convert show animation to hide animation type for WindowAnimator
+    fn get_hide_animation_type(&self, show_animation: &Option<String>) -> String {
+        match show_animation.as_deref().unwrap_or_default() {
+            "fromTop" => "toTop".to_string(),
+            "fromBottom" => "toBottom".to_string(),
+            "fromLeft" => "toLeft".to_string(),
+            "fromRight" => "toRight".to_string(),
+            "fromTopLeft" => "toTopLeft".to_string(),
+            "fromTopRight" => "toTopRight".to_string(),
+            "fromBottomLeft" => "toBottomLeft".to_string(),
+            "fromBottomRight" => "toBottomRight".to_string(),
+            "fade" => "fade".to_string(),
+            "scale" => "scale".to_string(),
+            _ => "fade".to_string(), // Default fallback
+        }
+    }
+
+    /// NEW: Hide window using WindowAnimator system (Phase 1.1)
+    async fn hide_with_window_animator(
+        &self,
+        window_address: &str,
+        animation_type: &str,
+        config: &ValidatedConfig,
+    ) -> Result<()> {
+        let mut animator = self.window_animator.lock().await;
+        
+        // Get current window geometry
+        let geometry = self.get_cached_geometry(window_address).await
+            .ok_or_else(|| anyhow::anyhow!("Window geometry not available for animation"))?;
+        
+        // Create hide animation config
+        let hide_animation_type = self.get_hide_animation_type(&Some(animation_type.to_string()));
+        let animation_config = AnimationConfig {
+            animation_type: hide_animation_type,
+            duration: 300, // Default duration, will be configurable in Phase 2
+            easing: EasingFunction::EaseInCubic, // Faster hide animation
+            offset: config.offset.clone().unwrap_or("200px".to_string()),
+            ..Default::default()
+        };
+
+        // Use WindowAnimator for smooth hide animation
+        animator.hide_window(
+            window_address,
+            (geometry.x, geometry.y),
+            (geometry.width, geometry.height),
+            animation_config
+        ).await?;
+
+        info!("✨ WindowAnimator hide animation complete");
+        Ok(())
     }
 
     fn mark_scratchpad_hidden(&mut self, name: &str) {
