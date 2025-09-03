@@ -59,6 +59,7 @@ async fn demo(client: &HyprlandClient, monitor: &Monitor) -> anyhow::Result<()> 
         ("fromBottomRight", "From Bottom Right"),
         ("fade", "Fade"),
         ("scale", "Scale"),
+        ("spring", "Spring"),
     ];
 
     let monitor_info = MonitorInfo {
@@ -123,7 +124,7 @@ async fn demo(client: &HyprlandClient, monitor: &Monitor) -> anyhow::Result<()> 
 
         let config = AnimationConfig {
             animation_type: option_name.to_string(),
-            duration: 1000, // Very slow animation to see the bounce effect clearly
+            duration: 800, // Very slow animation to see the bounce effect clearly
             easing: EasingFunction::EaseOutBack,
             offset: "100px".to_string(), // Larger offset for more dramatic effect
             opacity_from: if option_name == &"fade" { 0.1 } else { 1.0 }, // Start fade from 0.1 for visibility
@@ -131,7 +132,7 @@ async fn demo(client: &HyprlandClient, monitor: &Monitor) -> anyhow::Result<()> 
         };
 
         let size = (800, 600);
-        let app = "foot";
+        let app = "foot"; // Try different apps: foot, firefox, thunar, dolphin, kate
 
         // show_animated_window("foot", "DP-1", (800, 600), config, &mut animator).await?;
         debug!(
@@ -170,8 +171,8 @@ async fn demo(client: &HyprlandClient, monitor: &Monitor) -> anyhow::Result<()> 
             sleep(Duration::from_secs(5)).await;
 
             let hide_config = AnimationConfig {
-                animation_type: "fade".to_string(),
-                duration: 1500,
+                animation_type: "toTop".to_string(),
+                duration: 800,
                 easing: EasingFunction::EaseIn,
                 offset: "100px".to_string(),
                 ..Default::default()
@@ -185,7 +186,7 @@ async fn demo(client: &HyprlandClient, monitor: &Monitor) -> anyhow::Result<()> 
                 )
                 .await?;
 
-            sleep(Duration::from_secs(2)).await;
+            sleep(Duration::from_secs(1)).await;
             animator.close_window(&window.address.to_string()).await?;
             println!("🔴 Window closed");
         } else {

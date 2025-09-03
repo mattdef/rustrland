@@ -1,6 +1,6 @@
 use anyhow::{Error, Result};
 use hyprland::data::Monitor;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
@@ -104,8 +104,29 @@ impl WindowAnimator {
             start_position.0, start_position.1
         );
 
-        let app_class = format!("{app}_toggle");
-        let app_command = format!("{} --app-id {}", app, app_class);
+        // Get existing windows before launching to identify the new one
+        let client_guard = self.hyprland_client.lock().await;
+        let client = match client_guard.as_ref() {
+            Some(client) => client,
+            None => return Ok(None),
+        };
+        
+        let existing_windows = client.get_windows().await?;
+        let existing_addresses: std::collections::HashSet<String> = existing_windows
+            .iter()
+            .map(|w| w.address.to_string())
+            .collect();
+        drop(client_guard);
+
+        // Determine app command and class based on app type
+        let (app_command, app_class) = if app == "foot" {
+            // foot supports --app-id for custom class
+            let class = format!("{app}_toggle");
+            (format!("{} --app-id {}", app, class), class)
+        } else {
+            // Other apps: use normal class detection
+            (app.to_string(), app.to_string())
+        };
 
         // Get Hyprland style for consistent appearance
         let style = self.get_hyprland_style().await;
@@ -177,7 +198,14 @@ impl WindowAnimator {
         )
         .await?;
 
-        let window = self.wait_for_window_by_class(&app_class, 5000).await?;
+        // Wait for the new window using the improved detection
+        let window = if app == "foot" {
+            // For foot, we can use the custom class
+            self.wait_for_window_by_class(&app_class, 5000).await?
+        } else {
+            // For other apps, detect new window by comparing addresses
+            self.wait_for_new_window_by_class(&app_class, &existing_addresses, 5000).await?
+        };
 
         if let Some(window) = window {
             let address = window.address.to_string();
@@ -530,7 +558,7 @@ impl WindowAnimator {
             let refresh_ms = (1000.0 / refresh_rate).round() as u64;
 
             loop {
-                tokio::time::sleep(tokio::time::Duration::from_millis(refresh_ms)).await; // 60fps
+                tokio::time::sleep(tokio::time::Duration::from_millis(refresh_ms)).await; // Adapt to refresh rate of the monitor
                 frame_count += 1;
 
                 let properties = {
@@ -807,6 +835,65 @@ impl WindowAnimator {
 
         debug!(
             "⏰ Timeout waiting for {} window after {}ms",
+            class, timeout_ms
+        );
+        Ok(None)
+    }
+
+    /// Wait for new window with specific class by comparing before/after window lists
+    pub async fn wait_for_new_window_by_class(
+        &self,
+        class: &str,
+        existing_addresses: &std::collections::HashSet<String>,
+        timeout_ms: u64,
+    ) -> Result<Option<hyprland::data::Client>> {
+        debug!(
+            "🔍 Waiting for NEW {} window (timeout: {}ms)",
+            class, timeout_ms
+        );
+
+        let client_guard = self.hyprland_client.lock().await;
+        let client = match client_guard.as_ref() {
+            Some(client) => client,
+            None => return Ok(None),
+        };
+
+        let max_attempts = timeout_ms / 100;
+
+        for attempt in 1..=max_attempts {
+            let windows = client.get_windows().await?;
+
+            // Find new windows of the specified class
+            if let Some(window) = windows
+                .iter()
+                .find(|w| {
+                    w.class.to_lowercase().contains(&class.to_lowercase()) 
+                    && !existing_addresses.contains(&w.address.to_string())
+                })
+                .cloned()
+            {
+                debug!(
+                    "✅ Found NEW {} window after {}ms: {}",
+                    class,
+                    attempt * 100,
+                    window.address
+                );
+                return Ok(Some(window));
+            }
+
+            // Progress logging every 500ms to avoid spam
+            if attempt % 5 == 0 {
+                debug!(
+                    "Still waiting for NEW {} window... attempt {}/{}",
+                    class, attempt, max_attempts
+                );
+            }
+
+            sleep(Duration::from_millis(100)).await;
+        }
+
+        debug!(
+            "⏰ Timeout waiting for NEW {} window after {}ms",
             class, timeout_ms
         );
         Ok(None)
