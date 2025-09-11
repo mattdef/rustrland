@@ -298,6 +298,29 @@ See `KEYBINDINGS.md` for complete setup guide and alternative key schemes.
 - **tracing**: Structured logging
 - **anyhow/thiserror**: Error handling
 
+## Hyprland-rs Library Documentation
+
+**📚 Complete hyprland-rs documentation is available in [`docs/hyprland-rs/`](docs/hyprland-rs/)**
+
+### Quick Reference
+- **[Overview](docs/hyprland-rs/overview.md)**: Library architecture and core concepts
+- **[Module Documentation](docs/hyprland-rs/modules.md)**: Detailed module APIs and usage patterns
+- **[Examples](docs/hyprland-rs/examples.md)**: Practical code examples and common patterns
+- **[API Reference](docs/hyprland-rs/api-reference.md)**: Complete function signatures and types
+- **[Integration Notes](docs/hyprland-rs/integration-notes.md)**: Rustrland-specific integration patterns
+
+### Key hyprland-rs Modules Used in Rustrland
+- **`data`**: Monitor, workspace, and window information retrieval
+- **`dispatch`**: Window management and command execution
+- **`event_listener`**: Real-time Hyprland event monitoring
+- **`keyword`**: Dynamic configuration management
+- **`ctl`**: Advanced Hyprland control operations
+
+### Version Information
+- **Current**: hyprland-rs 0.4.0-beta.2
+- **Repository**: https://github.com/hyprland-community/hyprland-rs
+- **Documentation**: https://docs.rs/hyprland/latest/hyprland/
+
 ### 🔧 System Integration Status
 - **Hot Reload System**: ✅ **FULLY INTEGRATED** - Production-ready with daemon integration complete
 - **Animation System**: Available and functional, ready for plugin integration

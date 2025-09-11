@@ -1,5 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use hyprland::shared::HyprData;
+use hyprland::dispatch::{Dispatch, DispatchType, WorkspaceIdentifier};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -17,6 +19,9 @@ use crate::ipc::{
     EnhancedHyprlandClient, HyprlandClient, HyprlandEvent, MonitorInfo, WindowGeometry,
 };
 use crate::plugins::Plugin;
+
+// Import pour la position du curseur
+use hyprland::data::CursorPosition;
 
 // ============================================================================
 // CONFIGURATION STRUCTURES
@@ -317,6 +322,7 @@ pub struct ScratchpadState {
     pub excluded_by: HashSet<String>, // Which scratchpads excluded this one
     pub cached_position: Option<(String, i32, i32, i32, i32)>, // monitor, x, y, w, h
     pub is_attached: bool,            // Whether window is attached to scratchpad system
+    pub original_workspace: Option<String>, // Workspace actif avant l'appel du scratchpad
 }
 
 impl Default for ScratchpadState {
@@ -328,6 +334,7 @@ impl Default for ScratchpadState {
             excluded_by: HashSet::new(),
             cached_position: None,
             is_attached: true, // Default to attached
+            original_workspace: None,
         }
     }
 }
@@ -386,6 +393,7 @@ impl GeometryCalculator {
         let final_y = y
             .max(monitor.y)
             .min(monitor.y + (monitor.height as i32) - height);
+
 
         Ok(WindowGeometry {
             x: final_x,
@@ -1253,25 +1261,52 @@ impl ScratchpadsPlugin {
 
     /// Apply windowrules for special workspace (improved workflow)
     async fn apply_special_workspace_rules(&self, workspace: &str) -> Result<()> {
+        info!("🔧 Application des règles pour workspace spécial: {}", workspace);
+
+        match self.workspace_exists(workspace).await? {
+            false => Dispatch::call(DispatchType::ToggleSpecialWorkspace(Some(workspace.to_string())))?,
+            _ => ()
+        }
+        // 1. Créer le workspace spécial s'il n'existe pas
+        
+
         let rules = vec![
             format!("hyprctl keyword windowrulev2 'float, workspace:{}'", workspace),
+            format!("hyprctl keyword windowrulev2 'noanim, workspace:{}'", workspace),
             format!("hyprctl keyword windowrulev2 'nodecoration, workspace:{}'", workspace),
             format!("hyprctl keyword windowrulev2 'noshadow, workspace:{}'", workspace),
         ];
         
         for rule in rules {
-            if let Err(e) = tokio::process::Command::new("sh")
+            debug!("🔧 Executing rule: {}", rule);
+            match tokio::process::Command::new("sh")
                 .arg("-c")
                 .arg(&rule)
                 .output()
                 .await
             {
-                warn!("Failed to apply workspace rule: {}", e);
+                Ok(output) => {
+                    if !output.status.success() {
+                        warn!("❌ Rule failed: {} - stderr: {}", rule, String::from_utf8_lossy(&output.stderr));
+                    } else {
+                        debug!("✅ Rule applied successfully: {}", rule);
+                    }
+                }
+                Err(e) => {
+                    warn!("❌ Failed to execute rule: {} - error: {}", rule, e);
+                }
             }
         }
         
         debug!("🎨 Applied windowrules for workspace: {}", workspace);
         Ok(())
+    }
+
+    async fn workspace_exists(&self, workspace_name: &str) -> Result<bool> {
+        use hyprland::data::Workspaces;
+        
+        let workspaces = Workspaces::get_async().await?;
+        Ok(workspaces.iter().any(|w| w.name == workspace_name))
     }
 
     /// Find new window by comparing before/after snapshots
@@ -1306,19 +1341,33 @@ impl ScratchpadsPlugin {
     /// Apply specific windowrules to an identified scratchpad window
     async fn apply_scratchpad_window_rules(&self, window_address: &str) -> Result<()> {
         let rules = vec![
+            //format!("hyprctl dispatch togglefloating address:{}", window_address),
             format!("hyprctl keyword windowrulev2 'float, address:{}'", window_address),
+            format!("hyprctl keyword windowrulev2 'noanim, address:{}'", window_address),
             format!("hyprctl keyword windowrulev2 'nodecoration, address:{}'", window_address),
             format!("hyprctl keyword windowrulev2 'noshadow, address:{}'", window_address),
+            format!("hyprctl keyword windowrulev2 'immediate, address:{}'", window_address),
+            //format!("hyprctl dispatch togglefloating address:{}", window_address),
         ];
         
         for rule in rules {
-            if let Err(e) = tokio::process::Command::new("sh")
+            debug!("🔧 Executing rule: {}", rule);
+            match tokio::process::Command::new("sh")
                 .arg("-c")
                 .arg(&rule)
                 .output()
                 .await
             {
-                warn!("Failed to apply window rule: {}", e);
+                Ok(output) => {
+                    if !output.status.success() {
+                        warn!("❌ Rule failed: {} - stderr: {}", rule, String::from_utf8_lossy(&output.stderr));
+                    } else {
+                        debug!("✅ Rule applied successfully: {}", rule);
+                    }
+                }
+                Err(e) => {
+                    warn!("❌ Failed to execute rule: {} - error: {}", rule, e);
+                }
             }
         }
         
@@ -1439,27 +1488,66 @@ impl ScratchpadsPlugin {
         name: &str,
     ) -> Result<()> {
         let window_address = window.address.to_string();
-        
-        // Add to tracking
+
+        // Récupérer la géométrie de la fenêtre via l'enhanced client
+        let geometry = match self.enhanced_client.get_window_geometry(&window_address).await {
+            Ok(geo) => geo,
+            Err(e) => {
+                warn!("Failed to get geometry for window {}: {}", window_address, e);
+                // Fallback sans informations de position
+                let window_state = WindowState {
+                    address: window_address.clone(),
+                    is_visible: true,
+                    last_position: None,
+                    monitor: None,
+                    workspace: Some(window.workspace.name.clone()),
+                    last_focus: Some(Instant::now()),
+                };
+                let state = self.states.entry(name.to_string()).or_default();
+                state.windows.push(window_state);
+                self.window_to_scratchpad.insert(window_address, name.to_string());
+                return Ok(());
+            }
+        };
+
+        // Déterminer le moniteur contenant cette fenêtre
+        let monitors = match self.get_monitors().await {
+            Ok(m) => m,
+            Err(e) => {
+                warn!("Failed to get monitors: {}", e);
+                Vec::new()
+            }
+        };
+
+        let monitor_name = monitors.iter()
+            .find(|monitor| {
+                geometry.x >= monitor.x
+                && geometry.x < monitor.x + (monitor.width as i32)
+                && geometry.y >= monitor.y
+                && geometry.y < monitor.y + (monitor.height as i32)
+            })
+            .map(|m| m.name.clone());
+
+        // Ajouter au tracking
         self.window_to_scratchpad.insert(window_address.clone(), name.to_string());
-        
-        // Update state
+
+        // Mettre à jour l'état
         let state = self.states.entry(name.to_string()).or_default();
         state.is_spawned = true;
         state.last_used = Some(Instant::now());
-        
+
         let window_state = WindowState {
             address: window_address,
             is_visible: true,
-            last_position: None,
-            monitor: None,
-            workspace: None,
+            last_position: Some((geometry.x, geometry.y, geometry.width, geometry.height)),
+            monitor: monitor_name,
+            workspace: Some(window.workspace.name.clone()),
             last_focus: Some(Instant::now()),
         };
-        
+
         state.windows.push(window_state);
-        
-        debug!("🎯 Finalized setup for scratchpad '{}'", name);
+
+        debug!("🎯 Finalized setup for scratchpad '{}' with complete position data", name);
         Ok(())
     }
 
@@ -1916,6 +2004,12 @@ impl ScratchpadsPlugin {
         // Step 2: Capture ORIGINAL active workspace BEFORE any spawn operations
         let original_active_workspace = client.get_active_workspace().await?;
         debug!("📋 Original active workspace: {}", original_active_workspace);
+
+        // Store original workspace in state for later restoration
+        {
+            let state = self.states.entry(name.to_string()).or_default();
+            state.original_workspace = Some(original_active_workspace.clone());
+        }
         
         // Step 3: Take snapshot of existing windows BEFORE spawn
         let before_snapshot = client.get_windows().await?;
@@ -1963,29 +2057,20 @@ impl ScratchpadsPlugin {
             command
         );
         
-        info!("🚀 Spawning positioned at ({}, {}) with size {}x{} in {}: {}", 
+        debug!("🚀 Spawning positioned at ({}, {}) with size {}x{} in {}: {}", 
               spawn_x, spawn_y, geometry.width, geometry.height, special_workspace, command);
         client.spawn_app(&spawn_command).await?;
 
-        // Step 5: Wait and find new window by comparison
+        // Step 7: Wait and find new window by comparison
         let new_window = self.find_new_window_by_comparison(&client, &before_addresses, 5000).await?
             .ok_or_else(|| anyhow::anyhow!("Failed to find newly spawned window"))?;
         
         let window_address = new_window.address.to_string();
-        info!("✅ Found new scratchpad window: {} (class: '{}')", window_address, new_window.class);
+        debug!("✅ Found new scratchpad window: {} (class: '{}')", window_address, new_window.class);
 
-        // Step 6: Apply specific windowrules to the identified window
+        // Step 8: Apply specific windowrules to the identified window
         self.apply_scratchpad_window_rules(&window_address).await?;
-
-        // Step 7: Log window class for debugging (no more AUTO_DETECT needed)
         debug!("📋 Window class '{}' for scratchpad '{}'", new_window.class, name);
-
-        // Step 8: Transfer to ORIGINAL active workspace and animate
-        // Note: monitor and geometry already calculated above, reuse them
-        
-        // Move to the workspace that was active when user called toggle (NOT current workspace)
-        client.move_window_to_workspace(&window_address, &original_active_workspace).await?;
-        debug!("📦 Moved window to original active workspace: {}", original_active_workspace);
 
         // Step 9: Start animation from special workspace to final position
         if let Some(animation_type) = &config.animation {
@@ -2016,7 +2101,7 @@ impl ScratchpadsPlugin {
 
     /// Hide a scratchpad window with animation, then move to special workspace
     async fn hide_scratchpad_window(
-        &self,
+        &mut self,
         client: &HyprlandClient,
         window: &hyprland::data::Client,
         name: &str,
@@ -2026,6 +2111,19 @@ impl ScratchpadsPlugin {
         // Get config for restore_focus setting and animation
         let config = self.get_validated_config(name)?;
         let window_address = window.address.to_string();
+
+        // Return to original workspace before hiding
+        if let Some(state) = self.states.get(name) {
+            if let Some(original_workspace) = &state.original_workspace {
+                debug!("🔄 Returning to original workspace: {}", original_workspace);
+                use hyprland::dispatch::{Dispatch, DispatchType, WorkspaceIdentifierWithSpecial};
+                if let Err(e) = Dispatch::call(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
+                    original_workspace.parse().unwrap_or(1)
+                ))) {
+                    warn!("⚠️  Failed to return to original workspace {}: {}", original_workspace, e);
+                }
+            }
+        }
 
         // Store current focus for potential restoration
         let should_restore_focus = config.restore_focus;
@@ -2076,11 +2174,8 @@ impl ScratchpadsPlugin {
             ).await?;
         }
 
-        // Move to special workspace named after the scratchpad
-        let special_workspace = format!("special:{name}");
-        client
-            .move_window_to_workspace(&window_address, &special_workspace)
-            .await?;
+        // Update visibility state to reflect that window is now hidden
+        self.mark_window_hidden(name, &window_address);
 
         // Restore focus to previously focused window if enabled
         if should_restore_focus {
@@ -2094,7 +2189,7 @@ impl ScratchpadsPlugin {
 
     /// Show a scratchpad window on current workspace
     async fn show_scratchpad_window(
-        &self,
+        &mut self,
         client: &HyprlandClient,
         window: &hyprland::data::Client,
         config: &ValidatedConfig,
@@ -2106,14 +2201,14 @@ impl ScratchpadsPlugin {
         let window_address = window.address.to_string();
 
         // Get target monitor and its active workspace
-        let target_monitor = self.get_target_monitor(config).await?;
-        let target_workspace = target_monitor.active_workspace_id.to_string();
-        debug!("🔍 Target workspace: {}", target_workspace);
+        let _target_monitor = self.get_target_monitor(config).await?;
+        //let target_workspace = _target_monitor.active_workspace_id.to_string();
+        //debug!("🔍 Target workspace: {}", target_workspace);
 
         // Move to target monitor's active workspace (not special)
-        client
+        /*client
             .move_window_to_workspace(&window_address, &target_workspace)
-            .await?;
+            .await?;*/
 
         // Apply geometry and focus using proper animation system
         if let Ok(monitor) = self.get_target_monitor(config).await {
@@ -2236,6 +2331,9 @@ impl ScratchpadsPlugin {
                 client.focus_window(&window_address).await?;
             }
         }
+
+        // Update visibility state
+        self.mark_window_visible(name, &window_address);
 
         Ok(format!("Scratchpad '{name}' shown"))
     }
@@ -2576,6 +2674,23 @@ impl ScratchpadsPlugin {
             .insert(window_address.to_string(), scratchpad_name.to_string());
     }
 
+    fn mark_window_hidden(&mut self, scratchpad_name: &str, window_address: &str) {
+        let state = self.states.entry(scratchpad_name.to_string()).or_default();
+        state.last_used = Some(Instant::now());
+
+        // Find window state and mark as hidden
+        if let Some(window_state) = state
+            .windows
+            .iter_mut()
+            .find(|w| w.address == *window_address)
+        {
+            window_state.is_visible = false;
+            debug!("🔍 Marked window {} as hidden for scratchpad '{}'", window_address, scratchpad_name);
+        } else {
+            warn!("⚠️  Attempted to mark non-existent window {} as hidden for scratchpad '{}'", window_address, scratchpad_name);
+        }
+    }
+
     /// Helper: Convert show animation to hide animation type for WindowAnimator
     fn get_hide_animation_type(&self, show_animation: &Option<String>) -> String {
         match show_animation.as_deref().unwrap_or_default() {
@@ -2799,7 +2914,7 @@ impl Plugin for ScratchpadsPlugin {
     }
 
     async fn handle_event(&mut self, event: &HyprlandEvent) -> Result<()> {
-        debug!("🪟 Scratchpads handling event: {:?}", event);
+        //debug!("🪟 Scratchpads handling event: {:?}", event);
 
         match event {
             HyprlandEvent::WindowOpened { window } => {
@@ -2832,7 +2947,10 @@ impl Plugin for ScratchpadsPlugin {
                 self.handle_focus_changed(window).await;
             }
             HyprlandEvent::Other(msg) => {
-                debug!("Other event: {}", msg);
+                // Reduce log noise for heartbeat events
+                if msg != "heartbeat" {
+                    debug!("Other event: {}", msg);
+                }
                 self.handle_other_event(msg).await;
             }
         }
@@ -3219,7 +3337,10 @@ impl ScratchpadsPlugin {
     }
 
     async fn handle_other_event(&mut self, event_msg: &str) {
-        debug!("🔄 Processing other event: {}", event_msg);
+        // Reduce log noise for heartbeat events
+        if event_msg != "heartbeat" {
+            debug!("🔄 Processing other event: {}", event_msg);
+        }
 
         // Handle specific other events that might be useful for scratchpads
         if event_msg.starts_with("windowtitle>>") {

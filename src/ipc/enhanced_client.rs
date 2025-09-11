@@ -211,11 +211,11 @@ impl EnhancedHyprlandClient {
                 }
             }
             "activewindow" => {
-                // Format: "windowclass,windowtitle" - need to handle comma in title
-                let parts: Vec<&str> = event_data.splitn(2, ',').collect();
-                if !parts.is_empty() {
+                // Format: "windowaddress,windowclass,windowtitle"
+                let parts: Vec<&str> = event_data.splitn(3, ',').collect();
+                if parts.len() >= 1 {
                     Some(HyprlandEvent::WindowFocusChanged {
-                        window: parts[0].to_string(), // We'll use class for now
+                        window: parts[0].to_string(), // Use window address
                     })
                 } else {
                     None
