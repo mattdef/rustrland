@@ -666,4 +666,24 @@ impl HyprlandClient {
 
         Ok(())
     }
+
+    /// Center cursor in a window based on its geometry
+    pub async fn center_cursor_in_window(&self, geometry: &WindowGeometry) -> Result<()> {
+        debug!("🎯 Centering cursor in window at {}x{} ({}x{})", 
+               geometry.x, geometry.y, geometry.width, geometry.height);
+
+        let center_x = geometry.x + geometry.width / 2;
+        let center_y = geometry.y + geometry.height / 2;
+
+        debug!("🖱️ Moving cursor to center: ({}, {})", center_x, center_y);
+
+        let cursor_command = format!("{} {}", center_x, center_y);
+        self.dispatch(DispatchType::Custom(
+            "movecursor",
+            Box::leak(cursor_command.into_boxed_str()),
+        ))
+        .await?;
+
+        Ok(())
+    }
 }

@@ -1156,18 +1156,6 @@ impl ScratchpadsPlugin {
         result
     }
 
-    /// Start geometry synchronization for a window
-    async fn start_geometry_sync(&mut self, window_address: &str) {
-        // Cancel any existing sync for this window
-        if let Some(handle) = self.sync_tasks.remove(window_address) {
-            handle.abort();
-        }
-
-        // window_address was only needed for geometry sync (now removed)
-        // Geometry sync loop removed - was obsolete
-        // Variables enhanced_client, geometry_cache, window_key were only used for sync
-    }
-
     /// Bulk update geometries for all tracked windows
     pub async fn sync_all_geometries(&mut self) {
         let window_addresses: Vec<String> = self.window_to_scratchpad.keys().cloned().collect();
@@ -1375,8 +1363,8 @@ impl ScratchpadsPlugin {
         Ok(())
     }
 
-    /// Animate window from special workspace to final position
-    async fn animate_from_special_to_position(
+    /// Animate window from any position to target position
+    async fn animate_window_to_position(
         &self,
         client: &crate::ipc::HyprlandClient,
         window: &hyprland::data::Client,
@@ -1384,19 +1372,11 @@ impl ScratchpadsPlugin {
         geometry: &crate::ipc::WindowGeometry,
         animation_type: &str,
         name: &str,
+        start_position: (i32, i32),
     ) -> Result<()> {
         let window_address = window.address.to_string();
         
-        // Calculate start position (off-screen)
-        let monitor = self.get_target_monitor(config).await?;
-        let start_position = self.calculate_spawn_position_for_animation(
-            animation_type,
-            (geometry.x, geometry.y),
-            (geometry.width, geometry.height),
-            &monitor,
-        ).await?;
-        
-        // Position window off-screen first
+        // Position window at start position first
         client.resize_and_position_window(
             &window_address,
             start_position.0,
@@ -1421,6 +1401,7 @@ impl ScratchpadsPlugin {
             target_fps: 60,
         };
         
+        let monitor = self.get_target_monitor(config).await?;
         let animator = self.window_animator.lock().await;
         animator.set_active_monitor(&monitor).await;
         
@@ -1556,13 +1537,6 @@ impl ScratchpadsPlugin {
             .get(name)
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("Scratchpad '{}' not found or not validated", name))
-    }
-
-    async fn cancel_hide_delay(&mut self, name: &str) {
-        if let Some(handle) = self.hide_tasks.remove(name) {
-            handle.abort();
-            debug!("🚫 Cancelled hide delay for scratchpad '{}'", name);
-        }
     }
 
     /// Main toggle logic for scratchpads
@@ -1775,180 +1749,9 @@ impl ScratchpadsPlugin {
         }
     }
 
-    /// Spawn a new scratchpad application
-    async fn spawn_scratchpad(&mut self, name: &str, config: &ValidatedConfig) -> Result<String> {
-        debug!("🚀 Spawning scratchpad '{}'", name);
-        debug!(
-            "📋 Scratchpad config - size: '{}', animation: {:?}, margin: {:?}",
-            config.size, config.animation, config.margin
-        );
-        debug!("📋 Animation: {:?}", config.animation);
-
-        let client = self.get_hyprland_client().await?;
-        let vars = self.variables.read().await;
-        let expanded_command = self.expand_command(&config.command, &vars);
-
-        info!("🚀 Spawning application: {}", expanded_command);
-        client.spawn_app(&expanded_command).await?;
-
-        // Wait for the window to appear and configure it immediately
-        let window = self
-            .wait_for_window_and_configure(name, config, 10000)
-            .await?;
-
-        // Update state
-        let state = self.states.entry(name.to_string()).or_default();
-        state.is_spawned = true;
-        state.last_used = Some(Instant::now());
-
-        // Add window to tracking
-        self.window_to_scratchpad
-            .insert(window.address.to_string(), name.to_string());
-
-        let window_state = WindowState {
-            address: window.address.to_string(),
-            is_visible: true,
-            last_position: None,
-            monitor: None,
-            workspace: None,
-            last_focus: Some(Instant::now()),
-        };
-
-        state.windows.push(window_state);
-
-        Ok(format!("Scratchpad '{name}' spawned and configured"))
-    }
-
-    /// Toggle visibility of existing windows
-    async fn toggle_visibility(
-        &mut self,
-        name: &str,
-        config: &ValidatedConfig,
-        windows: &[hyprland::data::Client],
-    ) -> Result<String> {
-        debug!("🪟 Toggling visibility for scratchpad '{}'", name);
-
-        let _client = self.get_hyprland_client().await?;
-        let target_monitor = self.get_target_monitor(config).await?;
-
-        // Check current visibility state
-        let is_visible = self.is_scratchpad_visible(name);
-
-        if is_visible {
-            self.hide_scratchpad(name, config, windows).await
-        } else {
-            self.show_scratchpad(name, config, windows, &target_monitor)
-                .await
-        }
-    }
-
-    /// Show scratchpad with proper positioning
-    async fn show_scratchpad(
-        &mut self,
-        name: &str,
-        config: &ValidatedConfig,
-        windows: &[hyprland::data::Client],
-        monitor: &MonitorInfo,
-    ) -> Result<String> {
-        debug!("👁️ Showing scratchpad '{}'", name);
-
-        let client = self.get_hyprland_client().await?;
-
-        // Handle excludes
-        if !config.excludes.is_empty() {
-            self.handle_excludes(name, config).await?;
-        }
-
-        // Get the primary window (or create if multi-window)
-        let window = if config.multi_window {
-            self.get_or_create_window(name, config, windows).await?
-        } else {
-            windows
-                .first()
-                .ok_or_else(|| anyhow::anyhow!("No windows found for scratchpad '{}'", name))?
-                .clone()
-        };
-
-        let window_address = window.address.to_string();
-
-        // Reset any animation states that might cause transparency
-        info!("🔄 Resetting window state for showing: {}", window_address);
-
-        // Make sure opacity is reset to 1.0
-        if let Err(e) = client.set_window_opacity(&window_address, 1.0).await {
-            warn!("Failed to reset window opacity: {}", e);
-        }
-
-        // Apply final geometry
-        self.apply_geometry(&window, config, monitor).await?;
-
-        // Show window
-        client.show_window(&window_address).await?;
-
-        // Hyprland will handle animations automatically based on its configuration
-        info!("✨ Window shown - Hyprland handles animations natively");
-
-        // Focus if smart_focus is enabled
-        if config.smart_focus {
-            client.focus_window(&window_address).await?;
-        }
-
-        // Update state
-        self.mark_window_visible(name, &window_address);
-
-        Ok(format!("Scratchpad '{name}' shown"))
-    }
-
-    /// Hide scratchpad with delay if configured
-    async fn hide_scratchpad(
-        &mut self,
-        name: &str,
-        config: &ValidatedConfig,
-        windows: &[hyprland::data::Client],
-    ) -> Result<String> {
-        debug!("🙈 Hiding scratchpad '{}'", name);
-
-        if let Some(delay_ms) = config.hide_delay {
-            self.schedule_hide_delay(name, config, windows, delay_ms)
-                .await?;
-            Ok(format!("Scratchpad '{name}' will hide in {delay_ms}ms"))
-        } else {
-            self.perform_hide(name, config, windows).await?;
-            Ok(format!("Scratchpad '{name}' hidden"))
-        }
-    }
-
     /// Get current workspace information
     async fn get_current_workspace(&self, client: &HyprlandClient) -> Result<String> {
         client.get_active_workspace().await
-    }
-
-    /// Find if any window is visible on the current workspace  
-    fn find_visible_window<'a>(
-        &self,
-        windows: &'a [hyprland::data::Client],
-        current_workspace: &str,
-    ) -> Option<&'a hyprland::data::Client> {
-        // A window is visible if it's on the current workspace and not in a special workspace
-        for window in windows {
-            let workspace_id = window.workspace.id.to_string();
-            let workspace_name = &window.workspace.name;
-
-            debug!(
-                "🔍 Checking window {} - workspace ID: '{}', name: '{}', current: '{}'",
-                window.address, workspace_id, workspace_name, current_workspace
-            );
-
-            // Check if window is on current workspace and not special
-            let is_visible =
-                workspace_id == current_workspace && !workspace_name.starts_with("special:");
-            debug!("👁️ Window {} visibility: {}", window.address, is_visible);
-
-            if is_visible {
-                return Some(window);
-            }
-        }
-        None
     }
 
     /// Spawn and show a new scratchpad window using improved workflow
@@ -2028,18 +1831,18 @@ impl ScratchpadsPlugin {
         let geometry = GeometryCalculator::calculate_geometry(config, &monitor)?;
         
         // Calculate offscreen start position for animation (if animation is configured)
-        let (spawn_x, spawn_y) = if let Some(animation_type) = &config.animation {
-            let start_position = self.calculate_spawn_position_for_animation(
+        let spawn_position = if let Some(animation_type) = &config.animation {
+            Some(self.calculate_spawn_position_for_animation(
                 animation_type,
                 (geometry.x, geometry.y),
                 (geometry.width, geometry.height),
                 &monitor,
-            ).await?;
-            start_position
+            ).await?)
         } else {
-            // No animation - spawn at final position
-            (geometry.x, geometry.y)
+            None
         };
+        
+        let (spawn_x, spawn_y) = spawn_position.unwrap_or((geometry.x, geometry.y));
 
         // Step 6: Spawn with calculated position and size in special workspace
         let command = {
@@ -2074,13 +1877,17 @@ impl ScratchpadsPlugin {
 
         // Step 9: Start animation from special workspace to final position
         if let Some(animation_type) = &config.animation {
-            self.animate_from_special_to_position(
+            // Reuse the already calculated spawn position for animation
+            let start_position = spawn_position.expect("spawn_position should be Some when animation is configured");
+            
+            self.animate_window_to_position(
                 &client, 
                 &new_window, 
                 config, 
                 &geometry, 
                 animation_type,
-                name
+                name,
+                start_position
             ).await?;
         } else {
             // No animation - position directly
@@ -2096,6 +1903,17 @@ impl ScratchpadsPlugin {
         // Step 10: Final setup and tracking
         self.finalize_scratchpad_setup(&new_window, name).await?;
 
+        // Step 11: Move scratchpad to orginal active workspace
+        client.move_window_to_workspace(&window_address, &original_active_workspace).await?;
+
+        // Step 12: Center cursor in the newly spawned scratchpad window
+        if let Ok(monitor) = self.get_target_monitor(config).await {
+            let geometry = GeometryCalculator::calculate_geometry(config, &monitor)?;
+            if let Err(e) = client.center_cursor_in_window(&geometry).await {
+                warn!("⚠️ Failed to center cursor in spawned scratchpad window: {}", e);
+            }
+        }
+
         Ok(format!("Scratchpad '{}' spawned and shown with improved workflow", name))
     }
 
@@ -2108,12 +1926,17 @@ impl ScratchpadsPlugin {
     ) -> Result<String> {
         info!("🙈 Hiding scratchpad window: {}", window.address);
 
+        // Move window to special workspace first
+        let special_workspace = format!("special:{}", name);
+        client.move_window_to_workspace(&window.address.to_string(), &special_workspace).await?;
+        debug!("📦 Moved window to special workspace: {}", special_workspace);
+
         // Get config for restore_focus setting and animation
         let config = self.get_validated_config(name)?;
         let window_address = window.address.to_string();
 
         // Return to original workspace before hiding
-        if let Some(state) = self.states.get(name) {
+        /*if let Some(state) = self.states.get(name) {
             if let Some(original_workspace) = &state.original_workspace {
                 debug!("🔄 Returning to original workspace: {}", original_workspace);
                 use hyprland::dispatch::{Dispatch, DispatchType, WorkspaceIdentifierWithSpecial};
@@ -2123,7 +1946,7 @@ impl ScratchpadsPlugin {
                     warn!("⚠️  Failed to return to original workspace {}: {}", original_workspace, e);
                 }
             }
-        }
+        }*/
 
         // Store current focus for potential restoration
         let should_restore_focus = config.restore_focus;
@@ -2214,104 +2037,25 @@ impl ScratchpadsPlugin {
         if let Ok(monitor) = self.get_target_monitor(config).await {
             let geometry = GeometryCalculator::calculate_geometry(config, &monitor)?;
 
-            // Handle animations using WindowAnimator properly
+            // Handle animations using consolidated animation function
             if let Some(animation_type) = &config.animation {
-                // Create animation config
-                let animation_config = crate::animation::AnimationConfig {
-                    animation_type: animation_type.clone(),
-                    duration: config.animation_duration.unwrap_or(300),
-                    easing: config.to_easing_function(),
-                    offset: "50px".to_string(), // Use reasonable fixed offset
-                    opacity_from: config.animation_opacity_from.unwrap_or(1.0),
-                    scale_from: config.animation_scale_from.unwrap_or(1.0),
-                    delay: config.animation_delay.unwrap_or(0),
-                    properties: None,
-                    target_fps: 60,
-                };
-                
                 // Get current position to animate from
                 let windows = client.get_windows().await?;
-                let current_geometry = windows
+                let current_position = windows
                     .iter()
                     .find(|w| w.address.to_string() == window_address)
-                    .map(|w| crate::ipc::WindowGeometry {
-                        x: w.at.0 as i32,
-                        y: w.at.1 as i32,
-                        width: w.size.0 as i32,
-                        height: w.size.1 as i32,
-                        workspace: w.workspace.name.clone(),
-                        monitor: w.monitor as i32,
-                        floating: w.floating,
-                    })
+                    .map(|w| (w.at.0 as i32, w.at.1 as i32))
                     .ok_or_else(|| anyhow::anyhow!("Window not found: {}", window_address))?;
                 
-                // Use WindowAnimator for smooth show animation
-                let animator = self.window_animator.lock().await;
-                animator.set_active_monitor(&monitor).await;
-                
-                // Animate from current position to target position
-                let mut engine = animator.animation_engine.lock().await;
-                let animation_id = format!("scratchpad_{}_show_existing", window_address);
-                
-                engine.start_animation(
-                    animation_id.clone(),
-                    animation_config.clone(),
-                    vec![
-                        ("x".to_string(), crate::animation::PropertyValue::Pixels(current_geometry.x)),
-                        ("y".to_string(), crate::animation::PropertyValue::Pixels(current_geometry.y)),
-                    ].into_iter().collect(),
-                    vec![
-                        ("x".to_string(), crate::animation::PropertyValue::Pixels(geometry.x)),
-                        ("y".to_string(), crate::animation::PropertyValue::Pixels(geometry.y)),
-                    ].into_iter().collect(),
-                ).await?;
-                
-                drop(engine); // Release the lock
-                
-                // Update window position during animation
-                let mut last_x = current_geometry.x;
-                let mut last_y = current_geometry.y;
-                
-                // Run animation loop for the expected duration
-                let duration_ms = animation_config.duration as u64;
-                let start_time = tokio::time::Instant::now();
-                
-                while tokio::time::Instant::now().duration_since(start_time).as_millis() < (duration_ms as u128) {
-                    if let Some(properties) = {
-                        let mut engine = animator.animation_engine.lock().await;
-                        engine.get_current_properties(&animation_id)
-                    } {
-                        if let (Some(x_prop), Some(y_prop)) = (properties.get("x"), properties.get("y")) {
-                            if let (crate::animation::PropertyValue::Pixels(x), crate::animation::PropertyValue::Pixels(y)) = (x_prop, y_prop) {
-                                // Only update if position changed significantly
-                                if (*x - last_x).abs() > 1 || (*y - last_y).abs() > 1 {
-                                    client.resize_and_position_window(
-                                        &window_address,
-                                        *x,
-                                        *y,
-                                        geometry.width,
-                                        geometry.height,
-                                    ).await?;
-                                    
-                                    last_x = *x;
-                                    last_y = *y;
-                                }
-                            }
-                        }
-                    } else {
-                        // Animation completed early
-                        break;
-                    }
-                    tokio::time::sleep(tokio::time::Duration::from_millis(16)).await; // ~60 FPS
-                }
-                
-                // Ensure final position is exact
-                client.resize_and_position_window(
-                    &window_address,
-                    geometry.x,
-                    geometry.y,
-                    geometry.width,
-                    geometry.height,
+                // Use generalized animation function
+                self.animate_window_to_position(
+                    client,
+                    window,
+                    config,
+                    &geometry,
+                    animation_type,
+                    name,
+                    current_position
                 ).await?;
             } else {
                 // No animation - apply geometry directly
@@ -2332,319 +2076,32 @@ impl ScratchpadsPlugin {
             }
         }
 
+        // Retrieve original workspace from state
+        let original_active_workspace = {
+            let state = self.states.get(name)
+                .ok_or_else(|| anyhow::anyhow!("Scratchpad state not found: 
+        {}", name))?;
+            state.original_workspace
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Original workspace not stored 
+        for scratchpad: {}", name))?
+                .clone()
+        };
+        // Move scratchpad to orginal active workspace
+        client.move_window_to_workspace(&window_address, &original_active_workspace).await?;
+
         // Update visibility state
         self.mark_window_visible(name, &window_address);
 
+        // Center cursor in the scratchpad window
+        if let Ok(monitor) = self.get_target_monitor(config).await {
+            let geometry = GeometryCalculator::calculate_geometry(config, &monitor)?;
+            if let Err(e) = client.center_cursor_in_window(&geometry).await {
+                warn!("⚠️ Failed to center cursor in scratchpad window: {}", e);
+            }
+        }
+
         Ok(format!("Scratchpad '{name}' shown"))
-    }
-
-    /// Configure a newly spawned scratchpad window
-    async fn configure_new_scratchpad_window(
-        &self,
-        client: &HyprlandClient,
-        window: &hyprland::data::Client,
-        config: &ValidatedConfig,
-        name: &str,
-        geometry: &crate::ipc::WindowGeometry,
-    ) -> Result<()> {
-        info!(
-            "🔧 Configuring new scratchpad window: {} for '{}'",
-            window.address, name
-        );
-
-        let window_address = window.address.to_string();
-
-        // Ensure window is floating (windowrule should have handled this, but double-check)
-        // Only toggle if it's not already floating
-        let windows = client.get_windows().await?;
-        if let Some(window) = windows.iter().find(|w| w.address.to_string() == window_address) {
-            if !window.floating {
-                client.toggle_floating(&window_address).await?;
-                debug!("🔄 Toggled floating for {}", window_address);
-            } else {
-                debug!("✅ Window {} already floating", window_address);
-            }
-        }
-
-        // Get target monitor for animation setup
-        let monitor = self.get_target_monitor(config).await?;
-
-        // Handle animations for new windows - window was already spawned off-screen
-        if let Some(animation_type) = &config.animation {
-            // Create animation config matching the scratchpad config
-            let animation_config = crate::animation::AnimationConfig {
-                animation_type: animation_type.clone(),
-                duration: config.animation_duration.unwrap_or(300),
-                easing: config.to_easing_function(),
-                offset: "50px".to_string(), // Use reasonable fixed offset  
-                opacity_from: config.animation_opacity_from.unwrap_or(1.0),
-                scale_from: config.animation_scale_from.unwrap_or(1.0),
-                delay: config.animation_delay.unwrap_or(0),
-                properties: None,
-                target_fps: 60,
-            };
-            
-            // The window was already spawned at the correct off-screen position
-            // Now we just need to animate it to the final position
-            let animator = self.window_animator.lock().await;
-            animator.set_active_monitor(&monitor).await;
-            
-            // Get the start position (where the window currently is - off-screen)
-            let start_position = self.calculate_spawn_position_for_animation(
-                animation_type,
-                (geometry.x, geometry.y),
-                (geometry.width, geometry.height),
-                &monitor,
-            ).await?;
-            
-            let mut engine = animator.animation_engine.lock().await;
-            let animation_id = format!("scratchpad_{}_show", name);
-            
-            // Start animation from off-screen to final position
-            engine.start_animation(
-                animation_id.clone(),
-                animation_config.clone(),
-                vec![
-                    ("x".to_string(), crate::animation::PropertyValue::Pixels(start_position.0)),
-                    ("y".to_string(), crate::animation::PropertyValue::Pixels(start_position.1)),
-                ].into_iter().collect(),
-                vec![
-                    ("x".to_string(), crate::animation::PropertyValue::Pixels(geometry.x)),
-                    ("y".to_string(), crate::animation::PropertyValue::Pixels(geometry.y)),
-                ].into_iter().collect(),
-            ).await?;
-            
-            drop(engine); // Release the lock
-            
-            // Animation loop
-            let duration_ms = animation_config.duration as u64;
-            let start_time = tokio::time::Instant::now();
-            
-            while tokio::time::Instant::now().duration_since(start_time).as_millis() < (duration_ms as u128) {
-                if let Some(properties) = {
-                    let mut engine = animator.animation_engine.lock().await;
-                    engine.get_current_properties(&animation_id)
-                } {
-                    if let (Some(x_prop), Some(y_prop)) = (properties.get("x"), properties.get("y")) {
-                        if let (crate::animation::PropertyValue::Pixels(x), crate::animation::PropertyValue::Pixels(y)) = (x_prop, y_prop) {
-                            client.resize_and_position_window(
-                                &window_address,
-                                *x,
-                                *y,
-                                geometry.width,
-                                geometry.height,
-                            ).await?;
-                        }
-                    }
-                } else {
-                    break;
-                }
-                tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
-            }
-            
-            // Ensure final position
-            client.resize_and_position_window(
-                &window_address,
-                geometry.x,
-                geometry.y,
-                geometry.width,
-                geometry.height,
-            ).await?;
-            
-            // Clean up windowrules after animation (like WindowAnimator does)
-            let cleanup_rules = vec![
-                format!("hyprctl keyword windowrulev2 unset pin,address:{}", window_address),
-                format!("hyprland keyword windowrulev2 'bordersize 1,address:{}'", window_address),
-            ];
-            
-            for cleanup_rule in cleanup_rules {
-                tokio::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(&cleanup_rule)
-                    .output()
-                    .await
-                    .ok(); // Ignore errors for cleanup
-            }
-            
-            debug!("🧹 Cleaned up windowrules for {}", window_address);
-            
-        } else {
-            // No animation - apply geometry directly
-            client
-                .resize_and_position_window(
-                    &window_address,
-                    geometry.x,
-                    geometry.y,
-                    geometry.width,
-                    geometry.height,
-                )
-                .await?;
-        }
-
-        // Focus if configured
-        if config.smart_focus {
-            client.focus_window(&window_address).await?;
-        }
-
-        Ok(())
-    }
-
-    /// Apply geometry (position and size) to window
-    async fn apply_geometry(
-        &self,
-        window: &hyprland::data::Client,
-        config: &ValidatedConfig,
-        monitor: &MonitorInfo,
-    ) -> Result<()> {
-        let client = self.get_hyprland_client().await?;
-        let geometry = GeometryCalculator::calculate_geometry(config, monitor)?;
-
-        client
-            .move_resize_window(
-                &window.address.to_string(),
-                geometry.x,
-                geometry.y,
-                geometry.width,
-                geometry.height,
-            )
-            .await?;
-
-        Ok(())
-    }
-
-    async fn schedule_hide_delay(
-        &mut self,
-        name: &str,
-        config: &ValidatedConfig,
-        windows: &[hyprland::data::Client],
-        delay_ms: u32,
-    ) -> Result<()> {
-        let scratchpad_name = name.to_string();
-        let _config = config.clone();
-        let windows = windows.to_vec();
-        let client = self.get_hyprland_client().await?;
-
-        let name_for_debug = scratchpad_name.clone();
-        let handle = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(delay_ms as u64)).await;
-
-            // Perform the hide operation
-            for window in &windows {
-                if let Err(e) = client.hide_window(&window.address.to_string()).await {
-                    error!("Failed to hide window after delay: {}", e);
-                }
-            }
-
-            debug!(
-                "⏰ Hide delay completed for scratchpad '{}'",
-                name_for_debug
-            );
-        });
-
-        self.hide_tasks.insert(scratchpad_name, handle);
-        Ok(())
-    }
-
-    async fn perform_hide(
-        &mut self,
-        name: &str,
-        config: &ValidatedConfig,
-        windows: &[hyprland::data::Client],
-    ) -> Result<()> {
-        let client = self.get_hyprland_client().await?;
-
-        for window in windows {
-            // TEMPORARILY DISABLE BROKEN ANIMATION SYSTEM
-            // TODO: Fix animation system to properly restore window state
-            info!("🔧 Hide animation system disabled due to window state corruption issues");
-
-            if config.close_on_hide {
-                client.close_window(&window.address.to_string()).await?;
-            } else {
-                client.hide_window(&window.address.to_string()).await?;
-                //self.animate_window_hide(&window, &config, monitor).await?;
-            }
-        }
-
-        // Update state
-        self.mark_scratchpad_hidden(name);
-
-        // Restore excluded scratchpads if configured
-        if config.restore_excluded {
-            self.restore_excluded_scratchpads(name).await?;
-        }
-
-        Ok(())
-    }
-
-    async fn handle_excludes(&mut self, name: &str, config: &ValidatedConfig) -> Result<()> {
-        let excludes = config.excludes.clone();
-        let scratchpad_names: Vec<String> = self.scratchpads.keys().cloned().collect();
-
-        for exclude_pattern in &excludes {
-            if exclude_pattern == "*" {
-                // Hide all other scratchpads
-                for other_name in &scratchpad_names {
-                    if other_name != name {
-                        self.mark_scratchpad_excluded_by(other_name, name);
-                        // Hide the other scratchpad logic would go here
-                    }
-                }
-            } else if scratchpad_names.contains(exclude_pattern) {
-                // Hide specific scratchpad
-                self.mark_scratchpad_excluded_by(exclude_pattern, name);
-                // Hide logic would go here
-            }
-        }
-        Ok(())
-    }
-
-    async fn restore_excluded_scratchpads(&mut self, excluding_scratchpad: &str) -> Result<()> {
-        for (name, state) in &mut self.states {
-            if state.excluded_by.remove(excluding_scratchpad) {
-                debug!("🔄 Restoring excluded scratchpad '{}'", name);
-                // Restore logic would go here
-            }
-        }
-        Ok(())
-    }
-
-    async fn get_or_create_window(
-        &mut self,
-        _name: &str,
-        config: &ValidatedConfig,
-        existing_windows: &[hyprland::data::Client],
-    ) -> Result<hyprland::data::Client> {
-        let max_instances = config.max_instances.unwrap_or(1);
-
-        if existing_windows.len() < max_instances as usize {
-            // Spawn new instance
-            let client = self.get_hyprland_client().await?;
-            let vars = self.variables.read().await;
-            let expanded_command = self.expand_command(&config.command, &vars);
-            client.spawn_app(&expanded_command).await?;
-
-            // Wait for window to appear
-            tokio::time::sleep(Duration::from_millis(500)).await;
-
-            // Wait for window and get all windows to find the new one
-            let all_windows = client.get_windows().await?;
-            all_windows
-                .into_iter()
-                .find(|w| !existing_windows.iter().any(|e| e.address == w.address))
-                .ok_or_else(|| anyhow::anyhow!("Failed to find newly spawned window"))
-        } else {
-            // Use existing window
-            Ok(existing_windows[0].clone())
-        }
-    }
-
-    // Helper methods for state management
-    fn is_scratchpad_visible(&self, name: &str) -> bool {
-        self.states
-            .get(name)
-            .map(|s| s.windows.iter().any(|w| w.is_visible))
-            .unwrap_or(false)
     }
 
     fn mark_window_visible(&mut self, scratchpad_name: &str, window_address: &str) {
@@ -2691,443 +2148,6 @@ impl ScratchpadsPlugin {
         }
     }
 
-    /// Helper: Convert show animation to hide animation type for WindowAnimator
-    fn get_hide_animation_type(&self, show_animation: &Option<String>) -> String {
-        match show_animation.as_deref().unwrap_or_default() {
-            "fromTop" => "toTop".to_string(),
-            "fromBottom" => "toBottom".to_string(),
-            "fromLeft" => "toLeft".to_string(),
-            "fromRight" => "toRight".to_string(),
-            "fromTopLeft" => "toTopLeft".to_string(),
-            "fromTopRight" => "toTopRight".to_string(),
-            "fromBottomLeft" => "toBottomLeft".to_string(),
-            "fromBottomRight" => "toBottomRight".to_string(),
-            "fade" => "fade".to_string(),
-            "scale" => "scale".to_string(),
-            _ => "fade".to_string(), // Default fallback
-        }
-    }
-
-    /// Hide window with animation using enhanced configuration (Phase 2 - Fixed)
-    fn mark_scratchpad_hidden(&mut self, name: &str) {
-        if let Some(state) = self.states.get_mut(name) {
-            for window in &mut state.windows {
-                window.is_visible = false;
-            }
-            state.last_used = Some(Instant::now());
-        }
-    }
-
-    fn mark_scratchpad_excluded_by(&mut self, scratchpad_name: &str, excluded_by: &str) {
-        let state = self.states.entry(scratchpad_name.to_string()).or_default();
-        state.excluded_by.insert(excluded_by.to_string());
-    }
-}
-
-impl Default for ScratchpadsPlugin {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait]
-impl Plugin for ScratchpadsPlugin {
-    fn name(&self) -> &str {
-        "scratchpads"
-    }
-
-    async fn init(&mut self, config: &toml::Value) -> Result<()> {
-        info!("🪟 Initializing scratchpads plugin");
-        debug!("Config: {}", config);
-
-        // Parse variables if present
-        if let toml::Value::Table(map) = config {
-            if let Some(toml::Value::Table(vars)) = map.get("variables") {
-                for (key, value) in vars {
-                    if let toml::Value::String(val_str) = value {
-                        let mut vars = self.variables.write().await;
-                        vars.insert(key.clone(), val_str.clone());
-                        debug!("📝 Loaded variable: {} = {}", key, val_str);
-                    }
-                }
-            }
-        }
-
-        // Parse scratchpad configurations
-        if let toml::Value::Table(map) = config {
-            for (name, scratchpad_config) in map {
-                // Skip the variables section as it's already processed
-                if name == "variables" {
-                    continue;
-                }
-                if let toml::Value::Table(sc) = scratchpad_config {
-                    let command = sc
-                        .get("command")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-
-                    let class = sc
-                        .get("class")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-
-                    let size = sc
-                        .get("size")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("50% 50%")
-                        .to_string();
-
-                    let animation = sc
-                        .get("animation")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-
-                    let mut config = ScratchpadConfig {
-                        command,
-                        class: Some(class),
-                        size,
-                        animation,
-                        ..Default::default()
-                    };
-
-                    // Parse additional Pyprland-compatible options
-                    if let Some(toml::Value::Boolean(lazy)) = sc.get("lazy") {
-                        config.lazy = *lazy;
-                    }
-                    if let Some(toml::Value::Boolean(pinned)) = sc.get("pinned") {
-                        config.pinned = *pinned;
-                    }
-                    if let Some(toml::Value::Array(excludes)) = sc.get("excludes") {
-                        config.excludes = excludes
-                            .iter()
-                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                            .collect();
-                    } else if let Some(toml::Value::String(exclude_all)) = sc.get("excludes") {
-                        if exclude_all == "*" {
-                            config.excludes = vec!["*".to_string()];
-                        }
-                    }
-                    if let Some(toml::Value::Boolean(restore_excluded)) = sc.get("restore_excluded")
-                    {
-                        config.restore_excluded = *restore_excluded;
-                    }
-                    if let Some(toml::Value::String(force_monitor)) = sc.get("force_monitor") {
-                        config.force_monitor = Some(force_monitor.clone());
-                    }
-                    if let Some(toml::Value::Integer(margin)) = sc.get("margin") {
-                        config.margin = Some(*margin as i32);
-                    }
-                    if let Some(toml::Value::String(offset)) = sc.get("offset") {
-                        config.offset = Some(offset.clone());
-                    }
-                    if let Some(toml::Value::Integer(hide_delay)) = sc.get("hide_delay") {
-                        config.hide_delay = Some(*hide_delay as u32);
-                    }
-                    if let Some(toml::Value::Boolean(multi_window)) = sc.get("multi_window") {
-                        config.multi_window = *multi_window;
-                    }
-                    if let Some(toml::Value::Integer(max_instances)) = sc.get("max_instances") {
-                        config.max_instances = Some(*max_instances as u32);
-                    }
-
-                    // Parse unfocus field
-                    if let Some(toml::Value::String(unfocus_behavior)) = sc.get("unfocus") {
-                        config.unfocus = Some(unfocus_behavior.clone());
-                    }
-
-                    // Parse hysteresis field
-                    if let Some(toml::Value::Float(hysteresis)) = sc.get("hysteresis") {
-                        config.hysteresis = Some(*hysteresis as f32);
-                    } else if let Some(toml::Value::Integer(hysteresis)) = sc.get("hysteresis") {
-                        config.hysteresis = Some(*hysteresis as f32);
-                    }
-
-                    // Parse restore_focus field
-                    if let Some(toml::Value::Boolean(restore_focus)) = sc.get("restore_focus") {
-                        config.restore_focus = *restore_focus;
-                    }
-
-                    // Parse Phase 2 animation fields
-                    if let Some(toml::Value::Integer(duration)) = sc.get("animation_duration") {
-                        config.animation_duration = Some(*duration as u32);
-                    }
-
-                    if let Some(toml::Value::Integer(delay)) = sc.get("animation_delay") {
-                        config.animation_delay = Some(*delay as u32);
-                    }
-
-                    if let Some(toml::Value::String(easing)) = sc.get("animation_easing") {
-                        config.animation_easing = Some(easing.clone());
-                    }
-
-                    if let Some(toml::Value::Float(scale)) = sc.get("animation_scale_from") {
-                        config.animation_scale_from = Some(*scale as f32);
-                    } else if let Some(toml::Value::Integer(scale)) = sc.get("animation_scale_from") {
-                        config.animation_scale_from = Some(*scale as f32);
-                    }
-
-                    if let Some(toml::Value::Float(opacity)) = sc.get("animation_opacity_from") {
-                        config.animation_opacity_from = Some(*opacity as f32);
-                    } else if let Some(toml::Value::Integer(opacity)) = sc.get("animation_opacity_from") {
-                        config.animation_opacity_from = Some(*opacity as f32);
-                    }
-
-                    // Parse spring physics parameters
-                    if let Some(toml::Value::Float(stiffness)) = sc.get("spring_stiffness") {
-                        config.spring_stiffness = Some(*stiffness as f32);
-                    } else if let Some(toml::Value::Integer(stiffness)) = sc.get("spring_stiffness") {
-                        config.spring_stiffness = Some(*stiffness as f32);
-                    }
-
-                    if let Some(toml::Value::Float(damping)) = sc.get("spring_damping") {
-                        config.spring_damping = Some(*damping as f32);
-                    } else if let Some(toml::Value::Integer(damping)) = sc.get("spring_damping") {
-                        config.spring_damping = Some(*damping as f32);
-                    }
-
-                    if let Some(toml::Value::Float(mass)) = sc.get("spring_mass") {
-                        config.spring_mass = Some(*mass as f32);
-                    } else if let Some(toml::Value::Integer(mass)) = sc.get("spring_mass") {
-                        config.spring_mass = Some(*mass as f32);
-                    }
-
-                    self.scratchpads.insert(name.clone(), Arc::new(config));
-                    self.states.insert(name.clone(), ScratchpadState::default());
-                    info!("📝 Registered scratchpad: {}", name);
-                }
-            }
-        }
-
-        // Validate configurations
-        let monitors = self.get_monitors().await.unwrap_or_default();
-        let variables = self.variables.read().await.clone();
-        self.validated_configs =
-            ConfigValidator::validate_configs(&self.scratchpads, &monitors, &variables);
-
-        info!(
-            "✅ Scratchpads plugin initialized with {} scratchpads",
-            self.scratchpads.len()
-        );
-        Ok(())
-    }
-
-    async fn handle_event(&mut self, event: &HyprlandEvent) -> Result<()> {
-        //debug!("🪟 Scratchpads handling event: {:?}", event);
-
-        match event {
-            HyprlandEvent::WindowOpened { window } => {
-                debug!("Window opened: {} - checking if it is a scratchpad", window);
-                self.handle_window_opened(window).await;
-            }
-            HyprlandEvent::WindowClosed { window } => {
-                debug!("Window closed: {} - cleaning up if scratchpad", window);
-                self.handle_window_closed(window).await;
-            }
-            HyprlandEvent::WindowMoved { window } => {
-                debug!("Window moved: {} - syncing geometry", window);
-                self.handle_window_moved(window).await;
-            }
-            HyprlandEvent::WorkspaceChanged { workspace } => {
-                debug!("Workspace changed to: {}", workspace);
-                self.handle_workspace_changed(workspace).await;
-            }
-            HyprlandEvent::MonitorChanged { monitor: _ } => {
-                debug!("Monitor changed - invalidating cache");
-                // Invalidate monitor cache
-                {
-                    let mut cache_valid = self.cache_valid_until.write().await;
-                    *cache_valid = Instant::now();
-                }
-
-                        // Monitor layout changed - cache will be refreshed on next access
-            }
-            HyprlandEvent::WindowFocusChanged { window } => {
-                self.handle_focus_changed(window).await;
-            }
-            HyprlandEvent::Other(msg) => {
-                // Reduce log noise for heartbeat events
-                if msg != "heartbeat" {
-                    debug!("Other event: {}", msg);
-                }
-                self.handle_other_event(msg).await;
-            }
-        }
-
-        // Process any pending internal commands (like hysteresis hide)
-        self.process_internal_commands().await;
-
-        Ok(())
-    }
-
-    async fn handle_command(&mut self, command: &str, args: &[&str]) -> Result<String> {
-        match command {
-            "toggle" => {
-                if let Some(scratchpad_name) = args.first() {
-                    info!("🔄 Toggling scratchpad: {}", scratchpad_name);
-
-                    if self.scratchpads.contains_key(*scratchpad_name) {
-                        match self.toggle_scratchpad(scratchpad_name).await {
-                            Ok(message) => {
-                                info!("✅ {}", message);
-                                Ok(message)
-                            }
-                            Err(e) => {
-                                error!(
-                                    "❌ Failed to toggle scratchpad '{}': {}",
-                                    scratchpad_name, e
-                                );
-                                Err(e)
-                            }
-                        }
-                    } else {
-                        warn!("⚠️  Scratchpad '{}' not found", scratchpad_name);
-                        Err(anyhow::anyhow!(
-                            "Scratchpad '{}' not found",
-                            scratchpad_name
-                        ))
-                    }
-                } else {
-                    Err(anyhow::anyhow!("No scratchpad name provided"))
-                }
-            }
-            "list" => {
-                let mut status_list = Vec::new();
-                for name in self.scratchpads.keys() {
-                    let state = self.states.get(name);
-                    let visible_count = state
-                        .map(|s| s.windows.iter().filter(|w| w.is_visible).count())
-                        .unwrap_or(0);
-                    let total_count = state.map(|s| s.windows.len()).unwrap_or(0);
-                    let spawned = state.map(|s| s.is_spawned).unwrap_or(false);
-
-                    let status = if visible_count > 0 {
-                        format!("{name} (visible: {visible_count}/{total_count})")
-                    } else if spawned {
-                        format!("{name} (hidden: {total_count})")
-                    } else {
-                        format!("{name} (not spawned)")
-                    };
-                    status_list.push(status);
-                }
-                Ok(format!("Scratchpads: {}", status_list.join(", ")))
-            }
-            "show" => {
-                if let Some(scratchpad_name) = args.first() {
-                    info!("👁️  Showing scratchpad: {}", scratchpad_name);
-                    if self.scratchpads.contains_key(*scratchpad_name) {
-                        match self.show_scratchpad_direct(scratchpad_name).await {
-                            Ok(message) => {
-                                info!("✅ {}", message);
-                                Ok(message)
-                            }
-                            Err(e) => {
-                                error!("❌ Failed to show scratchpad '{}': {}", scratchpad_name, e);
-                                Err(e)
-                            }
-                        }
-                    } else {
-                        warn!("⚠️  Scratchpad '{}' not found", scratchpad_name);
-                        Err(anyhow::anyhow!(
-                            "Scratchpad '{}' not found",
-                            scratchpad_name
-                        ))
-                    }
-                } else {
-                    Err(anyhow::anyhow!("No scratchpad name provided"))
-                }
-            }
-            "hide" => {
-                if let Some(scratchpad_name) = args.first() {
-                    info!("🙈 Hiding scratchpad: {}", scratchpad_name);
-                    if self.scratchpads.contains_key(*scratchpad_name) {
-                        match self.hide_scratchpad_direct(scratchpad_name).await {
-                            Ok(message) => {
-                                info!("✅ {}", message);
-                                Ok(message)
-                            }
-                            Err(e) => {
-                                error!("❌ Failed to hide scratchpad '{}': {}", scratchpad_name, e);
-                                Err(e)
-                            }
-                        }
-                    } else {
-                        warn!("⚠️  Scratchpad '{}' not found", scratchpad_name);
-                        Err(anyhow::anyhow!(
-                            "Scratchpad '{}' not found",
-                            scratchpad_name
-                        ))
-                    }
-                } else {
-                    Err(anyhow::anyhow!("No scratchpad name provided"))
-                }
-            }
-            "attach" => {
-                if let Some(scratchpad_name) = args.first() {
-                    info!("📌 Toggling attach for scratchpad: {}", scratchpad_name);
-                    if self.scratchpads.contains_key(*scratchpad_name) {
-                        match self.toggle_attach_scratchpad(scratchpad_name).await {
-                            Ok(message) => {
-                                info!("✅ {}", message);
-                                Ok(message)
-                            }
-                            Err(e) => {
-                                error!(
-                                    "❌ Failed to toggle attach for scratchpad '{}': {}",
-                                    scratchpad_name, e
-                                );
-                                Err(e)
-                            }
-                        }
-                    } else {
-                        warn!("⚠️  Scratchpad '{}' not found", scratchpad_name);
-                        Err(anyhow::anyhow!(
-                            "Scratchpad '{}' not found",
-                            scratchpad_name
-                        ))
-                    }
-                } else {
-                    Err(anyhow::anyhow!("No scratchpad name provided"))
-                }
-            }
-            _ => Err(anyhow::anyhow!("Unknown command: {}", command)),
-        }
-    }
-
-    async fn cleanup(&mut self) -> Result<()> {
-        info!("🧹 Cleaning up scratchpads plugin");
-
-        // Cancel all hide tasks
-        for (window_addr, handle) in self.hide_tasks.drain() {
-            handle.abort();
-            debug!("❌ Cancelled hide task for window: {}", window_addr);
-        }
-
-        // Cancel all hysteresis tasks
-        for (scratchpad_name, handle) in self.hysteresis_tasks.drain() {
-            handle.abort();
-            debug!(
-                "❌ Cancelled hysteresis task for scratchpad: {}",
-                scratchpad_name
-            );
-        }
-
-        // Cancel all sync tasks
-        for (window_addr, handle) in self.sync_tasks.drain() {
-            handle.abort();
-            debug!("❌ Cancelled sync task for window: {}", window_addr);
-        }
-
-        info!("✅ Scratchpads plugin cleanup complete");
-        Ok(())
-    }
-}
-
-// Enhanced event handling methods
-impl ScratchpadsPlugin {
-    /// Show existing window with animation using enhanced configuration (Phase 2 - Fixed)
-    
     /// Calculate start position for animation based on type and target (Fixed geometry)
     fn calculate_spawn_position_offscreen(
         animation_type: &str,
@@ -3530,128 +2550,6 @@ impl ScratchpadsPlugin {
         Ok(())
     }
 
-    /// Wait for window to appear and configure it immediately
-    async fn wait_for_window_and_configure(
-        &self,
-        scratchpad_name: &str,
-        config: &ValidatedConfig,
-        timeout_in_ms: i32,
-    ) -> Result<hyprland::data::Client> {
-        let client = self.get_hyprland_client().await?;
-        let target_class = &config.class;
-
-        debug!(
-            "⏳ Waiting for window with class '{}' to appear",
-            target_class
-        );
-
-        // Wait up to 5 seconds for the window to appear
-        let mut attempts = 0;
-        let max_attempts = timeout_in_ms / 100; // 5 seconds with 100ms intervals
-
-        loop {
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-            let windows = client.get_windows().await?;
-            if let Some(window) = windows.into_iter().find(|w| w.class == *target_class) {
-                info!(
-                    "✅ Found window: {} with class '{}'",
-                    window.address, window.class
-                );
-
-                // Configure the window immediately
-                self.configure_scratchpad_window(&window, scratchpad_name, config)
-                    .await?;
-
-                return Ok(window);
-            }
-
-            attempts += 1;
-            if attempts >= max_attempts {
-                return Err(anyhow::anyhow!(
-                    "Timeout waiting for window with class '{}' to appear",
-                    target_class
-                ));
-            }
-        }
-    }
-
-    /// Configure a scratchpad window with proper geometry and floating
-    async fn configure_scratchpad_window(
-        &self,
-        window: &hyprland::data::Client,
-        scratchpad_name: &str,
-        config: &ValidatedConfig,
-    ) -> Result<()> {
-        info!(
-            "🔧 Configuring scratchpad window: {} for '{}'",
-            window.address, scratchpad_name
-        );
-
-        let client = self.get_hyprland_client().await?;
-        let window_address = window.address.to_string();
-
-        // Get monitor info
-        let monitors = self.get_monitors().await?;
-        let monitor = monitors
-            .iter()
-            .find(|m| m.is_focused)
-            .or_else(|| monitors.first())
-            .ok_or_else(|| anyhow::anyhow!("No monitors found"))?;
-
-        debug!(
-            "📋 Using config for '{}': size='{}', animation={:?}, margin={:?}",
-            scratchpad_name, config.size, config.animation, config.margin
-        );
-
-        info!(
-            "🖥️ Monitor info: '{}' - {}x{} at ({}, {})",
-            monitor.name, monitor.width, monitor.height, monitor.x, monitor.y
-        );
-
-        // Step 1: Make the window floating FIRST
-        info!("🔄 Making window floating: {}", window_address);
-        client.toggle_floating(&window_address).await?;
-
-        // Small delay to ensure floating state is applied
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-        // Step 2: Calculate and apply proper geometry
-        let target_geometry = GeometryCalculator::calculate_geometry(config, monitor)?;
-
-        info!(
-            "📐 Calculated geometry: {}x{} at ({}, {}) on monitor '{}' ({}x{} at {}x{})",
-            target_geometry.width,
-            target_geometry.height,
-            target_geometry.x,
-            target_geometry.y,
-            monitor.name,
-            monitor.width,
-            monitor.height,
-            monitor.x,
-            monitor.y
-        );
-
-        client
-            .move_resize_window(
-                &window_address,
-                target_geometry.x,
-                target_geometry.y,
-                target_geometry.width,
-                target_geometry.height,
-            )
-            .await?;
-
-        // Hyprland will handle animations automatically
-        info!("✨ Geometry applied - letting Hyprland handle animations");
-
-        info!(
-            "✅ Scratchpad window '{}' configured successfully",
-            scratchpad_name
-        );
-        Ok(())
-    }
-
     /// Setup a newly opened scratchpad window with proper geometry and animation
     async fn setup_scratchpad_window(
         &self,
@@ -3742,11 +2640,6 @@ impl ScratchpadsPlugin {
         info!("✅ Scratchpad window '{}' setup complete", scratchpad_name);
         Ok(())
     }
-
-    /// Helper function to apply animation positions (start -> final)
-    #[allow(clippy::too_many_arguments)]
-    // apply_animation_positions method removed - replaced by WindowAnimator integration (Phase 2)
-
 
     // ============================================================================
     // STATE MANAGEMENT FOR HOT RELOAD
@@ -3912,6 +2805,407 @@ impl ScratchpadsPlugin {
             warnings.len()
         );
 
+        Ok(())
+    }
+
+}
+
+impl Default for ScratchpadsPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl Plugin for ScratchpadsPlugin {
+    fn name(&self) -> &str {
+        "scratchpads"
+    }
+
+    async fn init(&mut self, config: &toml::Value) -> Result<()> {
+        info!("🪟 Initializing scratchpads plugin");
+        debug!("Config: {}", config);
+
+        // Parse variables if present
+        if let toml::Value::Table(map) = config {
+            if let Some(toml::Value::Table(vars)) = map.get("variables") {
+                for (key, value) in vars {
+                    if let toml::Value::String(val_str) = value {
+                        let mut vars = self.variables.write().await;
+                        vars.insert(key.clone(), val_str.clone());
+                        debug!("📝 Loaded variable: {} = {}", key, val_str);
+                    }
+                }
+            }
+        }
+
+        // Parse scratchpad configurations
+        if let toml::Value::Table(map) = config {
+            for (name, scratchpad_config) in map {
+                // Skip the variables section as it's already processed
+                if name == "variables" {
+                    continue;
+                }
+                if let toml::Value::Table(sc) = scratchpad_config {
+                    let command = sc
+                        .get("command")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+
+                    let class = sc
+                        .get("class")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+
+                    let size = sc
+                        .get("size")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("50% 50%")
+                        .to_string();
+
+                    let animation = sc
+                        .get("animation")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+
+                    let mut config = ScratchpadConfig {
+                        command,
+                        class: Some(class),
+                        size,
+                        animation,
+                        ..Default::default()
+                    };
+
+                    // Parse additional Pyprland-compatible options
+                    if let Some(toml::Value::Boolean(lazy)) = sc.get("lazy") {
+                        config.lazy = *lazy;
+                    }
+                    if let Some(toml::Value::Boolean(pinned)) = sc.get("pinned") {
+                        config.pinned = *pinned;
+                    }
+                    if let Some(toml::Value::Array(excludes)) = sc.get("excludes") {
+                        config.excludes = excludes
+                            .iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect();
+                    } else if let Some(toml::Value::String(exclude_all)) = sc.get("excludes") {
+                        if exclude_all == "*" {
+                            config.excludes = vec!["*".to_string()];
+                        }
+                    }
+                    if let Some(toml::Value::Boolean(restore_excluded)) = sc.get("restore_excluded")
+                    {
+                        config.restore_excluded = *restore_excluded;
+                    }
+                    if let Some(toml::Value::String(force_monitor)) = sc.get("force_monitor") {
+                        config.force_monitor = Some(force_monitor.clone());
+                    }
+                    if let Some(toml::Value::Integer(margin)) = sc.get("margin") {
+                        config.margin = Some(*margin as i32);
+                    }
+                    if let Some(toml::Value::String(offset)) = sc.get("offset") {
+                        config.offset = Some(offset.clone());
+                    }
+                    if let Some(toml::Value::Integer(hide_delay)) = sc.get("hide_delay") {
+                        config.hide_delay = Some(*hide_delay as u32);
+                    }
+                    if let Some(toml::Value::Boolean(multi_window)) = sc.get("multi_window") {
+                        config.multi_window = *multi_window;
+                    }
+                    if let Some(toml::Value::Integer(max_instances)) = sc.get("max_instances") {
+                        config.max_instances = Some(*max_instances as u32);
+                    }
+
+                    // Parse unfocus field
+                    if let Some(toml::Value::String(unfocus_behavior)) = sc.get("unfocus") {
+                        config.unfocus = Some(unfocus_behavior.clone());
+                    }
+
+                    // Parse hysteresis field
+                    if let Some(toml::Value::Float(hysteresis)) = sc.get("hysteresis") {
+                        config.hysteresis = Some(*hysteresis as f32);
+                    } else if let Some(toml::Value::Integer(hysteresis)) = sc.get("hysteresis") {
+                        config.hysteresis = Some(*hysteresis as f32);
+                    }
+
+                    // Parse restore_focus field
+                    if let Some(toml::Value::Boolean(restore_focus)) = sc.get("restore_focus") {
+                        config.restore_focus = *restore_focus;
+                    }
+
+                    // Parse Phase 2 animation fields
+                    if let Some(toml::Value::Integer(duration)) = sc.get("animation_duration") {
+                        config.animation_duration = Some(*duration as u32);
+                    }
+
+                    if let Some(toml::Value::Integer(delay)) = sc.get("animation_delay") {
+                        config.animation_delay = Some(*delay as u32);
+                    }
+
+                    if let Some(toml::Value::String(easing)) = sc.get("animation_easing") {
+                        config.animation_easing = Some(easing.clone());
+                    }
+
+                    if let Some(toml::Value::Float(scale)) = sc.get("animation_scale_from") {
+                        config.animation_scale_from = Some(*scale as f32);
+                    } else if let Some(toml::Value::Integer(scale)) = sc.get("animation_scale_from") {
+                        config.animation_scale_from = Some(*scale as f32);
+                    }
+
+                    if let Some(toml::Value::Float(opacity)) = sc.get("animation_opacity_from") {
+                        config.animation_opacity_from = Some(*opacity as f32);
+                    } else if let Some(toml::Value::Integer(opacity)) = sc.get("animation_opacity_from") {
+                        config.animation_opacity_from = Some(*opacity as f32);
+                    }
+
+                    // Parse spring physics parameters
+                    if let Some(toml::Value::Float(stiffness)) = sc.get("spring_stiffness") {
+                        config.spring_stiffness = Some(*stiffness as f32);
+                    } else if let Some(toml::Value::Integer(stiffness)) = sc.get("spring_stiffness") {
+                        config.spring_stiffness = Some(*stiffness as f32);
+                    }
+
+                    if let Some(toml::Value::Float(damping)) = sc.get("spring_damping") {
+                        config.spring_damping = Some(*damping as f32);
+                    } else if let Some(toml::Value::Integer(damping)) = sc.get("spring_damping") {
+                        config.spring_damping = Some(*damping as f32);
+                    }
+
+                    if let Some(toml::Value::Float(mass)) = sc.get("spring_mass") {
+                        config.spring_mass = Some(*mass as f32);
+                    } else if let Some(toml::Value::Integer(mass)) = sc.get("spring_mass") {
+                        config.spring_mass = Some(*mass as f32);
+                    }
+
+                    self.scratchpads.insert(name.clone(), Arc::new(config));
+                    self.states.insert(name.clone(), ScratchpadState::default());
+                    info!("📝 Registered scratchpad: {}", name);
+                }
+            }
+        }
+
+        // Validate configurations
+        let monitors = self.get_monitors().await.unwrap_or_default();
+        let variables = self.variables.read().await.clone();
+        self.validated_configs =
+            ConfigValidator::validate_configs(&self.scratchpads, &monitors, &variables);
+
+        info!(
+            "✅ Scratchpads plugin initialized with {} scratchpads",
+            self.scratchpads.len()
+        );
+        Ok(())
+    }
+
+    async fn handle_event(&mut self, event: &HyprlandEvent) -> Result<()> {
+        //debug!("🪟 Scratchpads handling event: {:?}", event);
+
+        match event {
+            HyprlandEvent::WindowOpened { window } => {
+                debug!("Window opened: {} - checking if it is a scratchpad", window);
+                self.handle_window_opened(window).await;
+            }
+            HyprlandEvent::WindowClosed { window } => {
+                debug!("Window closed: {} - cleaning up if scratchpad", window);
+                self.handle_window_closed(window).await;
+            }
+            HyprlandEvent::WindowMoved { window } => {
+                debug!("Window moved: {} - syncing geometry", window);
+                self.handle_window_moved(window).await;
+            }
+            HyprlandEvent::WorkspaceChanged { workspace } => {
+                debug!("Workspace changed to: {}", workspace);
+                self.handle_workspace_changed(workspace).await;
+            }
+            HyprlandEvent::MonitorChanged { monitor: _ } => {
+                debug!("Monitor changed - invalidating cache");
+                // Invalidate monitor cache
+                {
+                    let mut cache_valid = self.cache_valid_until.write().await;
+                    *cache_valid = Instant::now();
+                }
+
+                        // Monitor layout changed - cache will be refreshed on next access
+            }
+            HyprlandEvent::WindowFocusChanged { window } => {
+                self.handle_focus_changed(window).await;
+            }
+            HyprlandEvent::Other(msg) => {
+                // Reduce log noise for heartbeat events
+                if msg != "heartbeat" {
+                    debug!("Other event: {}", msg);
+                }
+                self.handle_other_event(msg).await;
+            }
+        }
+
+        // Process any pending internal commands (like hysteresis hide)
+        self.process_internal_commands().await;
+
+        Ok(())
+    }
+
+    async fn handle_command(&mut self, command: &str, args: &[&str]) -> Result<String> {
+        match command {
+            "toggle" => {
+                if let Some(scratchpad_name) = args.first() {
+                    info!("🔄 Toggling scratchpad: {}", scratchpad_name);
+
+                    if self.scratchpads.contains_key(*scratchpad_name) {
+                        match self.toggle_scratchpad(scratchpad_name).await {
+                            Ok(message) => {
+                                info!("✅ {}", message);
+                                Ok(message)
+                            }
+                            Err(e) => {
+                                error!(
+                                    "❌ Failed to toggle scratchpad '{}': {}",
+                                    scratchpad_name, e
+                                );
+                                Err(e)
+                            }
+                        }
+                    } else {
+                        warn!("⚠️  Scratchpad '{}' not found", scratchpad_name);
+                        Err(anyhow::anyhow!(
+                            "Scratchpad '{}' not found",
+                            scratchpad_name
+                        ))
+                    }
+                } else {
+                    Err(anyhow::anyhow!("No scratchpad name provided"))
+                }
+            }
+            "list" => {
+                let mut status_list = Vec::new();
+                for name in self.scratchpads.keys() {
+                    let state = self.states.get(name);
+                    let visible_count = state
+                        .map(|s| s.windows.iter().filter(|w| w.is_visible).count())
+                        .unwrap_or(0);
+                    let total_count = state.map(|s| s.windows.len()).unwrap_or(0);
+                    let spawned = state.map(|s| s.is_spawned).unwrap_or(false);
+
+                    let status = if visible_count > 0 {
+                        format!("{name} (visible: {visible_count}/{total_count})")
+                    } else if spawned {
+                        format!("{name} (hidden: {total_count})")
+                    } else {
+                        format!("{name} (not spawned)")
+                    };
+                    status_list.push(status);
+                }
+                Ok(format!("Scratchpads: {}", status_list.join(", ")))
+            }
+            "show" => {
+                if let Some(scratchpad_name) = args.first() {
+                    info!("👁️  Showing scratchpad: {}", scratchpad_name);
+                    if self.scratchpads.contains_key(*scratchpad_name) {
+                        match self.show_scratchpad_direct(scratchpad_name).await {
+                            Ok(message) => {
+                                info!("✅ {}", message);
+                                Ok(message)
+                            }
+                            Err(e) => {
+                                error!("❌ Failed to show scratchpad '{}': {}", scratchpad_name, e);
+                                Err(e)
+                            }
+                        }
+                    } else {
+                        warn!("⚠️  Scratchpad '{}' not found", scratchpad_name);
+                        Err(anyhow::anyhow!(
+                            "Scratchpad '{}' not found",
+                            scratchpad_name
+                        ))
+                    }
+                } else {
+                    Err(anyhow::anyhow!("No scratchpad name provided"))
+                }
+            }
+            "hide" => {
+                if let Some(scratchpad_name) = args.first() {
+                    info!("🙈 Hiding scratchpad: {}", scratchpad_name);
+                    if self.scratchpads.contains_key(*scratchpad_name) {
+                        match self.hide_scratchpad_direct(scratchpad_name).await {
+                            Ok(message) => {
+                                info!("✅ {}", message);
+                                Ok(message)
+                            }
+                            Err(e) => {
+                                error!("❌ Failed to hide scratchpad '{}': {}", scratchpad_name, e);
+                                Err(e)
+                            }
+                        }
+                    } else {
+                        warn!("⚠️  Scratchpad '{}' not found", scratchpad_name);
+                        Err(anyhow::anyhow!(
+                            "Scratchpad '{}' not found",
+                            scratchpad_name
+                        ))
+                    }
+                } else {
+                    Err(anyhow::anyhow!("No scratchpad name provided"))
+                }
+            }
+            "attach" => {
+                if let Some(scratchpad_name) = args.first() {
+                    info!("📌 Toggling attach for scratchpad: {}", scratchpad_name);
+                    if self.scratchpads.contains_key(*scratchpad_name) {
+                        match self.toggle_attach_scratchpad(scratchpad_name).await {
+                            Ok(message) => {
+                                info!("✅ {}", message);
+                                Ok(message)
+                            }
+                            Err(e) => {
+                                error!(
+                                    "❌ Failed to toggle attach for scratchpad '{}': {}",
+                                    scratchpad_name, e
+                                );
+                                Err(e)
+                            }
+                        }
+                    } else {
+                        warn!("⚠️  Scratchpad '{}' not found", scratchpad_name);
+                        Err(anyhow::anyhow!(
+                            "Scratchpad '{}' not found",
+                            scratchpad_name
+                        ))
+                    }
+                } else {
+                    Err(anyhow::anyhow!("No scratchpad name provided"))
+                }
+            }
+            _ => Err(anyhow::anyhow!("Unknown command: {}", command)),
+        }
+    }
+
+    async fn cleanup(&mut self) -> Result<()> {
+        info!("🧹 Cleaning up scratchpads plugin");
+
+        // Cancel all hide tasks
+        for (window_addr, handle) in self.hide_tasks.drain() {
+            handle.abort();
+            debug!("❌ Cancelled hide task for window: {}", window_addr);
+        }
+
+        // Cancel all hysteresis tasks
+        for (scratchpad_name, handle) in self.hysteresis_tasks.drain() {
+            handle.abort();
+            debug!(
+                "❌ Cancelled hysteresis task for scratchpad: {}",
+                scratchpad_name
+            );
+        }
+
+        // Cancel all sync tasks
+        for (window_addr, handle) in self.sync_tasks.drain() {
+            handle.abort();
+            debug!("❌ Cancelled sync task for window: {}", window_addr);
+        }
+
+        info!("✅ Scratchpads plugin cleanup complete");
         Ok(())
     }
 }
@@ -4434,7 +3728,7 @@ mod tests {
         // Test that all animation types can be processed by our helper method
         for animation_type in animation_types {
             let plugin = ScratchpadsPlugin::new();
-            let hide_animation_type = plugin.get_hide_animation_type(&Some(animation_type.to_string()));
+            let hide_animation_type = plugin.get_reverse_animation_type(&animation_type.to_string());
             
             // Verify hide animation type mapping
             match animation_type {
