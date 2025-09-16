@@ -537,21 +537,28 @@ impl HyprlandClient {
     pub async fn get_active_workspace(&self) -> Result<String> {
         debug!("🖥️ Getting active workspace");
 
-        use hyprland::data::{Workspace, Workspaces};
+        let active_workspace = with_hyprland_timeout(|| {
+            use hyprland::data::Workspace;
+            use hyprland::shared::HyprDataActive;
+            Workspace::get_active()
+        }).await?;
 
-        let workspaces = with_hyprland_timeout(Workspaces::get).await?;
+        debug!("✅ Found active workspace: {} on monitor: {}", active_workspace.id, active_workspace.monitor);
+        Ok(active_workspace.id.to_string())
+    }
 
-        // Find the focused workspace
-        for workspace in workspaces.iter() {
-            if workspace.id > 0 && workspace.windows > 0 {
-                // For now, return the first regular workspace with windows
-                // In a real implementation, we'd check which one is actually focused
-                return Ok(workspace.id.to_string());
-            }
-        }
+    /// Get current active workspace with monitor information
+    pub async fn get_active_workspace_with_monitor(&self) -> Result<(String, String)> {
+        debug!("🖥️ Getting active workspace with monitor info");
 
-        // Fallback to workspace 1
-        Ok("1".to_string())
+        let active_workspace = with_hyprland_timeout(|| {
+            use hyprland::data::Workspace;
+            use hyprland::shared::HyprDataActive;
+            Workspace::get_active()
+        }).await?;
+
+        debug!("✅ Found active workspace: {} on monitor: {}", active_workspace.id, active_workspace.monitor);
+        Ok((active_workspace.id.to_string(), active_workspace.monitor))
     }
 
     /// Move window to workspace

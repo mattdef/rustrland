@@ -1231,7 +1231,12 @@ impl ScratchpadsPlugin {
     ) -> Result<(i32, i32)> {
         // Use reasonable offset (50px off-screen instead of 100% of monitor)
         let offset_pixels = 50; // Simple, predictable offset
-        
+
+        info!("🔍 TRACE: Monitor '{}' bounds: x={}, y={}, w={}, h={}",
+              monitor.name, monitor.x, monitor.y, monitor.width, monitor.height);
+        info!("🔍 TRACE: Target position: ({}, {}), Target size: ({}, {})",
+              target_position.0, target_position.1, target_size.0, target_size.1);
+
         // Use our corrected calculation function
         let start_position = Self::calculate_spawn_position_offscreen(
             animation_type,
@@ -1241,9 +1246,9 @@ impl ScratchpadsPlugin {
             offset_pixels,
         );
 
-        debug!("🎯 Animation spawn position: {} -> ({}, {}) with offset {}px", 
+        info!("🎯 TRACE: Animation '{}' spawn position calculated: ({}, {}) with offset {}px",
                animation_type, start_position.0, start_position.1, offset_pixels);
-        
+
         Ok(start_position)
     }
 
@@ -1375,7 +1380,10 @@ impl ScratchpadsPlugin {
         start_position: (i32, i32),
     ) -> Result<()> {
         let window_address = window.address.to_string();
-        
+
+        info!("🎬 TRACE: animate_window_to_position - Setting window {} to start position ({}, {}) before animation",
+              window_address, start_position.0, start_position.1);
+
         // Position window at start position first
         client.resize_and_position_window(
             &window_address,
@@ -1384,9 +1392,16 @@ impl ScratchpadsPlugin {
             geometry.width,
             geometry.height,
         ).await?;
-        
+
         // Short delay for positioning
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+        // Verify actual position after manual positioning
+        let windows_after_position = client.get_windows().await?;
+        if let Some(positioned_window) = windows_after_position.iter().find(|w| w.address.to_string() == window_address) {
+            info!("🎬 TRACE: Window actual position after manual positioning: ({}, {})",
+                  positioned_window.at.0, positioned_window.at.1);
+        }
         
         // Create and run animation
         let animation_config = crate::animation::AnimationConfig {
@@ -1844,32 +1859,43 @@ impl ScratchpadsPlugin {
         
         let (spawn_x, spawn_y) = spawn_position.unwrap_or((geometry.x, geometry.y));
 
+        // IMPORTANT: Hyprland interprets 'move' coordinates as relative to the monitor
+        // We need to convert our absolute coordinates to monitor-relative coordinates
+        // by subtracting the monitor's offset to get the correct off-screen positioning
+        let hyprland_relative_x = spawn_x - monitor.x;
+        let hyprland_relative_y = spawn_y - monitor.y;
+
         // Step 6: Spawn with calculated position and size in special workspace
         let command = {
             let variables = self.variables.read().await;
             self.expand_command(&config.command, &variables)
         }; // variables guard is dropped here
-        
+
         let spawn_command = format!(
-            "[workspace {};float;size {} {};move {} {}] {}", 
-            special_workspace, 
-            geometry.width, 
+            "[workspace {};float;size {} {};move {} {}] {}",
+            special_workspace,
+            geometry.width,
             geometry.height,
-            spawn_x,
-            spawn_y,
+            hyprland_relative_x,
+            hyprland_relative_y,
             command
         );
-        
-        debug!("🚀 Spawning positioned at ({}, {}) with size {}x{} in {}: {}", 
-              spawn_x, spawn_y, geometry.width, geometry.height, special_workspace, command);
+
+        info!("🚀 TRACE: Spawning with command: {}", spawn_command);
+        info!("🚀 TRACE: Expected absolute spawn position: ({}, {}) with size {}x{} in {}",
+              spawn_x, spawn_y, geometry.width, geometry.height, special_workspace);
+        info!("🚀 TRACE: Hyprland-relative coordinates used: ({}, {}) (absolute - monitor offset)",
+              hyprland_relative_x, hyprland_relative_y);
         client.spawn_app(&spawn_command).await?;
 
         // Step 7: Wait and find new window by comparison
         let new_window = self.find_new_window_by_comparison(&client, &before_addresses, 5000).await?
             .ok_or_else(|| anyhow::anyhow!("Failed to find newly spawned window"))?;
-        
+
         let window_address = new_window.address.to_string();
-        debug!("✅ Found new scratchpad window: {} (class: '{}')", window_address, new_window.class);
+        info!("✅ TRACE: Found new scratchpad window: {} (class: '{}')", window_address, new_window.class);
+        info!("✅ TRACE: Actual window position after spawn: ({}, {}), size: ({}, {}), workspace: {}",
+              new_window.at.0, new_window.at.1, new_window.size.0, new_window.size.1, new_window.workspace.name);
 
         // Step 8: Apply specific windowrules to the identified window
         self.apply_scratchpad_window_rules(&window_address).await?;
@@ -1879,12 +1905,15 @@ impl ScratchpadsPlugin {
         if let Some(animation_type) = &config.animation {
             // Reuse the already calculated spawn position for animation
             let start_position = spawn_position.expect("spawn_position should be Some when animation is configured");
-            
+
+            info!("🎬 TRACE: Starting animation from calculated position: ({}, {}) to final position: ({}, {})",
+                  start_position.0, start_position.1, geometry.x, geometry.y);
+
             self.animate_window_to_position(
-                &client, 
-                &new_window, 
-                config, 
-                &geometry, 
+                &client,
+                &new_window,
+                config,
+                &geometry,
                 animation_type,
                 name,
                 start_position
@@ -2046,7 +2075,10 @@ impl ScratchpadsPlugin {
                     .find(|w| w.address.to_string() == window_address)
                     .map(|w| (w.at.0 as i32, w.at.1 as i32))
                     .ok_or_else(|| anyhow::anyhow!("Window not found: {}", window_address))?;
-                
+
+                info!("🎬 TRACE: Window current position before animation: ({}, {}), target: ({}, {})",
+                      current_position.0, current_position.1, geometry.x, geometry.y);
+
                 // Use generalized animation function
                 self.animate_window_to_position(
                     client,
@@ -2149,6 +2181,7 @@ impl ScratchpadsPlugin {
     }
 
     /// Calculate start position for animation based on type and target (Fixed geometry)
+    /// Multi-monitor aware: ensures offscreen positions are always truly offscreen
     fn calculate_spawn_position_offscreen(
         animation_type: &str,
         target_position: (i32, i32),
@@ -2158,33 +2191,72 @@ impl ScratchpadsPlugin {
     ) -> (i32, i32) {
         // Limit offset to reasonable values (max 200px off-screen)
         let safe_offset = offset_pixels.min(200).max(10);
-        
-        match animation_type {
-            "fromTop" => (target_position.0, monitor.y - target_size.1 - safe_offset),
-            "fromBottom" => (target_position.0, monitor.y + monitor.height as i32 + safe_offset),
-            "fromLeft" => (monitor.x - target_size.0 - safe_offset, target_position.1),
-            "fromRight" => (monitor.x + monitor.width as i32 + safe_offset, target_position.1),
+
+        // Calculate monitor bounds for proper offscreen positioning
+        let monitor_top = monitor.y;
+        let monitor_bottom = monitor.y + monitor.height as i32;
+        let monitor_left = monitor.x;
+        let monitor_right = monitor.x + monitor.width as i32;
+
+        let calculated_position = match animation_type {
+            "fromTop" => {
+                // Always position above the monitor's top edge, regardless of monitor offset
+                let offscreen_y = monitor_top - target_size.1 - safe_offset;
+                info!("🔍 TRACE: fromTop calculation - monitor_top={}, target_size.1={}, safe_offset={}, result_y={}",
+                       monitor_top, target_size.1, safe_offset, offscreen_y);
+                info!("🔍 TRACE: fromTop - target_position=({}, {}), final_position=({}, {})",
+                       target_position.0, target_position.1, target_position.0, offscreen_y);
+                (target_position.0, offscreen_y)
+            },
+            "fromBottom" => {
+                // Always position below the monitor's bottom edge
+                let offscreen_y = monitor_bottom + safe_offset;
+                debug!("🎯 fromBottom: monitor_bottom={}, safe_offset={}, result_y={}",
+                       monitor_bottom, safe_offset, offscreen_y);
+                (target_position.0, offscreen_y)
+            },
+            "fromLeft" => {
+                // Always position left of the monitor's left edge
+                let offscreen_x = monitor_left - target_size.0 - safe_offset;
+                debug!("🎯 fromLeft: monitor_left={}, target_size.0={}, safe_offset={}, result_x={}",
+                       monitor_left, target_size.0, safe_offset, offscreen_x);
+                (offscreen_x, target_position.1)
+            },
+            "fromRight" => {
+                // Always position right of the monitor's right edge
+                let offscreen_x = monitor_right + safe_offset;
+                debug!("🎯 fromRight: monitor_right={}, safe_offset={}, result_x={}",
+                       monitor_right, safe_offset, offscreen_x);
+                (offscreen_x, target_position.1)
+            },
             "fromTopLeft" => (
-                monitor.x - target_size.0 - safe_offset, 
-                monitor.y - target_size.1 - safe_offset
+                monitor_left - target_size.0 - safe_offset,
+                monitor_top - target_size.1 - safe_offset
             ),
             "fromTopRight" => (
-                monitor.x + monitor.width as i32 + safe_offset, 
-                monitor.y - target_size.1 - safe_offset
+                monitor_right + safe_offset,
+                monitor_top - target_size.1 - safe_offset
             ),
             "fromBottomLeft" => (
-                monitor.x - target_size.0 - safe_offset, 
-                monitor.y + monitor.height as i32 + safe_offset
+                monitor_left - target_size.0 - safe_offset,
+                monitor_bottom + safe_offset
             ),
             "fromBottomRight" => (
-                monitor.x + monitor.width as i32 + safe_offset, 
-                monitor.y + monitor.height as i32 + safe_offset
+                monitor_right + safe_offset,
+                monitor_bottom + safe_offset
             ),
             _ => target_position, // For fade, scale, etc - start at target
-        }
+        };
+
+        info!("🎯 TRACE: Monitor '{}' at ({}, {}) size {}x{} -> Animation '{}' spawn position: ({}, {})",
+               monitor.name, monitor.x, monitor.y, monitor.width, monitor.height,
+               animation_type, calculated_position.0, calculated_position.1);
+
+        calculated_position
     }
     
     /// Calculate hide position for animation based on type (Fixed geometry)
+    /// Multi-monitor aware: ensures offscreen positions are always truly offscreen
     fn calculate_hide_position_offscreen(
         hide_animation_type: &str,
         current_position: (i32, i32),
@@ -2194,30 +2266,65 @@ impl ScratchpadsPlugin {
     ) -> (i32, i32) {
         // Limit offset to reasonable values (max 200px off-screen)
         let safe_offset = offset_pixels.min(200).max(10);
-        
-        match hide_animation_type {
-            "toTop" => (current_position.0, monitor.y - window_size.1 - safe_offset),
-            "toBottom" => (current_position.0, monitor.y + monitor.height as i32 + safe_offset),
-            "toLeft" => (monitor.x - window_size.0 - safe_offset, current_position.1),
-            "toRight" => (monitor.x + monitor.width as i32 + safe_offset, current_position.1),
+
+        // Calculate monitor bounds for proper offscreen positioning
+        let monitor_top = monitor.y;
+        let monitor_bottom = monitor.y + monitor.height as i32;
+        let monitor_left = monitor.x;
+        let monitor_right = monitor.x + monitor.width as i32;
+
+        let calculated_position = match hide_animation_type {
+            "toTop" => {
+                // Always position above the monitor's top edge
+                let offscreen_y = monitor_top - window_size.1 - safe_offset;
+                debug!("🎯 toTop: monitor_top={}, window_size.1={}, safe_offset={}, result_y={}",
+                       monitor_top, window_size.1, safe_offset, offscreen_y);
+                (current_position.0, offscreen_y)
+            },
+            "toBottom" => {
+                // Always position below the monitor's bottom edge
+                let offscreen_y = monitor_bottom + safe_offset;
+                debug!("🎯 toBottom: monitor_bottom={}, safe_offset={}, result_y={}",
+                       monitor_bottom, safe_offset, offscreen_y);
+                (current_position.0, offscreen_y)
+            },
+            "toLeft" => {
+                // Always position left of the monitor's left edge
+                let offscreen_x = monitor_left - window_size.0 - safe_offset;
+                debug!("🎯 toLeft: monitor_left={}, window_size.0={}, safe_offset={}, result_x={}",
+                       monitor_left, window_size.0, safe_offset, offscreen_x);
+                (offscreen_x, current_position.1)
+            },
+            "toRight" => {
+                // Always position right of the monitor's right edge
+                let offscreen_x = monitor_right + safe_offset;
+                debug!("🎯 toRight: monitor_right={}, safe_offset={}, result_x={}",
+                       monitor_right, safe_offset, offscreen_x);
+                (offscreen_x, current_position.1)
+            },
             "toTopLeft" => (
-                monitor.x - window_size.0 - safe_offset,
-                monitor.y - window_size.1 - safe_offset,
+                monitor_left - window_size.0 - safe_offset,
+                monitor_top - window_size.1 - safe_offset,
             ),
             "toTopRight" => (
-                monitor.x + monitor.width as i32 + safe_offset,
-                monitor.y - window_size.1 - safe_offset,
+                monitor_right + safe_offset,
+                monitor_top - window_size.1 - safe_offset,
             ),
             "toBottomLeft" => (
-                monitor.x - window_size.0 - safe_offset,
-                monitor.y + monitor.height as i32 + safe_offset,
+                monitor_left - window_size.0 - safe_offset,
+                monitor_bottom + safe_offset,
             ),
             "toBottomRight" => (
-                monitor.x + monitor.width as i32 + safe_offset,
-                monitor.y + monitor.height as i32 + safe_offset,
+                monitor_right + safe_offset,
+                monitor_bottom + safe_offset,
             ),
             _ => current_position, // For fade, scale, etc - stay in place
-        }
+        };
+
+        debug!("🎯 Monitor '{}' hide animation '{}' -> position: ({}, {})",
+               monitor.name, hide_animation_type, calculated_position.0, calculated_position.1);
+
+        calculated_position
     }
 
     async fn handle_window_opened(&mut self, window_address: &str) {
