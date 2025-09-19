@@ -94,14 +94,14 @@ impl Timeline {
             AnimationDirection::Normal => loop_progress,
             AnimationDirection::Reverse => 1.0 - loop_progress,
             AnimationDirection::Alternate => {
-                if self.current_loop % 2 == 0 {
+                if self.current_loop.is_multiple_of(2) {
                     loop_progress
                 } else {
                     1.0 - loop_progress
                 }
             }
             AnimationDirection::AlternateReverse => {
-                if self.current_loop % 2 == 0 {
+                if self.current_loop.is_multiple_of(2) {
                     1.0 - loop_progress
                 } else {
                     loop_progress
