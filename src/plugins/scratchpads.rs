@@ -323,6 +323,8 @@ pub struct ScratchpadState {
     pub cached_position: Option<(String, i32, i32, i32, i32)>, // monitor, x, y, w, h
     pub is_attached: bool,            // Whether window is attached to scratchpad system
     pub original_workspace: Option<String>, // Workspace actif avant l'appel du scratchpad
+    #[serde(skip)] // Skip serialization as MonitorInfo doesn't implement Serialize
+    pub spawn_monitor: Option<MonitorInfo>, // Monitor used during spawn for consistent hide positioning
 }
 
 impl Default for ScratchpadState {
@@ -335,6 +337,7 @@ impl Default for ScratchpadState {
             cached_position: None,
             is_attached: true, // Default to attached
             original_workspace: None,
+            spawn_monitor: None,
         }
     }
 }
@@ -1201,6 +1204,32 @@ impl ScratchpadsPlugin {
             .cloned()
             .or_else(|| monitors.first().cloned())
             .ok_or_else(|| anyhow::anyhow!("No monitors available"))
+    }
+
+    /// Get the monitor used during spawn, or fall back to current focused monitor
+    /// This ensures hide animations use the same monitor as spawn for consistency
+    pub async fn get_spawn_monitor_or_current(
+        &self,
+        name: &str,
+        config: &ValidatedConfig,
+    ) -> Result<MonitorInfo> {
+        // Try to get the stored spawn monitor first
+        if let Some(state) = self.states.get(name) {
+            if let Some(stored_monitor) = &state.spawn_monitor {
+                info!(
+                    "🖥️ Using stored spawn monitor: {} for hide animation",
+                    stored_monitor.name
+                );
+                return Ok(stored_monitor.clone());
+            }
+        }
+
+        // Fallback to current focused monitor if no spawn monitor stored
+        warn!(
+            "📺 No stored spawn monitor for '{}', using current focused monitor",
+            name
+        );
+        self.get_target_monitor(config).await
     }
 
     /// Process variable substitution in commands
@@ -2073,6 +2102,16 @@ impl ScratchpadsPlugin {
         let monitor = self.get_target_monitor(config).await?;
         let geometry = GeometryCalculator::calculate_geometry(config, &monitor)?;
 
+        // Store spawn monitor for consistent hide positioning
+        {
+            let state = self.states.entry(name.to_string()).or_default();
+            state.spawn_monitor = Some(monitor.clone());
+            info!(
+                "🖥️ Stored spawn monitor: {} for scratchpad '{}'",
+                monitor.name, name
+            );
+        }
+
         // Calculate offscreen start position for animation (if animation is configured)
         let spawn_position = if let Some(animation_type) = &config.animation {
             Some(
@@ -2209,8 +2248,8 @@ impl ScratchpadsPlugin {
                 })
                 .ok_or_else(|| anyhow::anyhow!("Window not found: {}", window_address))?;
 
-            // 1. Calculate target geometry using the same method as spawn
-            let source_monitor = self.get_target_monitor(&config).await?;
+            // 1. Use stored spawn monitor for consistent positioning
+            let source_monitor = self.get_spawn_monitor_or_current(name, &config).await?;
             let target_geometry = GeometryCalculator::calculate_geometry(&config, &source_monitor)?;
 
             // 2. Calculate hide target position using UNIFIED function with SAME animation type
@@ -4489,6 +4528,53 @@ mod tests {
             };
 
             assert_eq!(config_none.target_position, None);
+        }
+
+        #[test]
+        fn test_spawn_monitor_storage() {
+            // Test simple pour vérifier que le stockage du moniteur fonctionne
+            let monitor_dp1 = MonitorInfo {
+                id: 1,
+                name: "DP-1".to_string(),
+                width: 1920,
+                height: 1080,
+                x: 0,
+                y: 0,
+                active_workspace_id: 1,
+                is_focused: true,
+                scale: 1.0,
+                refresh_rate: 60.0,
+            };
+
+            // Test du stockage dans ScratchpadState
+            let mut state = ScratchpadState::default();
+            assert!(state.spawn_monitor.is_none());
+
+            // Stocker le moniteur
+            state.spawn_monitor = Some(monitor_dp1.clone());
+            assert!(state.spawn_monitor.is_some());
+            assert_eq!(state.spawn_monitor.as_ref().unwrap().name, "DP-1");
+            assert_eq!(state.spawn_monitor.as_ref().unwrap().x, 0);
+
+            // Test qu'un moniteur différent peut être stocké
+            let monitor_dp3 = MonitorInfo {
+                id: 3,
+                name: "DP-3".to_string(),
+                width: 1920,
+                height: 1080,
+                x: 1920,
+                y: 0,
+                active_workspace_id: 3,
+                is_focused: false,
+                scale: 1.0,
+                refresh_rate: 60.0,
+            };
+
+            state.spawn_monitor = Some(monitor_dp3.clone());
+            assert_eq!(state.spawn_monitor.as_ref().unwrap().name, "DP-3");
+            assert_eq!(state.spawn_monitor.as_ref().unwrap().x, 1920);
+
+            println!("✅ Monitor storage test passed: DP-1 (x=0) -> DP-3 (x=1920)");
         }
     }
 }
