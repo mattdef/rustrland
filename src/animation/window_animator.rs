@@ -373,10 +373,13 @@ impl WindowAnimator {
             source_monitor.y + current_position.1,
         );
 
-        // Calculate ending position: use pre-calculated position if provided, 
+        // Calculate ending position: use pre-calculated position if provided,
         // otherwise fall back to internal calculation
         let end_position = if let Some(target_pos) = config.target_position {
-            info!("🎯 Using pre-calculated target position: ({}, {})", target_pos.0, target_pos.1);
+            info!(
+                "🎯 Using pre-calculated target position: ({}, {})",
+                target_pos.0, target_pos.1
+            );
             target_pos
         } else {
             warn!("⚠️ Fallback to WindowAnimator calculation (should not happen with scratchpads)");
@@ -640,7 +643,7 @@ impl WindowAnimator {
                 );
                 Ok((target_x, absolute_current_position.1))
             }
-             "toRight" | "fromRight" => {
+            "toRight" | "fromRight" => {
                 let target_x = monitor.x + monitor.width as i32 + offset_pixels;
                 debug!(
                     "🔢 toRight calculation: monitor.x({}) + width({}) + offset({}) = {}",

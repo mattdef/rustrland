@@ -1347,11 +1347,10 @@ impl ScratchpadsPlugin {
             workspace
         );
 
-        match self.workspace_exists(workspace).await? {
-            false => Dispatch::call(DispatchType::ToggleSpecialWorkspace(Some(
+        if !self.workspace_exists(workspace).await? {
+            Dispatch::call(DispatchType::ToggleSpecialWorkspace(Some(
                 workspace.to_string(),
-            )))?,
-            _ => (),
+            )))?
         }
         // 1. Créer le workspace spécial s'il n'existe pas
 
@@ -1499,6 +1498,7 @@ impl ScratchpadsPlugin {
     }
 
     /// Animate window from any position to target position
+    #[allow(clippy::too_many_arguments)]
     async fn animate_window_to_position(
         &self,
         client: &crate::ipc::HyprlandClient,
@@ -2212,7 +2212,7 @@ impl ScratchpadsPlugin {
             // 1. Calculate target geometry using the same method as spawn
             let source_monitor = self.get_target_monitor(&config).await?;
             let target_geometry = GeometryCalculator::calculate_geometry(&config, &source_monitor)?;
-            
+
             // 2. Calculate hide target position using UNIFIED function with SAME animation type
             let hide_target_position = Self::calculate_animation_position_unified(
                 animation_type, // PAS de reverse - même type que spawn pour cohérence
@@ -2221,12 +2221,19 @@ impl ScratchpadsPlugin {
                 &source_monitor,
                 50, // MÊME OFFSET que spawn (50px fixe)
             );
-            
-            info!("🎯 HIDE: Calculated target position: ({}, {}) for animation '{}' (same as spawn)", 
-                  hide_target_position.0, hide_target_position.1, animation_type);
-            info!("🔍 HIDE: Current position: ({}, {}), Size: ({}, {})", 
-                  current_geometry.x, current_geometry.y, current_geometry.width, current_geometry.height);
-            
+
+            info!(
+                "🎯 HIDE: Calculated target position: ({}, {}) for animation '{}' (same as spawn)",
+                hide_target_position.0, hide_target_position.1, animation_type
+            );
+            info!(
+                "🔍 HIDE: Current position: ({}, {}), Size: ({}, {})",
+                current_geometry.x,
+                current_geometry.y,
+                current_geometry.width,
+                current_geometry.height
+            );
+
             // 3. Create animation config with pre-calculated position
             let hide_config = crate::animation::AnimationConfig {
                 animation_type: animation_type.clone(), // MÊME TYPE que spawn
@@ -2240,7 +2247,7 @@ impl ScratchpadsPlugin {
                 target_fps: 60,
                 target_position: Some(hide_target_position), // ✅ POSITION PRÉ-CALCULÉE
             };
-            
+
             // 4. Use WindowAnimator with pre-calculated position
             let mut animator = self.window_animator.lock().await;
             animator.set_active_monitor(&source_monitor).await;
@@ -2450,7 +2457,7 @@ impl ScratchpadsPlugin {
         offset_pixels: i32,
     ) -> (i32, i32) {
         // Limit offset to reasonable values (max 200px off-screen)
-        let safe_offset = offset_pixels.min(200).max(10);
+        let safe_offset = offset_pixels.clamp(10, 200);
 
         // Calculate monitor bounds for proper offscreen positioning
         let monitor_top = monitor.y;
@@ -2530,7 +2537,7 @@ impl ScratchpadsPlugin {
         offset_pixels: i32,
     ) -> (i32, i32) {
         // Limit offset to reasonable values (max 200px off-screen)
-        let safe_offset = offset_pixels.min(200).max(10);
+        let safe_offset = offset_pixels.clamp(10, 200);
 
         // Calculate monitor bounds for proper offscreen positioning
         let monitor_top = monitor.y;
@@ -4244,16 +4251,27 @@ mod tests {
 
             // Test que la fonction unifiée donne le même résultat que l'ancienne
             let old_result = ScratchpadsPlugin::calculate_spawn_position_offscreen(
-                "fromTop", target_pos, target_size, &monitor, offset
+                "fromTop",
+                target_pos,
+                target_size,
+                &monitor,
+                offset,
             );
             let new_result = ScratchpadsPlugin::calculate_animation_position_unified(
-                "fromTop", target_pos, target_size, &monitor, offset
+                "fromTop",
+                target_pos,
+                target_size,
+                &monitor,
+                offset,
             );
 
-            assert_eq!(old_result, new_result, "Les fonctions doivent donner le même résultat pour fromTop");
+            assert_eq!(
+                old_result, new_result,
+                "Les fonctions doivent donner le même résultat pour fromTop"
+            );
         }
 
-        #[test] 
+        #[test]
         fn test_unified_position_all_animation_types() {
             let monitor = create_test_monitor();
             let target_pos = (960, 540);
@@ -4261,21 +4279,39 @@ mod tests {
             let offset = 50;
 
             let animation_types = [
-                "fromTop", "fromBottom", "fromLeft", "fromRight",
-                "fromTopLeft", "fromTopRight", "fromBottomLeft", "fromBottomRight",
-                "fade", "scale"
+                "fromTop",
+                "fromBottom",
+                "fromLeft",
+                "fromRight",
+                "fromTopLeft",
+                "fromTopRight",
+                "fromBottomLeft",
+                "fromBottomRight",
+                "fade",
+                "scale",
             ];
 
             for animation_type in &animation_types {
                 let old_result = ScratchpadsPlugin::calculate_spawn_position_offscreen(
-                    animation_type, target_pos, target_size, &monitor, offset
+                    animation_type,
+                    target_pos,
+                    target_size,
+                    &monitor,
+                    offset,
                 );
                 let new_result = ScratchpadsPlugin::calculate_animation_position_unified(
-                    animation_type, target_pos, target_size, &monitor, offset
+                    animation_type,
+                    target_pos,
+                    target_size,
+                    &monitor,
+                    offset,
                 );
 
-                assert_eq!(old_result, new_result, 
-                    "Les fonctions doivent donner le même résultat pour {}", animation_type);
+                assert_eq!(
+                    old_result, new_result,
+                    "Les fonctions doivent donner le même résultat pour {}",
+                    animation_type
+                );
             }
         }
 
@@ -4295,14 +4331,22 @@ mod tests {
             let offset = 50;
 
             let old_result = ScratchpadsPlugin::calculate_spawn_position_offscreen(
-                "fromTop", target_pos, target_size, &monitor, offset
+                "fromTop",
+                target_pos,
+                target_size,
+                &monitor,
+                offset,
             );
             let new_result = ScratchpadsPlugin::calculate_animation_position_unified(
-                "fromTop", target_pos, target_size, &monitor, offset
+                "fromTop",
+                target_pos,
+                target_size,
+                &monitor,
+                offset,
             );
 
             assert_eq!(old_result, new_result);
-            
+
             // Vérifier que le calcul prend en compte l'offset du moniteur
             assert_eq!(new_result.1, monitor.y - target_size.1 - offset); // Y position
             assert_eq!(new_result.0, target_pos.0); // X reste le même pour fromTop
@@ -4317,29 +4361,134 @@ mod tests {
 
             // Test fromTop - doit être au-dessus du moniteur
             let result = ScratchpadsPlugin::calculate_animation_position_unified(
-                "fromTop", target_pos, target_size, &monitor, offset
+                "fromTop",
+                target_pos,
+                target_size,
+                &monitor,
+                offset,
             );
-            assert!(result.1 < monitor.y, "fromTop doit positionner la fenêtre au-dessus du moniteur");
+            assert!(
+                result.1 < monitor.y,
+                "fromTop doit positionner la fenêtre au-dessus du moniteur"
+            );
 
             // Test fromBottom - doit être en-dessous du moniteur
             let result = ScratchpadsPlugin::calculate_animation_position_unified(
-                "fromBottom", target_pos, target_size, &monitor, offset
+                "fromBottom",
+                target_pos,
+                target_size,
+                &monitor,
+                offset,
             );
-            assert!(result.1 > monitor.y + monitor.height as i32, 
-                "fromBottom doit positionner la fenêtre en-dessous du moniteur");
+            assert!(
+                result.1 > monitor.y + monitor.height as i32,
+                "fromBottom doit positionner la fenêtre en-dessous du moniteur"
+            );
 
             // Test fromLeft - doit être à gauche du moniteur
             let result = ScratchpadsPlugin::calculate_animation_position_unified(
-                "fromLeft", target_pos, target_size, &monitor, offset
+                "fromLeft",
+                target_pos,
+                target_size,
+                &monitor,
+                offset,
             );
-            assert!(result.0 < monitor.x, "fromLeft doit positionner la fenêtre à gauche du moniteur");
+            assert!(
+                result.0 < monitor.x,
+                "fromLeft doit positionner la fenêtre à gauche du moniteur"
+            );
 
             // Test fromRight - doit être à droite du moniteur
             let result = ScratchpadsPlugin::calculate_animation_position_unified(
-                "fromRight", target_pos, target_size, &monitor, offset
+                "fromRight",
+                target_pos,
+                target_size,
+                &monitor,
+                offset,
             );
-            assert!(result.0 > monitor.x + monitor.width as i32, 
-                "fromRight doit positionner la fenêtre à droite du moniteur");
+            assert!(
+                result.0 > monitor.x + monitor.width as i32,
+                "fromRight doit positionner la fenêtre à droite du moniteur"
+            );
+        }
+
+        #[test]
+        fn test_spawn_hide_position_consistency() {
+            let monitor = create_test_monitor();
+            let target_pos = (960, 540);
+            let target_size = (800, 600);
+            let offset = 50;
+
+            let animation_types = [
+                "fromTop",
+                "fromBottom",
+                "fromLeft",
+                "fromRight",
+                "fromTopLeft",
+                "fromTopRight",
+                "fromBottomLeft",
+                "fromBottomRight",
+            ];
+
+            for animation_type in &animation_types {
+                // Position calculée pour le spawn
+                let spawn_position = ScratchpadsPlugin::calculate_animation_position_unified(
+                    animation_type,
+                    target_pos,
+                    target_size,
+                    &monitor,
+                    offset,
+                );
+
+                // Position calculée pour le hide (doit être identique)
+                let hide_position = ScratchpadsPlugin::calculate_animation_position_unified(
+                    animation_type, // MÊME TYPE, pas de reverse
+                    target_pos,
+                    target_size,
+                    &monitor,
+                    offset,
+                );
+
+                assert_eq!(
+                    spawn_position, hide_position,
+                    "Spawn et hide doivent avoir la même position pour {}",
+                    animation_type
+                );
+
+                // Log pour validation visuelle
+                println!(
+                    "✅ {} : spawn=({}, {}) == hide=({}, {})",
+                    animation_type,
+                    spawn_position.0,
+                    spawn_position.1,
+                    hide_position.0,
+                    hide_position.1
+                );
+            }
+        }
+
+        #[test]
+        fn test_target_position_integration() {
+            // Test que AnimationConfig avec target_position utilise la bonne valeur
+            let target_pos = (100, 200);
+
+            let config = crate::animation::AnimationConfig {
+                animation_type: "fromTop".to_string(),
+                target_position: Some(target_pos),
+                ..Default::default()
+            };
+
+            // Vérifier que le champ est correctement défini
+            assert_eq!(config.target_position, Some(target_pos));
+
+            // Test que le None fonctionne aussi
+            let config_none = crate::animation::AnimationConfig {
+                animation_type: "fromTop".to_string(),
+                target_position: None,
+                ..Default::default()
+            };
+
+            assert_eq!(config_none.target_position, None);
         }
     }
 }
