@@ -2191,7 +2191,7 @@ impl ScratchpadsPlugin {
         // Store current focus for potential restoration
         let should_restore_focus = config.restore_focus;
 
-        // Handle hide animations with proper reverse animation
+        // Handle hide animations using unified position calculation
         if let Some(animation_type) = &config.animation {
             // Get current window geometry
             let windows = client.get_windows().await?;
@@ -2209,23 +2209,39 @@ impl ScratchpadsPlugin {
                 })
                 .ok_or_else(|| anyhow::anyhow!("Window not found: {}", window_address))?;
 
-            // Create reverse animation config
-            let reverse_animation_type = self.get_reverse_animation_type(animation_type);
+            // 1. Calculate target geometry using the same method as spawn
+            let source_monitor = self.get_target_monitor(&config).await?;
+            let target_geometry = GeometryCalculator::calculate_geometry(&config, &source_monitor)?;
+            
+            // 2. Calculate hide target position using UNIFIED function with SAME animation type
+            let hide_target_position = Self::calculate_animation_position_unified(
+                animation_type, // PAS de reverse - même type que spawn pour cohérence
+                (target_geometry.x, target_geometry.y),
+                (target_geometry.width, target_geometry.height),
+                &source_monitor,
+                50, // MÊME OFFSET que spawn (50px fixe)
+            );
+            
+            info!("🎯 HIDE: Calculated target position: ({}, {}) for animation '{}' (same as spawn)", 
+                  hide_target_position.0, hide_target_position.1, animation_type);
+            info!("🔍 HIDE: Current position: ({}, {}), Size: ({}, {})", 
+                  current_geometry.x, current_geometry.y, current_geometry.width, current_geometry.height);
+            
+            // 3. Create animation config with pre-calculated position
             let hide_config = crate::animation::AnimationConfig {
-                animation_type: reverse_animation_type,
+                animation_type: animation_type.clone(), // MÊME TYPE que spawn
                 duration: config.animation_duration.unwrap_or(300),
                 easing: config.to_easing_function(),
-                offset: "50px".to_string(), // Use reasonable fixed offset instead of huge percentage
+                offset: "50px".to_string(), // Même offset mais sera ignoré car target_position est défini
                 opacity_from: 1.0,
                 scale_from: 1.0,
                 delay: config.animation_delay.unwrap_or(0),
                 properties: None,
                 target_fps: 60,
-                target_position: None,
+                target_position: Some(hide_target_position), // ✅ POSITION PRÉ-CALCULÉE
             };
-
-            // Use WindowAnimator's hide_window method
-            let source_monitor = self.get_target_monitor(&config).await?;
+            
+            // 4. Use WindowAnimator with pre-calculated position
             let mut animator = self.window_animator.lock().await;
             animator.set_active_monitor(&source_monitor).await;
 
@@ -2235,7 +2251,7 @@ impl ScratchpadsPlugin {
                     (current_geometry.x, current_geometry.y),
                     (current_geometry.width, current_geometry.height),
                     hide_config,
-                    &source_monitor, // ✅ PASSER LE MONITEUR SOURCE
+                    &source_monitor,
                 )
                 .await?;
         }
