@@ -1302,8 +1302,8 @@ impl ScratchpadsPlugin {
             target_position.0, target_position.1, target_size.0, target_size.1
         );
 
-        // Use our corrected calculation function
-        let start_position = Self::calculate_spawn_position_offscreen(
+        // Use unified calculation function for consistency
+        let start_position = Self::calculate_animation_position_unified(
             animation_type,
             target_position,
             target_size,
