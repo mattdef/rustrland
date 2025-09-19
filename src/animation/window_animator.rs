@@ -373,15 +373,21 @@ impl WindowAnimator {
             source_monitor.y + current_position.1,
         );
 
-        // Calculate ending position based on animation type using explicit monitor
-        let end_position = self
-            .calculate_end_position_with_monitor(
+        // Calculate ending position: use pre-calculated position if provided, 
+        // otherwise fall back to internal calculation
+        let end_position = if let Some(target_pos) = config.target_position {
+            info!("🎯 Using pre-calculated target position: ({}, {})", target_pos.0, target_pos.1);
+            target_pos
+        } else {
+            warn!("⚠️ Fallback to WindowAnimator calculation (should not happen with scratchpads)");
+            self.calculate_end_position_with_monitor(
                 absolute_current_position,
                 current_size,
                 &config,
                 source_monitor,
             )
-            .await?;
+            .await?
+        };
 
         println!(
             "End position: x:{} and y:{}",
