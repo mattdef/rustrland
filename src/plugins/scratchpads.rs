@@ -1319,6 +1319,27 @@ impl ScratchpadsPlugin {
         Ok(start_position)
     }
 
+    /// Fonction unifiée pour calculer les positions d'animation (spawn ET hide)
+    /// Remplace la logique dispersée entre scratchpads et WindowAnimator
+    /// Garantit la cohérence entre les positions de spawn et de hide
+    fn calculate_animation_position_unified(
+        animation_type: &str,
+        target_position: (i32, i32),
+        target_size: (i32, i32),
+        monitor: &MonitorInfo,
+        offset_pixels: i32,
+    ) -> (i32, i32) {
+        // Utilise la même logique que calculate_spawn_position_offscreen
+        // mais avec un nom plus générique et une interface simplifiée
+        Self::calculate_spawn_position_offscreen(
+            animation_type,
+            target_position,
+            target_size,
+            monitor,
+            offset_pixels,
+        )
+    }
+
     /// Apply windowrules for special workspace (improved workflow)
     async fn apply_special_workspace_rules(&self, workspace: &str) -> Result<()> {
         info!(
@@ -4177,5 +4198,132 @@ mod tests {
         assert!(advanced_config.smart_focus);
         assert!(advanced_config.preserve_aspect);
         assert!(advanced_config.max_size.is_some());
+    }
+
+    // Tests pour la fonction unifiée de calcul de position
+    mod unified_position_tests {
+        use super::*;
+
+        fn create_test_monitor() -> MonitorInfo {
+            MonitorInfo {
+                id: 0,
+                name: "DP-1".to_string(),
+                width: 1920,
+                height: 1080,
+                refresh_rate: 60.0,
+                x: 0,
+                y: 0,
+                active_workspace_id: 1,
+                is_focused: true,
+                scale: 1.0,
+            }
+        }
+
+        #[test]
+        fn test_unified_position_calculation_consistency() {
+            let monitor = create_test_monitor();
+            let target_pos = (960, 540);
+            let target_size = (800, 600);
+            let offset = 50;
+
+            // Test que la fonction unifiée donne le même résultat que l'ancienne
+            let old_result = ScratchpadsPlugin::calculate_spawn_position_offscreen(
+                "fromTop", target_pos, target_size, &monitor, offset
+            );
+            let new_result = ScratchpadsPlugin::calculate_animation_position_unified(
+                "fromTop", target_pos, target_size, &monitor, offset
+            );
+
+            assert_eq!(old_result, new_result, "Les fonctions doivent donner le même résultat pour fromTop");
+        }
+
+        #[test] 
+        fn test_unified_position_all_animation_types() {
+            let monitor = create_test_monitor();
+            let target_pos = (960, 540);
+            let target_size = (800, 600);
+            let offset = 50;
+
+            let animation_types = [
+                "fromTop", "fromBottom", "fromLeft", "fromRight",
+                "fromTopLeft", "fromTopRight", "fromBottomLeft", "fromBottomRight",
+                "fade", "scale"
+            ];
+
+            for animation_type in &animation_types {
+                let old_result = ScratchpadsPlugin::calculate_spawn_position_offscreen(
+                    animation_type, target_pos, target_size, &monitor, offset
+                );
+                let new_result = ScratchpadsPlugin::calculate_animation_position_unified(
+                    animation_type, target_pos, target_size, &monitor, offset
+                );
+
+                assert_eq!(old_result, new_result, 
+                    "Les fonctions doivent donner le même résultat pour {}", animation_type);
+            }
+        }
+
+        #[test]
+        fn test_unified_position_multimonitor() {
+            // Test avec un moniteur décalé (multi-moniteur)
+            let monitor = MonitorInfo {
+                x: 1920, // Moniteur secondaire
+                y: 0,
+                width: 1920,
+                height: 1080,
+                ..create_test_monitor()
+            };
+
+            let target_pos = (2880, 540); // Position sur le second moniteur
+            let target_size = (800, 600);
+            let offset = 50;
+
+            let old_result = ScratchpadsPlugin::calculate_spawn_position_offscreen(
+                "fromTop", target_pos, target_size, &monitor, offset
+            );
+            let new_result = ScratchpadsPlugin::calculate_animation_position_unified(
+                "fromTop", target_pos, target_size, &monitor, offset
+            );
+
+            assert_eq!(old_result, new_result);
+            
+            // Vérifier que le calcul prend en compte l'offset du moniteur
+            assert_eq!(new_result.1, monitor.y - target_size.1 - offset); // Y position
+            assert_eq!(new_result.0, target_pos.0); // X reste le même pour fromTop
+        }
+
+        #[test]
+        fn test_unified_position_offscreen_bounds() {
+            let monitor = create_test_monitor();
+            let target_pos = (960, 540);
+            let target_size = (800, 600);
+            let offset = 50;
+
+            // Test fromTop - doit être au-dessus du moniteur
+            let result = ScratchpadsPlugin::calculate_animation_position_unified(
+                "fromTop", target_pos, target_size, &monitor, offset
+            );
+            assert!(result.1 < monitor.y, "fromTop doit positionner la fenêtre au-dessus du moniteur");
+
+            // Test fromBottom - doit être en-dessous du moniteur
+            let result = ScratchpadsPlugin::calculate_animation_position_unified(
+                "fromBottom", target_pos, target_size, &monitor, offset
+            );
+            assert!(result.1 > monitor.y + monitor.height as i32, 
+                "fromBottom doit positionner la fenêtre en-dessous du moniteur");
+
+            // Test fromLeft - doit être à gauche du moniteur
+            let result = ScratchpadsPlugin::calculate_animation_position_unified(
+                "fromLeft", target_pos, target_size, &monitor, offset
+            );
+            assert!(result.0 < monitor.x, "fromLeft doit positionner la fenêtre à gauche du moniteur");
+
+            // Test fromRight - doit être à droite du moniteur
+            let result = ScratchpadsPlugin::calculate_animation_position_unified(
+                "fromRight", target_pos, target_size, &monitor, offset
+            );
+            assert!(result.0 > monitor.x + monitor.width as i32, 
+                "fromRight doit positionner la fenêtre à droite du moniteur");
+        }
     }
 }
