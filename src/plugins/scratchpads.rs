@@ -336,11 +336,11 @@ pub struct ScratchpadState {
     pub original_workspace: Option<String>, // Workspace actif avant l'appel du scratchpad
     #[serde(skip)] // Skip serialization as MonitorInfo doesn't implement Serialize
     pub spawn_monitor: Option<MonitorInfo>, // Monitor used during spawn for consistent hide positioning
-    
+
     // Nouvelles données pour cohérence des animations
     pub animation_positions: Option<AnimationPositions>, // Positions pré-calculées pour cohérence spawn/hide
     #[serde(skip)] // Skip serialization as WindowGeometry doesn't implement Serialize
-    pub spawn_geometry: Option<WindowGeometry>,  // Géométrie utilisée lors du spawn
+    pub spawn_geometry: Option<WindowGeometry>, // Géométrie utilisée lors du spawn
 }
 
 impl Default for ScratchpadState {
@@ -1397,7 +1397,7 @@ impl ScratchpadsPlugin {
     ) -> AnimationPositions {
         // Position finale du scratchpad (target géométrique)
         let show_target = (target_geometry.x, target_geometry.y);
-        
+
         // Position de spawn/hide calculée de manière cohérente
         let offscreen_position = Self::calculate_spawn_position_offscreen(
             animation_type,
@@ -1406,7 +1406,7 @@ impl ScratchpadsPlugin {
             monitor,
             offset_pixels,
         );
-        
+
         // GARANTIE DE SYMÉTRIE : hide_end = spawn_start
         AnimationPositions {
             spawn_start: offscreen_position,
@@ -2165,9 +2165,9 @@ impl ScratchpadsPlugin {
                 animation_type,
                 &geometry,
                 &monitor,
-                50
+                50,
             );
-            
+
             // Stocker les positions calculées pour cohérence future
             {
                 let state = self.states.entry(name.to_string()).or_default();
@@ -2180,7 +2180,7 @@ impl ScratchpadsPlugin {
                     positions.hide_end.0, positions.hide_end.1
                 );
             }
-            
+
             positions.spawn_start
         } else {
             (geometry.x, geometry.y)
@@ -2188,7 +2188,10 @@ impl ScratchpadsPlugin {
 
         // Valider la cohérence des positions stockées
         if let Err(e) = self.validate_animation_positions(name) {
-            warn!("⚠️ Animation position validation failed for '{}': {}", name, e);
+            warn!(
+                "⚠️ Animation position validation failed for '{}': {}",
+                name, e
+            );
         }
 
         // IMPORTANT: Hyprland interprets 'move' coordinates as relative to the monitor
@@ -2324,7 +2327,10 @@ impl ScratchpadsPlugin {
                     positions.hide_end
                 } else {
                     // Fallback : recalculer avec les mêmes paramètres qu'au spawn
-                    warn!("⚠️ No stored animation positions for '{}', falling back to calculation", name);
+                    warn!(
+                        "⚠️ No stored animation positions for '{}', falling back to calculation",
+                        name
+                    );
                     Self::calculate_animation_position_unified(
                         animation_type,
                         (target_geometry.x, target_geometry.y),
@@ -2335,7 +2341,10 @@ impl ScratchpadsPlugin {
                 }
             } else {
                 // Fallback pour état manquant
-                warn!("⚠️ No state found for scratchpad '{}' during hide, using calculation", name);
+                warn!(
+                    "⚠️ No state found for scratchpad '{}' during hide, using calculation",
+                    name
+                );
                 Self::calculate_animation_position_unified(
                     animation_type,
                     (target_geometry.x, target_geometry.y),
@@ -2426,8 +2435,10 @@ impl ScratchpadsPlugin {
                 // Utiliser la position de spawn stockée pour cohérence (remplace current_position)
                 let start_position = if let Some(state) = self.states.get(name) {
                     if let Some(positions) = &state.animation_positions {
-                        info!("🎯 Using stored spawn position for show animation: ({}, {})", 
-                              positions.spawn_start.0, positions.spawn_start.1);
+                        info!(
+                            "🎯 Using stored spawn position for show animation: ({}, {})",
+                            positions.spawn_start.0, positions.spawn_start.1
+                        );
                         positions.spawn_start
                     } else {
                         // Fallback : calculer à partir de la géométrie stockée ou actuelle
@@ -2437,11 +2448,15 @@ impl ScratchpadsPlugin {
                             (geometry.x, geometry.y),
                             (geometry.width, geometry.height),
                             &monitor,
-                        ).await?
+                        )
+                        .await?
                     }
                 } else {
                     // Fallback pour état manquant - utiliser position actuelle
-                    warn!("⚠️ No state found for scratchpad '{}', using current position", name);
+                    warn!(
+                        "⚠️ No state found for scratchpad '{}', using current position",
+                        name
+                    );
                     let windows = client.get_windows().await?;
                     windows
                         .iter()
@@ -2450,8 +2465,10 @@ impl ScratchpadsPlugin {
                         .unwrap_or((geometry.x, geometry.y))
                 };
 
-                info!("🎬 TRACE: Animation start position: ({}, {}), target: ({}, {})",
-                      start_position.0, start_position.1, geometry.x, geometry.y);
+                info!(
+                    "🎬 TRACE: Animation start position: ({}, {}), target: ({}, {})",
+                    start_position.0, start_position.1, geometry.x, geometry.y
+                );
 
                 // Log animation positions summary for debugging
                 self.log_animation_positions_summary(name);
@@ -2759,18 +2776,18 @@ impl ScratchpadsPlugin {
                 if positions.spawn_start != positions.hide_end {
                     return Err(anyhow::anyhow!(
                         "Animation positions asymmetry detected for scratchpad '{}': spawn_start=({}, {}) != hide_end=({}, {})",
-                        name, positions.spawn_start.0, positions.spawn_start.1, 
+                        name, positions.spawn_start.0, positions.spawn_start.1,
                         positions.hide_end.0, positions.hide_end.1
                     ));
                 }
-                
+
                 // Vérifier que les positions sont cohérentes (pas de valeurs aberrantes)
                 let positions_to_check = [
                     ("spawn_start", positions.spawn_start),
                     ("show_target", positions.show_target),
                     ("hide_end", positions.hide_end),
                 ];
-                
+
                 for (name_pos, (x, y)) in positions_to_check.iter() {
                     if x.abs() > 50000 || y.abs() > 50000 {
                         warn!(
@@ -2779,7 +2796,7 @@ impl ScratchpadsPlugin {
                         );
                     }
                 }
-                
+
                 debug!("✅ Animation positions validation passed for '{}'", name);
             }
         }
@@ -2797,12 +2814,15 @@ impl ScratchpadsPlugin {
                     positions.show_target.0, positions.show_target.1,
                     positions.hide_end.0, positions.hide_end.1
                 );
-                
+
                 // Vérification de symétrie
                 if positions.spawn_start == positions.hide_end {
                     info!("✅ Perfect symmetry confirmed for '{}'", name);
                 } else {
-                    warn!("❌ Symmetry broken for '{}' - potential animation inconsistency", name);
+                    warn!(
+                        "❌ Symmetry broken for '{}' - potential animation inconsistency",
+                        name
+                    );
                 }
             } else {
                 warn!("⚠️ No animation positions stored for '{}'", name);
@@ -2815,25 +2835,25 @@ impl ScratchpadsPlugin {
     /// Réinitialise et recalcule les positions d'animation en cas de problème
     async fn regenerate_animation_positions(&mut self, name: &str) -> Result<()> {
         let config = self.get_validated_config(name)?;
-        
+
         if let Some(animation_type) = &config.animation {
             let monitor = self.get_target_monitor(&config).await?;
             let geometry = GeometryCalculator::calculate_geometry(&config, &monitor)?;
-            
+
             // Recalculer les positions avec la fonction unifiée
             let positions = Self::calculate_unified_animation_positions(
                 animation_type,
                 &geometry,
                 &monitor,
-                50
+                50,
             );
-            
+
             // Mettre à jour l'état
             if let Some(state) = self.states.get_mut(name) {
                 state.animation_positions = Some(positions.clone());
                 state.spawn_geometry = Some(geometry);
                 state.spawn_monitor = Some(monitor);
-                
+
                 info!(
                     "🔄 Regenerated animation positions for '{}': spawn=({}, {}), target=({}, {}), hide=({}, {})",
                     name, positions.spawn_start.0, positions.spawn_start.1,
@@ -2842,7 +2862,7 @@ impl ScratchpadsPlugin {
                 );
             }
         }
-        
+
         Ok(())
     }
 
@@ -4786,9 +4806,16 @@ mod tests {
             let offset = 50;
 
             let animation_types = [
-                "fromTop", "fromBottom", "fromLeft", "fromRight",
-                "fromTopLeft", "fromTopRight", "fromBottomLeft", "fromBottomRight",
-                "fade", "scale"
+                "fromTop",
+                "fromBottom",
+                "fromLeft",
+                "fromRight",
+                "fromTopLeft",
+                "fromTopRight",
+                "fromBottomLeft",
+                "fromBottomRight",
+                "fade",
+                "scale",
             ];
 
             for animation_type in animation_types.iter() {
@@ -4809,7 +4836,8 @@ mod tests {
 
                 // Vérifier que show_target correspond à la géométrie cible
                 assert_eq!(
-                    positions.show_target, (target_geometry.x, target_geometry.y),
+                    positions.show_target,
+                    (target_geometry.x, target_geometry.y),
                     "Animation type '{}' show_target must match target geometry",
                     animation_type
                 );
@@ -4822,21 +4850,45 @@ mod tests {
             }
         }
 
-        #[tokio::test] 
+        #[tokio::test]
         async fn test_multi_monitor_consistency() {
             // Vérifier la cohérence sur plusieurs moniteurs
             let monitors = vec![
                 MonitorInfo {
-                    id: 0, name: "DP-1".to_string(), width: 1920, height: 1080,
-                    x: 0, y: 0, active_workspace_id: 1, is_focused: true, scale: 1.0, refresh_rate: 60.0,
+                    id: 0,
+                    name: "DP-1".to_string(),
+                    width: 1920,
+                    height: 1080,
+                    x: 0,
+                    y: 0,
+                    active_workspace_id: 1,
+                    is_focused: true,
+                    scale: 1.0,
+                    refresh_rate: 60.0,
                 },
                 MonitorInfo {
-                    id: 1, name: "DP-2".to_string(), width: 2560, height: 1440,
-                    x: 1920, y: 0, active_workspace_id: 2, is_focused: false, scale: 1.0, refresh_rate: 60.0,
+                    id: 1,
+                    name: "DP-2".to_string(),
+                    width: 2560,
+                    height: 1440,
+                    x: 1920,
+                    y: 0,
+                    active_workspace_id: 2,
+                    is_focused: false,
+                    scale: 1.0,
+                    refresh_rate: 60.0,
                 },
                 MonitorInfo {
-                    id: 2, name: "DP-3".to_string(), width: 1920, height: 1080,
-                    x: 0, y: 1080, active_workspace_id: 3, is_focused: false, scale: 1.0, refresh_rate: 60.0,
+                    id: 2,
+                    name: "DP-3".to_string(),
+                    width: 1920,
+                    height: 1080,
+                    x: 0,
+                    y: 1080,
+                    active_workspace_id: 3,
+                    is_focused: false,
+                    scale: 1.0,
+                    refresh_rate: 60.0,
                 },
             ];
 
@@ -4855,13 +4907,16 @@ mod tests {
                 assert!(
                     positions.spawn_start.1 < monitor.y,
                     "Monitor '{}': spawn position Y ({}) must be above monitor top ({})",
-                    monitor.name, positions.spawn_start.1, monitor.y
+                    monitor.name,
+                    positions.spawn_start.1,
+                    monitor.y
                 );
 
                 // Vérifier la symétrie
                 assert_eq!(positions.spawn_start, positions.hide_end);
 
-                println!("✅ Multi-monitor test passed for '{}': spawn_y={}, monitor_top={}",
+                println!(
+                    "✅ Multi-monitor test passed for '{}': spawn_y={}, monitor_top={}",
                     monitor.name, positions.spawn_start.1, monitor.y
                 );
             }
@@ -4903,10 +4958,10 @@ mod tests {
         fn test_scratchpad_state_new_fields() {
             // Test que les nouveaux champs sont correctement initialisés
             let state = ScratchpadState::default();
-            
+
             assert!(state.animation_positions.is_none());
             assert!(state.spawn_geometry.is_none());
-            
+
             // Test que les champs peuvent être définis
             let mut state = ScratchpadState::default();
             state.animation_positions = Some(AnimationPositions {
@@ -4915,10 +4970,10 @@ mod tests {
                 hide_end: (0, 0),
             });
             state.spawn_geometry = Some(create_test_geometry());
-            
+
             assert!(state.animation_positions.is_some());
             assert!(state.spawn_geometry.is_some());
-            
+
             println!("✅ ScratchpadState new fields test passed");
         }
 

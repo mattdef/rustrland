@@ -213,7 +213,7 @@ impl EnhancedHyprlandClient {
             "activewindow" => {
                 // Format: "windowaddress,windowclass,windowtitle"
                 let parts: Vec<&str> = event_data.splitn(3, ',').collect();
-                if parts.len() >= 1 {
+                if !parts.is_empty() {
                     Some(HyprlandEvent::WindowFocusChanged {
                         window: parts[0].to_string(), // Use window address
                     })

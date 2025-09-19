@@ -1233,9 +1233,7 @@ impl WindowAnimator {
     /// Parse Hyprland color string format
     fn parse_color_string(&self, color_str: &str) -> String {
         // Handle various Hyprland color formats
-        if color_str.starts_with("rgba(") {
-            color_str.to_string()
-        } else if color_str.starts_with("rgb(") {
+        if color_str.starts_with("rgba(") || color_str.starts_with("rgb(") {
             color_str.to_string()
         } else {
             // Default fallback
@@ -1341,7 +1339,7 @@ impl WindowAnimator {
         sleep(Duration::from_millis(100)).await;
 
         // Now try direct property setting with more specific commands
-        let decoration_commands = vec![
+        let decoration_commands = [
             // Now set the desired border size if > 0
             format!(
                 "hyprctl setprop address:{} bordersize {}",
