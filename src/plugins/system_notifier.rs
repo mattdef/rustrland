@@ -1043,6 +1043,7 @@ impl SystemNotifier {
                         duration: 300,
                         easing: EasingFunction::EaseOut,
                         opacity_from: 0.0,
+                        target_position: None,
                         ..Default::default()
                     }),
                     disappear: None,
@@ -1262,6 +1263,7 @@ mod tests {
                     duration: 300,
                     easing: EasingFunction::EaseOut,
                     opacity_from: 0.0,
+                    target_position: None,
                     ..Default::default()
                 }),
                 disappear: Some(AnimationConfig {
@@ -1269,6 +1271,7 @@ mod tests {
                     duration: 200,
                     easing: EasingFunction::EaseIn,
                     opacity_from: 1.0,
+                    target_position: None,
                     ..Default::default()
                 }),
                 display_duration: Some(3000),

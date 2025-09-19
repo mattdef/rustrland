@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use hyprland::shared::HyprData;
 use hyprland::dispatch::{Dispatch, DispatchType, WorkspaceIdentifier};
+use hyprland::shared::HyprData;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -50,24 +50,24 @@ pub struct ScratchpadConfig {
 
     // Animation config
     pub animation: Option<String>,
-    pub animation_duration: Option<u32>,           // Duration in ms
-    pub animation_easing: Option<String>,          // Easing function name  
-    pub animation_delay: Option<u32>,              // Start delay in ms
-    pub animation_scale_from: Option<f32>,         // Scale animation start value
-    pub animation_opacity_from: Option<f32>,       // Fade animation start value
+    pub animation_duration: Option<u32>,     // Duration in ms
+    pub animation_easing: Option<String>,    // Easing function name
+    pub animation_delay: Option<u32>,        // Start delay in ms
+    pub animation_scale_from: Option<f32>,   // Scale animation start value
+    pub animation_opacity_from: Option<f32>, // Fade animation start value
     pub animation_properties: Option<Vec<AnimationPropertyConfig>>, // Multi-property animations
-    
+
     // Physics-based animation parameters
-    pub spring_stiffness: Option<f32>,         // Spring stiffness (default: 300.0)
-    pub spring_damping: Option<f32>,           // Spring damping (default: 30.0) 
-    pub spring_mass: Option<f32>,              // Spring mass (default: 1.0)
-    
+    pub spring_stiffness: Option<f32>, // Spring stiffness (default: 300.0)
+    pub spring_damping: Option<f32>,   // Spring damping (default: 30.0)
+    pub spring_mass: Option<f32>,      // Spring mass (default: 1.0)
+
     // Cubic bezier animation parameters
-    pub cubic_bezier_x1: Option<f32>,          // Bezier control point 1 X
-    pub cubic_bezier_y1: Option<f32>,          // Bezier control point 1 Y
-    pub cubic_bezier_x2: Option<f32>,          // Bezier control point 2 X
-    pub cubic_bezier_y2: Option<f32>,          // Bezier control point 2 Y
-    
+    pub cubic_bezier_x1: Option<f32>, // Bezier control point 1 X
+    pub cubic_bezier_y1: Option<f32>, // Bezier control point 1 Y
+    pub cubic_bezier_x2: Option<f32>, // Bezier control point 2 X
+    pub cubic_bezier_y2: Option<f32>, // Bezier control point 2 Y
+
     pub margin: Option<i32>,
     pub offset: Option<String>,
     pub hide_delay: Option<u32>,
@@ -151,24 +151,24 @@ pub struct ValidatedConfig {
     pub class: String,
     pub size: String,
     pub animation: Option<String>,
-    pub animation_duration: Option<u32>,           // Duration in ms
-    pub animation_easing: Option<String>,          // Easing function name  
-    pub animation_delay: Option<u32>,              // Start delay in ms
-    pub animation_scale_from: Option<f32>,         // Scale animation start value
-    pub animation_opacity_from: Option<f32>,       // Fade animation start value
+    pub animation_duration: Option<u32>,     // Duration in ms
+    pub animation_easing: Option<String>,    // Easing function name
+    pub animation_delay: Option<u32>,        // Start delay in ms
+    pub animation_scale_from: Option<f32>,   // Scale animation start value
+    pub animation_opacity_from: Option<f32>, // Fade animation start value
     pub animation_properties: Option<Vec<AnimationPropertyConfig>>, // Multi-property animations
-    
+
     // Physics-based animation parameters
-    pub spring_stiffness: Option<f32>,         // Spring stiffness (default: 300.0)
-    pub spring_damping: Option<f32>,           // Spring damping (default: 30.0) 
-    pub spring_mass: Option<f32>,              // Spring mass (default: 1.0)
-    
+    pub spring_stiffness: Option<f32>, // Spring stiffness (default: 300.0)
+    pub spring_damping: Option<f32>,   // Spring damping (default: 30.0)
+    pub spring_mass: Option<f32>,      // Spring mass (default: 1.0)
+
     // Cubic bezier animation parameters
-    pub cubic_bezier_x1: Option<f32>,          // Bezier control point 1 X
-    pub cubic_bezier_y1: Option<f32>,          // Bezier control point 1 Y
-    pub cubic_bezier_x2: Option<f32>,          // Bezier control point 2 X
-    pub cubic_bezier_y2: Option<f32>,          // Bezier control point 2 Y
-    
+    pub cubic_bezier_x1: Option<f32>, // Bezier control point 1 X
+    pub cubic_bezier_y1: Option<f32>, // Bezier control point 1 Y
+    pub cubic_bezier_x2: Option<f32>, // Bezier control point 2 X
+    pub cubic_bezier_y2: Option<f32>, // Bezier control point 2 Y
+
     pub margin: Option<i32>,
     pub offset: Option<String>,
     pub hide_delay: Option<u32>,
@@ -207,7 +207,7 @@ impl ValidatedConfig {
     /// Convert configuration to appropriate EasingFunction based on animation_easing and physics parameters
     pub fn to_easing_function(&self) -> crate::animation::EasingFunction {
         use crate::animation::EasingFunction;
-        
+
         match self.animation_easing.as_deref() {
             Some("spring") => {
                 // Use spring physics parameters if available
@@ -243,9 +243,9 @@ impl ValidatedConfig {
 
     /// Check if this configuration uses custom bezier curves
     pub fn uses_custom_bezier(&self) -> bool {
-        self.cubic_bezier_x1.is_some() 
-            || self.cubic_bezier_y1.is_some() 
-            || self.cubic_bezier_x2.is_some() 
+        self.cubic_bezier_x1.is_some()
+            || self.cubic_bezier_y1.is_some()
+            || self.cubic_bezier_x2.is_some()
             || self.cubic_bezier_y2.is_some()
     }
 }
@@ -394,7 +394,6 @@ impl GeometryCalculator {
             .max(monitor.y)
             .min(monitor.y + (monitor.height as i32) - height);
 
-
         Ok(WindowGeometry {
             x: final_x,
             y: final_y,
@@ -536,7 +535,7 @@ impl ConfigValidator {
     fn convert_to_validated(config: &ScratchpadConfig) -> ValidatedConfig {
         debug!("🔍 CONVERT_TO_VALIDATED for command '{}': animation_duration={:?}, animation_delay={:?}, animation_easing={:?}", 
                config.command, config.animation_duration, config.animation_delay, config.animation_easing);
-        
+
         // Class is now required for documentation/debugging purposes
         let class = config.class.clone().unwrap_or_else(|| {
             warn!("No class specified for scratchpad, using 'unknown'");
@@ -790,34 +789,89 @@ impl ConfigValidator {
             // Use EasingFunction::from_name to validate easing
             use crate::animation::EasingFunction;
             let parsed_easing = EasingFunction::from_name(easing);
-            
+
             // Check for invalid easing by trying to parse it
-            if matches!(parsed_easing, EasingFunction::Linear) && easing.to_lowercase() != "linear" {
+            if matches!(parsed_easing, EasingFunction::Linear) && easing.to_lowercase() != "linear"
+            {
                 // If it defaults to Linear but wasn't "linear", it might be invalid
                 let valid_easings = [
-                    "linear", "ease", "easein", "ease-in", "easeout", "ease-out", 
-                    "easeinout", "ease-in-out", "easeinsine", "ease-in-sine", 
-                    "easeoutsine", "ease-out-sine", "easeinoutsine", "ease-in-out-sine",
-                    "easeinquad", "ease-in-quad", "easeoutquad", "ease-out-quad",
-                    "easeinoutquad", "ease-in-out-quad", "easeincubic", "ease-in-cubic",
-                    "easeoutcubic", "ease-out-cubic", "easeinoutcubic", "ease-in-out-cubic",
-                    "easeinquart", "ease-in-quart", "easeoutquart", "ease-out-quart",
-                    "easeinoutquart", "ease-in-out-quart", "easeinquint", "ease-in-quint",
-                    "easeoutquint", "ease-out-quint", "easeinoutquint", "ease-in-out-quint",
-                    "easeinexpo", "ease-in-expo", "easeoutexpo", "ease-out-expo",
-                    "easeinoutexpo", "ease-in-out-expo", "easeincirc", "ease-in-circ",
-                    "easeoutcirc", "ease-out-circ", "easeinoutcirc", "ease-in-out-circ",
-                    "easeinback", "ease-in-back", "easeoutback", "ease-out-back",
-                    "easeinoutback", "ease-in-out-back", "easeinelastic", "ease-in-elastic",
-                    "easeoutelastic", "ease-out-elastic", "easeinoutelastic", "ease-in-out-elastic",
-                    "easeinbounce", "ease-in-bounce", "easeoutbounce", "ease-out-bounce",
-                    "easeinoutbounce", "ease-in-out-bounce", "spring"
+                    "linear",
+                    "ease",
+                    "easein",
+                    "ease-in",
+                    "easeout",
+                    "ease-out",
+                    "easeinout",
+                    "ease-in-out",
+                    "easeinsine",
+                    "ease-in-sine",
+                    "easeoutsine",
+                    "ease-out-sine",
+                    "easeinoutsine",
+                    "ease-in-out-sine",
+                    "easeinquad",
+                    "ease-in-quad",
+                    "easeoutquad",
+                    "ease-out-quad",
+                    "easeinoutquad",
+                    "ease-in-out-quad",
+                    "easeincubic",
+                    "ease-in-cubic",
+                    "easeoutcubic",
+                    "ease-out-cubic",
+                    "easeinoutcubic",
+                    "ease-in-out-cubic",
+                    "easeinquart",
+                    "ease-in-quart",
+                    "easeoutquart",
+                    "ease-out-quart",
+                    "easeinoutquart",
+                    "ease-in-out-quart",
+                    "easeinquint",
+                    "ease-in-quint",
+                    "easeoutquint",
+                    "ease-out-quint",
+                    "easeinoutquint",
+                    "ease-in-out-quint",
+                    "easeinexpo",
+                    "ease-in-expo",
+                    "easeoutexpo",
+                    "ease-out-expo",
+                    "easeinoutexpo",
+                    "ease-in-out-expo",
+                    "easeincirc",
+                    "ease-in-circ",
+                    "easeoutcirc",
+                    "ease-out-circ",
+                    "easeinoutcirc",
+                    "ease-in-out-circ",
+                    "easeinback",
+                    "ease-in-back",
+                    "easeoutback",
+                    "ease-out-back",
+                    "easeinoutback",
+                    "ease-in-out-back",
+                    "easeinelastic",
+                    "ease-in-elastic",
+                    "easeoutelastic",
+                    "ease-out-elastic",
+                    "easeinoutelastic",
+                    "ease-in-out-elastic",
+                    "easeinbounce",
+                    "ease-in-bounce",
+                    "easeoutbounce",
+                    "ease-out-bounce",
+                    "easeinoutbounce",
+                    "ease-in-out-bounce",
+                    "spring",
                 ];
-                
-                if !valid_easings.contains(&easing.to_lowercase().as_str()) && !easing.starts_with("cubic-bezier(") {
-                    config.validation_warnings.push(
-                        format!("Unknown easing '{}', using 'easeOutCubic'", easing)
-                    );
+
+                if !valid_easings.contains(&easing.to_lowercase().as_str())
+                    && !easing.starts_with("cubic-bezier(")
+                {
+                    config
+                        .validation_warnings
+                        .push(format!("Unknown easing '{}', using 'easeOutCubic'", easing));
                     config.animation_easing = Some("easeOutCubic".to_string());
                 }
             }
@@ -827,50 +881,50 @@ impl ConfigValidator {
         if let Some(duration) = config.animation_duration {
             if duration < 50 {
                 config.validation_warnings.push(
-                    "Animation duration below 50ms may cause stuttering, using 50ms".to_string()
+                    "Animation duration below 50ms may cause stuttering, using 50ms".to_string(),
                 );
                 config.animation_duration = Some(50);
             } else if duration > 5000 {
-                config.validation_warnings.push(
-                    "Animation duration above 5000ms may feel sluggish".to_string()
-                );
+                config
+                    .validation_warnings
+                    .push("Animation duration above 5000ms may feel sluggish".to_string());
             }
         }
 
         // Validate delay range (0ms to 2000ms)
         if let Some(delay) = config.animation_delay {
             if delay > 2000 {
-                config.validation_warnings.push(
-                    "Animation delay above 2000ms may feel unresponsive".to_string()
-                );
+                config
+                    .validation_warnings
+                    .push("Animation delay above 2000ms may feel unresponsive".to_string());
             }
         }
 
         // Validate scale_from range (0.0 to 2.0)
         if let Some(scale) = config.animation_scale_from {
             if scale <= 0.0 {
-                config.validation_warnings.push(
-                    "Animation scale_from should be positive, using 0.1".to_string()
-                );
+                config
+                    .validation_warnings
+                    .push("Animation scale_from should be positive, using 0.1".to_string());
                 config.animation_scale_from = Some(0.1);
             } else if scale > 2.0 {
-                config.validation_warnings.push(
-                    "Animation scale_from above 2.0 may look extreme".to_string()
-                );
+                config
+                    .validation_warnings
+                    .push("Animation scale_from above 2.0 may look extreme".to_string());
             }
         }
 
         // Validate opacity_from range (0.0 to 1.0)
         if let Some(opacity) = config.animation_opacity_from {
             if opacity < 0.0 {
-                config.validation_warnings.push(
-                    "Animation opacity_from cannot be negative, using 0.0".to_string()
-                );
+                config
+                    .validation_warnings
+                    .push("Animation opacity_from cannot be negative, using 0.0".to_string());
                 config.animation_opacity_from = Some(0.0);
             } else if opacity > 1.0 {
-                config.validation_warnings.push(
-                    "Animation opacity_from cannot exceed 1.0, using 1.0".to_string()
-                );
+                config
+                    .validation_warnings
+                    .push("Animation opacity_from cannot exceed 1.0, using 1.0".to_string());
                 config.animation_opacity_from = Some(1.0);
             }
         }
@@ -879,19 +933,19 @@ impl ConfigValidator {
         if let Some(properties) = &config.animation_properties {
             for (i, prop) in properties.iter().enumerate() {
                 if prop.property.is_empty() {
-                    config.validation_errors.push(
-                        format!("Animation property {} has empty property name", i)
-                    );
+                    config
+                        .validation_errors
+                        .push(format!("Animation property {} has empty property name", i));
                 }
                 if prop.from.is_empty() {
-                    config.validation_errors.push(
-                        format!("Animation property {} has empty 'from' value", i)
-                    );
+                    config
+                        .validation_errors
+                        .push(format!("Animation property {} has empty 'from' value", i));
                 }
                 if prop.to.is_empty() {
-                    config.validation_errors.push(
-                        format!("Animation property {} has empty 'to' value", i)
-                    );
+                    config
+                        .validation_errors
+                        .push(format!("Animation property {} has empty 'to' value", i));
                 }
             }
         }
@@ -899,40 +953,40 @@ impl ConfigValidator {
         // Validate spring physics parameters
         if let Some(stiffness) = config.spring_stiffness {
             if stiffness < 10.0 {
-                config.validation_warnings.push(
-                    "Spring stiffness below 10.0 may be too soft, using 10.0".to_string()
-                );
+                config
+                    .validation_warnings
+                    .push("Spring stiffness below 10.0 may be too soft, using 10.0".to_string());
                 config.spring_stiffness = Some(10.0);
             } else if stiffness > 1000.0 {
-                config.validation_warnings.push(
-                    "Spring stiffness above 1000.0 may be too rigid".to_string()
-                );
+                config
+                    .validation_warnings
+                    .push("Spring stiffness above 1000.0 may be too rigid".to_string());
             }
         }
 
         if let Some(damping) = config.spring_damping {
             if damping < 1.0 {
-                config.validation_warnings.push(
-                    "Spring damping below 1.0 may cause oscillation, using 1.0".to_string()
-                );
+                config
+                    .validation_warnings
+                    .push("Spring damping below 1.0 may cause oscillation, using 1.0".to_string());
                 config.spring_damping = Some(1.0);
             } else if damping > 100.0 {
-                config.validation_warnings.push(
-                    "Spring damping above 100.0 may be over-damped".to_string()
-                );
+                config
+                    .validation_warnings
+                    .push("Spring damping above 100.0 may be over-damped".to_string());
             }
         }
 
         if let Some(mass) = config.spring_mass {
             if mass <= 0.0 {
-                config.validation_warnings.push(
-                    "Spring mass must be positive, using 0.1".to_string()
-                );
+                config
+                    .validation_warnings
+                    .push("Spring mass must be positive, using 0.1".to_string());
                 config.spring_mass = Some(0.1);
             } else if mass > 10.0 {
-                config.validation_warnings.push(
-                    "Spring mass above 10.0 may make animation sluggish".to_string()
-                );
+                config
+                    .validation_warnings
+                    .push("Spring mass above 10.0 may make animation sluggish".to_string());
             }
         }
 
@@ -961,20 +1015,27 @@ impl ConfigValidator {
         if config.animation_easing.as_deref() == Some("spring") {
             if config.spring_stiffness.is_none() {
                 config.validation_warnings.push(
-                    "Using spring easing without spring_stiffness, using default 300.0".to_string()
+                    "Using spring easing without spring_stiffness, using default 300.0".to_string(),
                 );
             }
             if config.spring_damping.is_none() {
                 config.validation_warnings.push(
-                    "Using spring easing without spring_damping, using default 30.0".to_string()
+                    "Using spring easing without spring_damping, using default 30.0".to_string(),
                 );
             }
         }
 
         // Warn if bezier parameters are set but not using bezier easing
-        if config.uses_custom_bezier() && !config.animation_easing.as_deref().unwrap_or("").starts_with("cubic-bezier") {
+        if config.uses_custom_bezier()
+            && !config
+                .animation_easing
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("cubic-bezier")
+        {
             config.validation_warnings.push(
-                "Cubic bezier parameters set but animation_easing is not 'cubic-bezier(...)'".to_string()
+                "Cubic bezier parameters set but animation_easing is not 'cubic-bezier(...)'"
+                    .to_string(),
             );
         }
     }
@@ -1207,8 +1268,8 @@ impl ScratchpadsPlugin {
             "fromtopright" | "from_top_right" => "toTopRight".to_string(),
             "frombottomleft" | "from_bottom_left" => "toBottomLeft".to_string(),
             "frombottomright" | "from_bottom_right" => "toBottomRight".to_string(),
-            "fade" => "fade".to_string(), // Fade is symmetric
-            "scale" => "scale".to_string(), // Scale is symmetric  
+            "fade" => "fade".to_string(),     // Fade is symmetric
+            "scale" => "scale".to_string(),   // Scale is symmetric
             "spring" => "spring".to_string(), // Spring can be symmetric
             _ => {
                 // For unknown animations, try to infer reverse
@@ -1232,10 +1293,14 @@ impl ScratchpadsPlugin {
         // Use reasonable offset (50px off-screen instead of 100% of monitor)
         let offset_pixels = 50; // Simple, predictable offset
 
-        info!("🔍 TRACE: Monitor '{}' bounds: x={}, y={}, w={}, h={}",
-              monitor.name, monitor.x, monitor.y, monitor.width, monitor.height);
-        info!("🔍 TRACE: Target position: ({}, {}), Target size: ({}, {})",
-              target_position.0, target_position.1, target_size.0, target_size.1);
+        info!(
+            "🔍 TRACE: Monitor '{}' bounds: x={}, y={}, w={}, h={}",
+            monitor.name, monitor.x, monitor.y, monitor.width, monitor.height
+        );
+        info!(
+            "🔍 TRACE: Target position: ({}, {}), Target size: ({}, {})",
+            target_position.0, target_position.1, target_size.0, target_size.1
+        );
 
         // Use our corrected calculation function
         let start_position = Self::calculate_spawn_position_offscreen(
@@ -1246,30 +1311,48 @@ impl ScratchpadsPlugin {
             offset_pixels,
         );
 
-        info!("🎯 TRACE: Animation '{}' spawn position calculated: ({}, {}) with offset {}px",
-               animation_type, start_position.0, start_position.1, offset_pixels);
+        info!(
+            "🎯 TRACE: Animation '{}' spawn position calculated: ({}, {}) with offset {}px",
+            animation_type, start_position.0, start_position.1, offset_pixels
+        );
 
         Ok(start_position)
     }
 
     /// Apply windowrules for special workspace (improved workflow)
     async fn apply_special_workspace_rules(&self, workspace: &str) -> Result<()> {
-        info!("🔧 Application des règles pour workspace spécial: {}", workspace);
+        info!(
+            "🔧 Application des règles pour workspace spécial: {}",
+            workspace
+        );
 
         match self.workspace_exists(workspace).await? {
-            false => Dispatch::call(DispatchType::ToggleSpecialWorkspace(Some(workspace.to_string())))?,
-            _ => ()
+            false => Dispatch::call(DispatchType::ToggleSpecialWorkspace(Some(
+                workspace.to_string(),
+            )))?,
+            _ => (),
         }
         // 1. Créer le workspace spécial s'il n'existe pas
-        
 
         let rules = vec![
-            format!("hyprctl keyword windowrulev2 'float, workspace:{}'", workspace),
-            format!("hyprctl keyword windowrulev2 'noanim, workspace:{}'", workspace),
-            format!("hyprctl keyword windowrulev2 'nodecoration, workspace:{}'", workspace),
-            format!("hyprctl keyword windowrulev2 'noshadow, workspace:{}'", workspace),
+            format!(
+                "hyprctl keyword windowrulev2 'float, workspace:{}'",
+                workspace
+            ),
+            format!(
+                "hyprctl keyword windowrulev2 'noanim, workspace:{}'",
+                workspace
+            ),
+            format!(
+                "hyprctl keyword windowrulev2 'nodecoration, workspace:{}'",
+                workspace
+            ),
+            format!(
+                "hyprctl keyword windowrulev2 'noshadow, workspace:{}'",
+                workspace
+            ),
         ];
-        
+
         for rule in rules {
             debug!("🔧 Executing rule: {}", rule);
             match tokio::process::Command::new("sh")
@@ -1280,7 +1363,11 @@ impl ScratchpadsPlugin {
             {
                 Ok(output) => {
                     if !output.status.success() {
-                        warn!("❌ Rule failed: {} - stderr: {}", rule, String::from_utf8_lossy(&output.stderr));
+                        warn!(
+                            "❌ Rule failed: {} - stderr: {}",
+                            rule,
+                            String::from_utf8_lossy(&output.stderr)
+                        );
                     } else {
                         debug!("✅ Rule applied successfully: {}", rule);
                     }
@@ -1290,14 +1377,14 @@ impl ScratchpadsPlugin {
                 }
             }
         }
-        
+
         debug!("🎨 Applied windowrules for workspace: {}", workspace);
         Ok(())
     }
 
     async fn workspace_exists(&self, workspace_name: &str) -> Result<bool> {
         use hyprland::data::Workspaces;
-        
+
         let workspaces = Workspaces::get_async().await?;
         Ok(workspaces.iter().any(|w| w.name == workspace_name))
     }
@@ -1310,24 +1397,27 @@ impl ScratchpadsPlugin {
         timeout_ms: u64,
     ) -> Result<Option<hyprland::data::Client>> {
         use tokio::time::{sleep, timeout, Duration, Instant};
-        
+
         let start_time = Instant::now();
         let timeout_duration = Duration::from_millis(timeout_ms);
-        
+
         while start_time.elapsed() < timeout_duration {
             let current_windows = client.get_windows().await?;
-            
+
             // Find windows that weren't in the before snapshot
             for window in current_windows {
                 if !before_addresses.contains(&window.address.to_string()) {
-                    debug!("🔍 Found new window: {} (class: '{}')", window.address, window.class);
+                    debug!(
+                        "🔍 Found new window: {} (class: '{}')",
+                        window.address, window.class
+                    );
                     return Ok(Some(window));
                 }
             }
-            
+
             sleep(Duration::from_millis(100)).await;
         }
-        
+
         Ok(None)
     }
 
@@ -1335,14 +1425,29 @@ impl ScratchpadsPlugin {
     async fn apply_scratchpad_window_rules(&self, window_address: &str) -> Result<()> {
         let rules = vec![
             //format!("hyprctl dispatch togglefloating address:{}", window_address),
-            format!("hyprctl keyword windowrulev2 'float, address:{}'", window_address),
-            format!("hyprctl keyword windowrulev2 'noanim, address:{}'", window_address),
-            format!("hyprctl keyword windowrulev2 'nodecoration, address:{}'", window_address),
-            format!("hyprctl keyword windowrulev2 'noshadow, address:{}'", window_address),
-            format!("hyprctl keyword windowrulev2 'immediate, address:{}'", window_address),
+            format!(
+                "hyprctl keyword windowrulev2 'float, address:{}'",
+                window_address
+            ),
+            format!(
+                "hyprctl keyword windowrulev2 'noanim, address:{}'",
+                window_address
+            ),
+            format!(
+                "hyprctl keyword windowrulev2 'nodecoration, address:{}'",
+                window_address
+            ),
+            format!(
+                "hyprctl keyword windowrulev2 'noshadow, address:{}'",
+                window_address
+            ),
+            format!(
+                "hyprctl keyword windowrulev2 'immediate, address:{}'",
+                window_address
+            ),
             //format!("hyprctl dispatch togglefloating address:{}", window_address),
         ];
-        
+
         for rule in rules {
             debug!("🔧 Executing rule: {}", rule);
             match tokio::process::Command::new("sh")
@@ -1353,7 +1458,11 @@ impl ScratchpadsPlugin {
             {
                 Ok(output) => {
                     if !output.status.success() {
-                        warn!("❌ Rule failed: {} - stderr: {}", rule, String::from_utf8_lossy(&output.stderr));
+                        warn!(
+                            "❌ Rule failed: {} - stderr: {}",
+                            rule,
+                            String::from_utf8_lossy(&output.stderr)
+                        );
                     } else {
                         debug!("✅ Rule applied successfully: {}", rule);
                     }
@@ -1363,7 +1472,7 @@ impl ScratchpadsPlugin {
                 }
             }
         }
-        
+
         debug!("🎨 Applied specific rules to window: {}", window_address);
         Ok(())
     }
@@ -1385,24 +1494,31 @@ impl ScratchpadsPlugin {
               window_address, start_position.0, start_position.1);
 
         // Position window at start position first
-        client.resize_and_position_window(
-            &window_address,
-            start_position.0,
-            start_position.1,
-            geometry.width,
-            geometry.height,
-        ).await?;
+        client
+            .resize_and_position_window(
+                &window_address,
+                start_position.0,
+                start_position.1,
+                geometry.width,
+                geometry.height,
+            )
+            .await?;
 
         // Short delay for positioning
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
         // Verify actual position after manual positioning
         let windows_after_position = client.get_windows().await?;
-        if let Some(positioned_window) = windows_after_position.iter().find(|w| w.address.to_string() == window_address) {
-            info!("🎬 TRACE: Window actual position after manual positioning: ({}, {})",
-                  positioned_window.at.0, positioned_window.at.1);
+        if let Some(positioned_window) = windows_after_position
+            .iter()
+            .find(|w| w.address.to_string() == window_address)
+        {
+            info!(
+                "🎬 TRACE: Window actual position after manual positioning: ({}, {})",
+                positioned_window.at.0, positioned_window.at.1
+            );
         }
-        
+
         // Create and run animation
         let animation_config = crate::animation::AnimationConfig {
             animation_type: animation_type.to_string(),
@@ -1414,48 +1530,77 @@ impl ScratchpadsPlugin {
             delay: config.animation_delay.unwrap_or(0),
             properties: None,
             target_fps: 60,
+            target_position: None,
         };
-        
+
         let monitor = self.get_target_monitor(config).await?;
         let animator = self.window_animator.lock().await;
         animator.set_active_monitor(&monitor).await;
-        
+
         let mut engine = animator.animation_engine.lock().await;
         let animation_id = format!("scratchpad_{}_special_show", name);
-        
-        engine.start_animation(
-            animation_id.clone(),
-            animation_config.clone(),
-            vec![
-                ("x".to_string(), crate::animation::PropertyValue::Pixels(start_position.0)),
-                ("y".to_string(), crate::animation::PropertyValue::Pixels(start_position.1)),
-            ].into_iter().collect(),
-            vec![
-                ("x".to_string(), crate::animation::PropertyValue::Pixels(geometry.x)),
-                ("y".to_string(), crate::animation::PropertyValue::Pixels(geometry.y)),
-            ].into_iter().collect(),
-        ).await?;
-        
+
+        engine
+            .start_animation(
+                animation_id.clone(),
+                animation_config.clone(),
+                vec![
+                    (
+                        "x".to_string(),
+                        crate::animation::PropertyValue::Pixels(start_position.0),
+                    ),
+                    (
+                        "y".to_string(),
+                        crate::animation::PropertyValue::Pixels(start_position.1),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+                vec![
+                    (
+                        "x".to_string(),
+                        crate::animation::PropertyValue::Pixels(geometry.x),
+                    ),
+                    (
+                        "y".to_string(),
+                        crate::animation::PropertyValue::Pixels(geometry.y),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            )
+            .await?;
+
         drop(engine);
-        
+
         // Animation loop
         let duration_ms = animation_config.duration as u64;
         let start_time = tokio::time::Instant::now();
-        
-        while tokio::time::Instant::now().duration_since(start_time).as_millis() < (duration_ms as u128) {
+
+        while tokio::time::Instant::now()
+            .duration_since(start_time)
+            .as_millis()
+            < (duration_ms as u128)
+        {
             if let Some(properties) = {
                 let mut engine = animator.animation_engine.lock().await;
                 engine.get_current_properties(&animation_id)
             } {
                 if let (Some(x_prop), Some(y_prop)) = (properties.get("x"), properties.get("y")) {
-                    if let (crate::animation::PropertyValue::Pixels(x), crate::animation::PropertyValue::Pixels(y)) = (x_prop, y_prop) {
-                        client.resize_and_position_window(
-                            &window_address,
-                            *x,
-                            *y,
-                            geometry.width,
-                            geometry.height,
-                        ).await?;
+                    if let (
+                        crate::animation::PropertyValue::Pixels(x),
+                        crate::animation::PropertyValue::Pixels(y),
+                    ) = (x_prop, y_prop)
+                    {
+                        client
+                            .resize_and_position_window(
+                                &window_address,
+                                *x,
+                                *y,
+                                geometry.width,
+                                geometry.height,
+                            )
+                            .await?;
                     }
                 }
             } else {
@@ -1463,16 +1608,18 @@ impl ScratchpadsPlugin {
             }
             tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
         }
-        
+
         // Final position
-        client.resize_and_position_window(
-            &window_address,
-            geometry.x,
-            geometry.y,
-            geometry.width,
-            geometry.height,
-        ).await?;
-        
+        client
+            .resize_and_position_window(
+                &window_address,
+                geometry.x,
+                geometry.y,
+                geometry.width,
+                geometry.height,
+            )
+            .await?;
+
         debug!("✨ Animation completed for scratchpad '{}'", name);
         Ok(())
     }
@@ -1486,10 +1633,17 @@ impl ScratchpadsPlugin {
         let window_address = window.address.to_string();
 
         // Récupérer la géométrie de la fenêtre via l'enhanced client
-        let geometry = match self.enhanced_client.get_window_geometry(&window_address).await {
+        let geometry = match self
+            .enhanced_client
+            .get_window_geometry(&window_address)
+            .await
+        {
             Ok(geo) => geo,
             Err(e) => {
-                warn!("Failed to get geometry for window {}: {}", window_address, e);
+                warn!(
+                    "Failed to get geometry for window {}: {}",
+                    window_address, e
+                );
                 // Fallback sans informations de position
                 let window_state = WindowState {
                     address: window_address.clone(),
@@ -1501,7 +1655,8 @@ impl ScratchpadsPlugin {
                 };
                 let state = self.states.entry(name.to_string()).or_default();
                 state.windows.push(window_state);
-                self.window_to_scratchpad.insert(window_address, name.to_string());
+                self.window_to_scratchpad
+                    .insert(window_address, name.to_string());
                 return Ok(());
             }
         };
@@ -1515,17 +1670,19 @@ impl ScratchpadsPlugin {
             }
         };
 
-        let monitor_name = monitors.iter()
+        let monitor_name = monitors
+            .iter()
             .find(|monitor| {
                 geometry.x >= monitor.x
-                && geometry.x < monitor.x + (monitor.width as i32)
-                && geometry.y >= monitor.y
-                && geometry.y < monitor.y + (monitor.height as i32)
+                    && geometry.x < monitor.x + (monitor.width as i32)
+                    && geometry.y >= monitor.y
+                    && geometry.y < monitor.y + (monitor.height as i32)
             })
             .map(|m| m.name.clone());
 
         // Ajouter au tracking
-        self.window_to_scratchpad.insert(window_address.clone(), name.to_string());
+        self.window_to_scratchpad
+            .insert(window_address.clone(), name.to_string());
 
         // Mettre à jour l'état
         let state = self.states.entry(name.to_string()).or_default();
@@ -1543,7 +1700,10 @@ impl ScratchpadsPlugin {
 
         state.windows.push(window_state);
 
-        debug!("🎯 Finalized setup for scratchpad '{}' with complete position data", name);
+        debug!(
+            "🎯 Finalized setup for scratchpad '{}' with complete position data",
+            name
+        );
         Ok(())
     }
 
@@ -1570,7 +1730,11 @@ impl ScratchpadsPlugin {
 
         // Check if we have a spawned scratchpad in our state
         if let Some(state) = self.states.get(name) {
-            debug!("🔍 State found - is_spawned: {}, windows count: {}", state.is_spawned, state.windows.len());
+            debug!(
+                "🔍 State found - is_spawned: {}, windows count: {}",
+                state.is_spawned,
+                state.windows.len()
+            );
             if state.is_spawned && !state.windows.is_empty() {
                 // Scratchpad exists - check visibility
                 let current_workspace = self.get_current_workspace(&client).await?;
@@ -1578,7 +1742,10 @@ impl ScratchpadsPlugin {
 
                 // Debug: show all window states
                 for (i, window_state) in state.windows.iter().enumerate() {
-                    debug!("🔍 Window {}: address={}, is_visible={}", i, window_state.address, window_state.is_visible);
+                    debug!(
+                        "🔍 Window {}: address={}, is_visible={}",
+                        i, window_state.address, window_state.is_visible
+                    );
                 }
 
                 // Check if any window is visible on current workspace
@@ -1588,29 +1755,41 @@ impl ScratchpadsPlugin {
                 if let Some(window_state) = visible_window {
                     // Window is visible - hide it
                     info!("👁️ Scratchpad '{}' visible, hiding it", name);
-                    
+
                     // Get the actual window data from Hyprland
                     let all_windows = client.get_windows().await?;
-                    if let Some(hypr_window) = all_windows.iter().find(|w| w.address.to_string() == window_state.address) {
-                        self.hide_scratchpad_window(&client, hypr_window, name).await
+                    if let Some(hypr_window) = all_windows
+                        .iter()
+                        .find(|w| w.address.to_string() == window_state.address)
+                    {
+                        self.hide_scratchpad_window(&client, hypr_window, name)
+                            .await
                     } else {
                         // Window no longer exists, clean up state and spawn new
                         info!("🧹 Window no longer exists, cleaning state and spawning new");
                         self.states.remove(name);
-                        self.spawn_and_show_scratchpad(name, &validated_config).await
+                        self.spawn_and_show_scratchpad(name, &validated_config)
+                            .await
                     }
                 } else {
                     // Window exists but not visible - show it
                     info!("🙈 Scratchpad '{}' exists but hidden, showing it", name);
-                    
+
                     // Get the first window from state
                     if let Some(window_state) = state.windows.first() {
                         let all_windows = client.get_windows().await?;
-                        if let Some(hypr_window) = all_windows.iter().find(|w| w.address.to_string() == window_state.address) {
-                            debug!("🔍 Found window in Hyprland - address: {}, workspace: {}", 
-                                   hypr_window.address, hypr_window.workspace.name);
-                            let result = self.show_scratchpad(&client, hypr_window, &validated_config, name).await;
-                            
+                        if let Some(hypr_window) = all_windows
+                            .iter()
+                            .find(|w| w.address.to_string() == window_state.address)
+                        {
+                            debug!(
+                                "🔍 Found window in Hyprland - address: {}, workspace: {}",
+                                hypr_window.address, hypr_window.workspace.name
+                            );
+                            let result = self
+                                .show_scratchpad(&client, hypr_window, &validated_config, name)
+                                .await;
+
                             // Update visibility state after showing
                             if result.is_ok() {
                                 self.mark_window_visible(name, &hypr_window.address.to_string());
@@ -1621,23 +1800,27 @@ impl ScratchpadsPlugin {
                             // Window no longer exists, clean up state and spawn new
                             info!("🧹 Window no longer exists, cleaning state and spawning new");
                             self.states.remove(name);
-                            self.spawn_and_show_scratchpad(name, &validated_config).await
+                            self.spawn_and_show_scratchpad(name, &validated_config)
+                                .await
                         }
                     } else {
                         // No windows in state, spawn new
                         info!("🚀 No windows in state, spawning new");
-                        self.spawn_and_show_scratchpad(name, &validated_config).await
+                        self.spawn_and_show_scratchpad(name, &validated_config)
+                            .await
                     }
                 }
             } else {
                 // State exists but not spawned, spawn new
                 info!("🚀 Scratchpad state exists but not spawned, spawning new");
-                self.spawn_and_show_scratchpad(name, &validated_config).await
+                self.spawn_and_show_scratchpad(name, &validated_config)
+                    .await
             }
         } else {
             // No state exists - spawn a new one
             info!("🚀 No scratchpad state found, spawning new");
-            self.spawn_and_show_scratchpad(name, &validated_config).await
+            self.spawn_and_show_scratchpad(name, &validated_config)
+                .await
         }
     }
 
@@ -1653,7 +1836,7 @@ impl ScratchpadsPlugin {
             if state.is_spawned && !state.windows.is_empty() {
                 // Check if already visible
                 let visible_window = state.windows.iter().find(|w| w.is_visible);
-                
+
                 if visible_window.is_some() {
                     // Already visible
                     Ok(format!("Scratchpad '{}' is already visible", name))
@@ -1661,26 +1844,34 @@ impl ScratchpadsPlugin {
                     // Show the window using state
                     if let Some(window_state) = state.windows.first() {
                         let all_windows = client.get_windows().await?;
-                        if let Some(hypr_window) = all_windows.iter().find(|w| w.address.to_string() == window_state.address) {
-                            self.show_scratchpad(&client, hypr_window, &validated_config, name).await
+                        if let Some(hypr_window) = all_windows
+                            .iter()
+                            .find(|w| w.address.to_string() == window_state.address)
+                        {
+                            self.show_scratchpad(&client, hypr_window, &validated_config, name)
+                                .await
                         } else {
                             // Window no longer exists, spawn new
                             info!("🧹 Window no longer exists, spawning new");
                             self.states.remove(name);
-                            self.spawn_and_show_scratchpad(name, &validated_config).await
+                            self.spawn_and_show_scratchpad(name, &validated_config)
+                                .await
                         }
                     } else {
-                        self.spawn_and_show_scratchpad(name, &validated_config).await
+                        self.spawn_and_show_scratchpad(name, &validated_config)
+                            .await
                     }
                 }
             } else {
                 // State exists but not spawned
-                self.spawn_and_show_scratchpad(name, &validated_config).await
+                self.spawn_and_show_scratchpad(name, &validated_config)
+                    .await
             }
         } else {
             // No state - spawn new
             info!("🚀 No scratchpad state found, spawning new");
-            self.spawn_and_show_scratchpad(name, &validated_config).await
+            self.spawn_and_show_scratchpad(name, &validated_config)
+                .await
         }
     }
 
@@ -1696,12 +1887,19 @@ impl ScratchpadsPlugin {
             if state.is_spawned && !state.windows.is_empty() {
                 // Find visible window to hide
                 let visible_window = state.windows.iter().find(|w| w.is_visible);
-                
+
                 if let Some(window_state) = visible_window {
                     let all_windows = client.get_windows().await?;
-                    if let Some(hypr_window) = all_windows.iter().find(|w| w.address.to_string() == window_state.address) {
-                        info!("🔍 Found visible scratchpad window {} to hide", hypr_window.address);
-                        self.hide_scratchpad_window(&client, hypr_window, name).await
+                    if let Some(hypr_window) = all_windows
+                        .iter()
+                        .find(|w| w.address.to_string() == window_state.address)
+                    {
+                        info!(
+                            "🔍 Found visible scratchpad window {} to hide",
+                            hypr_window.address
+                        );
+                        self.hide_scratchpad_window(&client, hypr_window, name)
+                            .await
                     } else {
                         // Window no longer exists, clean up state
                         info!("🧹 Window no longer exists, cleaning up state");
@@ -1714,7 +1912,10 @@ impl ScratchpadsPlugin {
                 }
             } else {
                 // No spawned windows
-                Ok(format!("No spawned windows found for scratchpad '{}'", name))
+                Ok(format!(
+                    "No spawned windows found for scratchpad '{}'",
+                    name
+                ))
             }
         } else {
             // No state
@@ -1732,7 +1933,10 @@ impl ScratchpadsPlugin {
         // Use internal state for attach/detach operations
         if let Some(state) = self.states.get(name) {
             if !state.is_spawned || state.windows.is_empty() {
-                return Ok(format!("No spawned windows found for scratchpad '{}'", name));
+                return Ok(format!(
+                    "No spawned windows found for scratchpad '{}'",
+                    name
+                ));
             }
         } else {
             return Ok(format!("No state found for scratchpad '{}'", name));
@@ -1785,14 +1989,18 @@ impl ScratchpadsPlugin {
                 // Verify the tracked window still exists in Hyprland
                 if let Some(window_state) = state.windows.first() {
                     let current_windows = client.get_windows().await?;
-                    if let Some(existing_window) = current_windows.iter()
-                        .find(|w| w.address.to_string() == window_state.address) {
+                    if let Some(existing_window) = current_windows
+                        .iter()
+                        .find(|w| w.address.to_string() == window_state.address)
+                    {
                         info!("✅ Scratchpad '{}' already exists (tracked), returning existing window", name);
                         return Ok(existing_window.clone());
                     } else {
                         // Window was tracked but no longer exists in Hyprland, clean up state
-                        warn!("🧹 Tracked window {} no longer exists, cleaning up state for '{}'",
-                              window_state.address, name);
+                        warn!(
+                            "🧹 Tracked window {} no longer exists, cleaning up state for '{}'",
+                            window_state.address, name
+                        );
                         true // Need to spawn new
                     }
                 } else {
@@ -1821,7 +2029,10 @@ impl ScratchpadsPlugin {
 
         // Step 2: Capture ORIGINAL active workspace BEFORE any spawn operations
         let original_active_workspace = client.get_active_workspace().await?;
-        debug!("📋 Original active workspace: {}", original_active_workspace);
+        debug!(
+            "📋 Original active workspace: {}",
+            original_active_workspace
+        );
 
         // Store original workspace in state for later restoration
         {
@@ -1843,12 +2054,15 @@ impl ScratchpadsPlugin {
 
         // Calculate offscreen start position for animation (if animation is configured)
         let spawn_position = if let Some(animation_type) = &config.animation {
-            Some(self.calculate_spawn_position_for_animation(
-                animation_type,
-                (geometry.x, geometry.y),
-                (geometry.width, geometry.height),
-                &monitor,
-            ).await?)
+            Some(
+                self.calculate_spawn_position_for_animation(
+                    animation_type,
+                    (geometry.x, geometry.y),
+                    (geometry.width, geometry.height),
+                    &monitor,
+                )
+                .await?,
+            )
         } else {
             None
         };
@@ -1878,24 +2092,42 @@ impl ScratchpadsPlugin {
         );
 
         info!("🚀 TRACE: Spawning with command: {}", spawn_command);
-        info!("🚀 TRACE: Expected absolute spawn position: ({}, {}) with size {}x{} in {}",
-              spawn_x, spawn_y, geometry.width, geometry.height, original_active_workspace);
-        info!("🚀 TRACE: Hyprland-relative coordinates used: ({}, {}) (absolute - monitor offset)",
-              hyprland_relative_x, hyprland_relative_y);
+        info!(
+            "🚀 TRACE: Expected absolute spawn position: ({}, {}) with size {}x{} in {}",
+            spawn_x, spawn_y, geometry.width, geometry.height, original_active_workspace
+        );
+        info!(
+            "🚀 TRACE: Hyprland-relative coordinates used: ({}, {}) (absolute - monitor offset)",
+            hyprland_relative_x, hyprland_relative_y
+        );
         client.spawn_app(&spawn_command).await?;
 
         // Step 6: Wait and find new window by comparison
-        let new_window = self.find_new_window_by_comparison(&client, &before_addresses, 5000).await?
+        let new_window = self
+            .find_new_window_by_comparison(&client, &before_addresses, 5000)
+            .await?
             .ok_or_else(|| anyhow::anyhow!("Failed to find newly spawned window"))?;
 
         let window_address = new_window.address.to_string();
-        info!("✅ TRACE: Found new scratchpad window: {} (class: '{}')", window_address, new_window.class);
-        info!("✅ TRACE: Actual window position after spawn: ({}, {}), size: ({}, {}), workspace: {}",
-              new_window.at.0, new_window.at.1, new_window.size.0, new_window.size.1, new_window.workspace.name);
+        info!(
+            "✅ TRACE: Found new scratchpad window: {} (class: '{}')",
+            window_address, new_window.class
+        );
+        info!(
+            "✅ TRACE: Actual window position after spawn: ({}, {}), size: ({}, {}), workspace: {}",
+            new_window.at.0,
+            new_window.at.1,
+            new_window.size.0,
+            new_window.size.1,
+            new_window.workspace.name
+        );
 
         // Step 7: Apply specific windowrules to the identified window
         self.apply_scratchpad_window_rules(&window_address).await?;
-        debug!("📋 Window class '{}' for scratchpad '{}'", new_window.class, name);
+        debug!(
+            "📋 Window class '{}' for scratchpad '{}'",
+            new_window.class, name
+        );
 
         // Step 8: Final setup and tracking (without positioning/animation)
         self.finalize_scratchpad_setup(&new_window, name).await?;
@@ -1909,7 +2141,10 @@ impl ScratchpadsPlugin {
         name: &str,
         config: &ValidatedConfig,
     ) -> Result<String> {
-        info!("🚀 Spawning and showing scratchpad '{}' with improved workflow", name);
+        info!(
+            "🚀 Spawning and showing scratchpad '{}' with improved workflow",
+            name
+        );
 
         // Step 1: Spawn the scratchpad (handles both new creation and existing detection)
         let window = self.spawn_scratchpad(name, config).await?;
@@ -1952,7 +2187,7 @@ impl ScratchpadsPlugin {
                     floating: w.floating,
                 })
                 .ok_or_else(|| anyhow::anyhow!("Window not found: {}", window_address))?;
-            
+
             // Create reverse animation config
             let reverse_animation_type = self.get_reverse_animation_type(animation_type);
             let hide_config = crate::animation::AnimationConfig {
@@ -1965,20 +2200,23 @@ impl ScratchpadsPlugin {
                 delay: config.animation_delay.unwrap_or(0),
                 properties: None,
                 target_fps: 60,
+                target_position: None,
             };
-            
+
             // Use WindowAnimator's hide_window method
+            let source_monitor = self.get_target_monitor(&config).await?;
             let mut animator = self.window_animator.lock().await;
-            if let Ok(monitor) = self.get_target_monitor(&config).await {
-                animator.set_active_monitor(&monitor).await;
-            }
-            
-            animator.hide_window(
-                &window_address,
-                (current_geometry.x, current_geometry.y),
-                (current_geometry.width, current_geometry.height),
-                hide_config,
-            ).await?;
+            animator.set_active_monitor(&source_monitor).await;
+
+            animator
+                .hide_window(
+                    &window_address,
+                    (current_geometry.x, current_geometry.y),
+                    (current_geometry.width, current_geometry.height),
+                    hide_config,
+                    &source_monitor, // ✅ PASSER LE MONITEUR SOURCE
+                )
+                .await?;
         }
 
         // Update visibility state to reflect that window is now hidden
@@ -2037,19 +2275,30 @@ impl ScratchpadsPlugin {
                     &geometry,
                     animation_type,
                     name,
-                    current_position
-                ).await?;
+                    current_position,
+                )
+                .await?;
 
                 // Move scratchpad to original active workspace AFTER animation
                 let original_active_workspace = {
-                    let state = self.states.get(name)
+                    let state = self
+                        .states
+                        .get(name)
                         .ok_or_else(|| anyhow::anyhow!("Scratchpad state not found: {}", name))?;
-                    state.original_workspace
+                    state
+                        .original_workspace
                         .as_ref()
-                        .ok_or_else(|| anyhow::anyhow!("Original workspace not stored for scratchpad: {}", name))?
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "Original workspace not stored for scratchpad: {}",
+                                name
+                            )
+                        })?
                         .clone()
                 };
-                client.move_window_to_workspace(&window_address, &original_active_workspace).await?;
+                client
+                    .move_window_to_workspace(&window_address, &original_active_workspace)
+                    .await?;
             } else {
                 // No animation - apply geometry directly
                 client
@@ -2064,14 +2313,24 @@ impl ScratchpadsPlugin {
 
                 // Move scratchpad to original active workspace (no animation case)
                 let original_active_workspace = {
-                    let state = self.states.get(name)
+                    let state = self
+                        .states
+                        .get(name)
                         .ok_or_else(|| anyhow::anyhow!("Scratchpad state not found: {}", name))?;
-                    state.original_workspace
+                    state
+                        .original_workspace
                         .as_ref()
-                        .ok_or_else(|| anyhow::anyhow!("Original workspace not stored for scratchpad: {}", name))?
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "Original workspace not stored for scratchpad: {}",
+                                name
+                            )
+                        })?
                         .clone()
                 };
-                client.move_window_to_workspace(&window_address, &original_active_workspace).await?;
+                client
+                    .move_window_to_workspace(&window_address, &original_active_workspace)
+                    .await?;
             }
 
             // Focus if configured
@@ -2132,9 +2391,15 @@ impl ScratchpadsPlugin {
             .find(|w| w.address == *window_address)
         {
             window_state.is_visible = false;
-            debug!("🔍 Marked window {} as hidden for scratchpad '{}'", window_address, scratchpad_name);
+            debug!(
+                "🔍 Marked window {} as hidden for scratchpad '{}'",
+                window_address, scratchpad_name
+            );
         } else {
-            warn!("⚠️  Attempted to mark non-existent window {} as hidden for scratchpad '{}'", window_address, scratchpad_name);
+            warn!(
+                "⚠️  Attempted to mark non-existent window {} as hidden for scratchpad '{}'",
+                window_address, scratchpad_name
+            );
         }
     }
 
@@ -2162,47 +2427,52 @@ impl ScratchpadsPlugin {
                 let offscreen_y = monitor_top - target_size.1 - safe_offset;
                 info!("🔍 TRACE: fromTop calculation - monitor_top={}, target_size.1={}, safe_offset={}, result_y={}",
                        monitor_top, target_size.1, safe_offset, offscreen_y);
-                info!("🔍 TRACE: fromTop - target_position=({}, {}), final_position=({}, {})",
-                       target_position.0, target_position.1, target_position.0, offscreen_y);
+                info!(
+                    "🔍 TRACE: fromTop - target_position=({}, {}), final_position=({}, {})",
+                    target_position.0, target_position.1, target_position.0, offscreen_y
+                );
                 (target_position.0, offscreen_y)
-            },
+            }
             "fromBottom" => {
                 // Always position below the monitor's bottom edge
                 let offscreen_y = monitor_bottom + safe_offset;
-                debug!("🎯 fromBottom: monitor_bottom={}, safe_offset={}, result_y={}",
-                       monitor_bottom, safe_offset, offscreen_y);
+                debug!(
+                    "🎯 fromBottom: monitor_bottom={}, safe_offset={}, result_y={}",
+                    monitor_bottom, safe_offset, offscreen_y
+                );
                 (target_position.0, offscreen_y)
-            },
+            }
             "fromLeft" => {
                 // Always position left of the monitor's left edge
                 let offscreen_x = monitor_left - target_size.0 - safe_offset;
-                debug!("🎯 fromLeft: monitor_left={}, target_size.0={}, safe_offset={}, result_x={}",
-                       monitor_left, target_size.0, safe_offset, offscreen_x);
+                debug!(
+                    "🎯 fromLeft: monitor_left={}, target_size.0={}, safe_offset={}, result_x={}",
+                    monitor_left, target_size.0, safe_offset, offscreen_x
+                );
                 (offscreen_x, target_position.1)
-            },
+            }
             "fromRight" => {
                 // Always position right of the monitor's right edge
                 let offscreen_x = monitor_right + safe_offset;
-                debug!("🎯 fromRight: monitor_right={}, safe_offset={}, result_x={}",
-                       monitor_right, safe_offset, offscreen_x);
+                debug!(
+                    "🎯 fromRight: monitor_right={}, safe_offset={}, result_x={}",
+                    monitor_right, safe_offset, offscreen_x
+                );
                 (offscreen_x, target_position.1)
-            },
+            }
             "fromTopLeft" => (
                 monitor_left - target_size.0 - safe_offset,
-                monitor_top - target_size.1 - safe_offset
+                monitor_top - target_size.1 - safe_offset,
             ),
             "fromTopRight" => (
                 monitor_right + safe_offset,
-                monitor_top - target_size.1 - safe_offset
+                monitor_top - target_size.1 - safe_offset,
             ),
             "fromBottomLeft" => (
                 monitor_left - target_size.0 - safe_offset,
-                monitor_bottom + safe_offset
+                monitor_bottom + safe_offset,
             ),
-            "fromBottomRight" => (
-                monitor_right + safe_offset,
-                monitor_bottom + safe_offset
-            ),
+            "fromBottomRight" => (monitor_right + safe_offset, monitor_bottom + safe_offset),
             _ => target_position, // For fade, scale, etc - start at target
         };
 
@@ -2212,7 +2482,7 @@ impl ScratchpadsPlugin {
 
         calculated_position
     }
-    
+
     /// Calculate hide position for animation based on type (Fixed geometry)
     /// Multi-monitor aware: ensures offscreen positions are always truly offscreen
     fn calculate_hide_position_offscreen(
@@ -2235,31 +2505,39 @@ impl ScratchpadsPlugin {
             "toTop" => {
                 // Always position above the monitor's top edge
                 let offscreen_y = monitor_top - window_size.1 - safe_offset;
-                debug!("🎯 toTop: monitor_top={}, window_size.1={}, safe_offset={}, result_y={}",
-                       monitor_top, window_size.1, safe_offset, offscreen_y);
+                debug!(
+                    "🎯 toTop: monitor_top={}, window_size.1={}, safe_offset={}, result_y={}",
+                    monitor_top, window_size.1, safe_offset, offscreen_y
+                );
                 (current_position.0, offscreen_y)
-            },
+            }
             "toBottom" => {
                 // Always position below the monitor's bottom edge
                 let offscreen_y = monitor_bottom + safe_offset;
-                debug!("🎯 toBottom: monitor_bottom={}, safe_offset={}, result_y={}",
-                       monitor_bottom, safe_offset, offscreen_y);
+                debug!(
+                    "🎯 toBottom: monitor_bottom={}, safe_offset={}, result_y={}",
+                    monitor_bottom, safe_offset, offscreen_y
+                );
                 (current_position.0, offscreen_y)
-            },
+            }
             "toLeft" => {
                 // Always position left of the monitor's left edge
                 let offscreen_x = monitor_left - window_size.0 - safe_offset;
-                debug!("🎯 toLeft: monitor_left={}, window_size.0={}, safe_offset={}, result_x={}",
-                       monitor_left, window_size.0, safe_offset, offscreen_x);
+                debug!(
+                    "🎯 toLeft: monitor_left={}, window_size.0={}, safe_offset={}, result_x={}",
+                    monitor_left, window_size.0, safe_offset, offscreen_x
+                );
                 (offscreen_x, current_position.1)
-            },
+            }
             "toRight" => {
                 // Always position right of the monitor's right edge
                 let offscreen_x = monitor_right + safe_offset;
-                debug!("🎯 toRight: monitor_right={}, safe_offset={}, result_x={}",
-                       monitor_right, safe_offset, offscreen_x);
+                debug!(
+                    "🎯 toRight: monitor_right={}, safe_offset={}, result_x={}",
+                    monitor_right, safe_offset, offscreen_x
+                );
                 (offscreen_x, current_position.1)
-            },
+            }
             "toTopLeft" => (
                 monitor_left - window_size.0 - safe_offset,
                 monitor_top - window_size.1 - safe_offset,
@@ -2272,15 +2550,14 @@ impl ScratchpadsPlugin {
                 monitor_left - window_size.0 - safe_offset,
                 monitor_bottom + safe_offset,
             ),
-            "toBottomRight" => (
-                monitor_right + safe_offset,
-                monitor_bottom + safe_offset,
-            ),
+            "toBottomRight" => (monitor_right + safe_offset, monitor_bottom + safe_offset),
             _ => current_position, // For fade, scale, etc - stay in place
         };
 
-        debug!("🎯 Monitor '{}' hide animation '{}' -> position: ({}, {})",
-               monitor.name, hide_animation_type, calculated_position.0, calculated_position.1);
+        debug!(
+            "🎯 Monitor '{}' hide animation '{}' -> position: ({}, {})",
+            monitor.name, hide_animation_type, calculated_position.0, calculated_position.1
+        );
 
         calculated_position
     }
@@ -2872,7 +3149,6 @@ impl ScratchpadsPlugin {
 
         Ok(())
     }
-
 }
 
 impl Default for ScratchpadsPlugin {
@@ -3015,20 +3291,24 @@ impl Plugin for ScratchpadsPlugin {
 
                     if let Some(toml::Value::Float(scale)) = sc.get("animation_scale_from") {
                         config.animation_scale_from = Some(*scale as f32);
-                    } else if let Some(toml::Value::Integer(scale)) = sc.get("animation_scale_from") {
+                    } else if let Some(toml::Value::Integer(scale)) = sc.get("animation_scale_from")
+                    {
                         config.animation_scale_from = Some(*scale as f32);
                     }
 
                     if let Some(toml::Value::Float(opacity)) = sc.get("animation_opacity_from") {
                         config.animation_opacity_from = Some(*opacity as f32);
-                    } else if let Some(toml::Value::Integer(opacity)) = sc.get("animation_opacity_from") {
+                    } else if let Some(toml::Value::Integer(opacity)) =
+                        sc.get("animation_opacity_from")
+                    {
                         config.animation_opacity_from = Some(*opacity as f32);
                     }
 
                     // Parse spring physics parameters
                     if let Some(toml::Value::Float(stiffness)) = sc.get("spring_stiffness") {
                         config.spring_stiffness = Some(*stiffness as f32);
-                    } else if let Some(toml::Value::Integer(stiffness)) = sc.get("spring_stiffness") {
+                    } else if let Some(toml::Value::Integer(stiffness)) = sc.get("spring_stiffness")
+                    {
                         config.spring_stiffness = Some(*stiffness as f32);
                     }
 
@@ -3092,7 +3372,7 @@ impl Plugin for ScratchpadsPlugin {
                     *cache_valid = Instant::now();
                 }
 
-                        // Monitor layout changed - cache will be refreshed on next access
+                // Monitor layout changed - cache will be refreshed on next access
             }
             HyprlandEvent::WindowFocusChanged { window } => {
                 self.handle_focus_changed(window).await;
@@ -3763,9 +4043,17 @@ mod tests {
     async fn test_animation_types_with_window_animator() {
         // Test that all 11 animation types work with WindowAnimator integration
         let animation_types = vec![
-            "fromLeft", "fromRight", "fromTop", "fromBottom",
-            "fromTopLeft", "fromTopRight", "fromBottomLeft", "fromBottomRight", 
-            "fade", "scale", "spring"
+            "fromLeft",
+            "fromRight",
+            "fromTop",
+            "fromBottom",
+            "fromTopLeft",
+            "fromTopRight",
+            "fromBottomLeft",
+            "fromBottomRight",
+            "fade",
+            "scale",
+            "spring",
         ];
 
         let monitor = MonitorInfo {
@@ -3793,8 +4081,9 @@ mod tests {
         // Test that all animation types can be processed by our helper method
         for animation_type in animation_types {
             let plugin = ScratchpadsPlugin::new();
-            let hide_animation_type = plugin.get_reverse_animation_type(&animation_type.to_string());
-            
+            let hide_animation_type =
+                plugin.get_reverse_animation_type(&animation_type.to_string());
+
             // Verify hide animation type mapping
             match animation_type {
                 "fromTop" => assert_eq!(hide_animation_type, "toTop"),
@@ -3807,11 +4096,11 @@ mod tests {
                 "fromBottomRight" => assert_eq!(hide_animation_type, "toBottomRight"),
                 "fade" => assert_eq!(hide_animation_type, "fade"),
                 "scale" => assert_eq!(hide_animation_type, "scale"),
-                "spring" => assert_eq!(hide_animation_type, "fade"), // Spring falls back to fade for hide
+                "spring" => assert_eq!(hide_animation_type, "spring"), // Spring is symmetric
                 _ => panic!("Unknown animation type: {}", animation_type),
             }
 
-            // Test geometry calculation works with all animation types  
+            // Test geometry calculation works with all animation types
             let geometry = GeometryCalculator::calculate_geometry(&config, &monitor).unwrap();
             assert_eq!(geometry.width, 800);
             assert_eq!(geometry.height, 600);

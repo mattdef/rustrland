@@ -541,9 +541,13 @@ impl HyprlandClient {
             use hyprland::data::Workspace;
             use hyprland::shared::HyprDataActive;
             Workspace::get_active()
-        }).await?;
+        })
+        .await?;
 
-        debug!("✅ Found active workspace: {} on monitor: {}", active_workspace.id, active_workspace.monitor);
+        debug!(
+            "✅ Found active workspace: {} on monitor: {}",
+            active_workspace.id, active_workspace.monitor
+        );
         Ok(active_workspace.id.to_string())
     }
 
@@ -555,9 +559,13 @@ impl HyprlandClient {
             use hyprland::data::Workspace;
             use hyprland::shared::HyprDataActive;
             Workspace::get_active()
-        }).await?;
+        })
+        .await?;
 
-        debug!("✅ Found active workspace: {} on monitor: {}", active_workspace.id, active_workspace.monitor);
+        debug!(
+            "✅ Found active workspace: {} on monitor: {}",
+            active_workspace.id, active_workspace.monitor
+        );
         Ok((active_workspace.id.to_string(), active_workspace.monitor))
     }
 
@@ -676,8 +684,10 @@ impl HyprlandClient {
 
     /// Center cursor in a window based on its geometry
     pub async fn center_cursor_in_window(&self, geometry: &WindowGeometry) -> Result<()> {
-        debug!("🎯 Centering cursor in window at {}x{} ({}x{})", 
-               geometry.x, geometry.y, geometry.width, geometry.height);
+        debug!(
+            "🎯 Centering cursor in window at {}x{} ({}x{})",
+            geometry.x, geometry.y, geometry.width, geometry.height
+        );
 
         let center_x = geometry.x + geometry.width / 2;
         let center_y = geometry.y + geometry.height / 2;

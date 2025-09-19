@@ -128,6 +128,7 @@ async fn demo(client: &HyprlandClient, monitor: &Monitor) -> anyhow::Result<()> 
             easing: EasingFunction::EaseOutBack,
             offset: "100px".to_string(), // Larger offset for more dramatic effect
             opacity_from: if option_name == &"fade" { 0.1 } else { 1.0 }, // Start fade from 0.1 for visibility
+            target_position: None,
             ..Default::default()
         };
 
@@ -175,6 +176,7 @@ async fn demo(client: &HyprlandClient, monitor: &Monitor) -> anyhow::Result<()> 
                 duration: 800,
                 easing: EasingFunction::EaseIn,
                 offset: "100px".to_string(),
+                target_position: None,
                 ..Default::default()
             };
             animator
@@ -183,6 +185,7 @@ async fn demo(client: &HyprlandClient, monitor: &Monitor) -> anyhow::Result<()> 
                     target_position,
                     size,
                     hide_config,
+                    &monitor_info, // ✅ PASSER LE MONITEUR
                 )
                 .await?;
 

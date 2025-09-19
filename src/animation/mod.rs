@@ -52,6 +52,11 @@ pub struct AnimationConfig {
     /// Performance settings
     #[serde(default)]
     pub target_fps: u32,
+
+    /// Position cible pré-calculée pour l'animation (optionnelle)
+    /// Si présente, WindowAnimator utilisera cette position au lieu de la calculer
+    #[serde(skip)] // Ne pas sérialiser - utilisé seulement en runtime
+    pub target_position: Option<(i32, i32)>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -704,6 +709,7 @@ impl Default for AnimationConfig {
             opacity_from: 0.0,
             properties: None,
             target_fps: 60,
+            target_position: None,
         }
     }
 }

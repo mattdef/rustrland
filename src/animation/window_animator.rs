@@ -57,6 +57,7 @@ struct WindowAnimationState {
     target_size: (i32, i32),
     animation_id: String,
     is_showing: bool,
+    source_monitor: MonitorInfo, // ✅ NOUVEAU CHAMP
 }
 
 impl Default for WindowAnimator {
@@ -231,6 +232,7 @@ impl WindowAnimator {
 
             // Create animation state
             let animation_id = format!("show_{address}");
+            let current_monitor = self.active_monitor.lock().await.clone();
             let state = WindowAnimationState {
                 window_address: address.to_string(),
                 original_position: start_offset_position,
@@ -239,6 +241,7 @@ impl WindowAnimator {
                 target_size,
                 animation_id: animation_id.clone(),
                 is_showing: true,
+                source_monitor: current_monitor, // ✅ AJOUTER LE MONITEUR
             };
 
             self.active_window_animations
@@ -318,13 +321,14 @@ impl WindowAnimator {
                 .await?;
             debug!("✅ Animation '{}' started successfully", animation_id);
 
-            let monitor = &self.active_monitor.lock().await;
+            let monitor = self.active_monitor.lock().await.clone();
             // Start window update loop
             self.start_window_animation_loop(
                 address.to_string(),
                 animation_id,
                 animation_type,
                 monitor.refresh_rate,
+                monitor, // ✅ PASSER LE MONITEUR
             )
             .await?;
 
@@ -357,23 +361,26 @@ impl WindowAnimator {
         current_position: (i32, i32),
         current_size: (i32, i32),
         config: AnimationConfig,
+        source_monitor: &MonitorInfo, // ✅ NOUVEAU PARAMÈTRE
     ) -> Result<()> {
         debug!(
             "🎬 Starting hide animation for window {} with type '{}'",
             window_address, config.animation_type
         );
 
-        let absolute_current_position = {
-            let monitor = self.active_monitor.lock().await;
-            (
-                monitor.x + current_position.0,
-                monitor.y + current_position.1,
-            )
-        };
+        let absolute_current_position = (
+            source_monitor.x + current_position.0,
+            source_monitor.y + current_position.1,
+        );
 
-        // Calculate ending position based on animation type
+        // Calculate ending position based on animation type using explicit monitor
         let end_position = self
-            .calculate_end_position(absolute_current_position, current_size, &config)
+            .calculate_end_position_with_monitor(
+                absolute_current_position,
+                current_size,
+                &config,
+                source_monitor,
+            )
             .await?;
 
         println!(
@@ -391,6 +398,7 @@ impl WindowAnimator {
             target_size: current_size,
             animation_id: animation_id.clone(),
             is_showing: false,
+            source_monitor: source_monitor.clone(), // ✅ STOCKER LE MONITEUR SOURCE
         };
 
         self.active_window_animations
@@ -432,10 +440,7 @@ impl WindowAnimator {
             )
             .await?;
 
-        let refresh_rate = {
-            let monitor = self.active_monitor.lock().await;
-            monitor.refresh_rate
-        };
+        let refresh_rate = source_monitor.refresh_rate;
 
         // Start window update loop
         self.start_window_animation_loop(
@@ -443,6 +448,7 @@ impl WindowAnimator {
             animation_id,
             animation_type,
             refresh_rate,
+            source_monitor.clone(), // ✅ PASSER LE MONITEUR SOURCE
         )
         .await?;
 
@@ -506,19 +512,32 @@ impl WindowAnimator {
         let screen_size = (monitor.width, monitor.height);
         let offset_pixels = self.parse_offset(&config.offset, screen_size)?;
 
-        debug!("🖥️  Monitor info: x={}, y={}, width={}, height={}", 
-               monitor.x, monitor.y, monitor.width, monitor.height);
-        debug!("🎯 Position calculation: absolute_current=({}, {}), size=({}, {}), offset={}", 
-               absolute_current_position.0, absolute_current_position.1, current_size.0, current_size.1, offset_pixels);
-               
-        // Since absolute_current_position already includes monitor offset, 
+        debug!(
+            "🖥️  Monitor info: x={}, y={}, width={}, height={}",
+            monitor.x, monitor.y, monitor.width, monitor.height
+        );
+        debug!(
+            "🎯 Position calculation: absolute_current=({}, {}), size=({}, {}), offset={}",
+            absolute_current_position.0,
+            absolute_current_position.1,
+            current_size.0,
+            current_size.1,
+            offset_pixels
+        );
+
+        // Since absolute_current_position already includes monitor offset,
         // calculate target positions relative to monitor bounds
         match config.animation_type.as_str() {
             "toTop" | "fromTop" => {
                 let target_y = monitor.y - current_size.1 - offset_pixels;
-                debug!("🔢 toTop calculation: monitor.y({}) - height({}) - offset({}) = {}", 
-                       monitor.y, current_size.1, offset_pixels, target_y);
-                debug!("🔢 toTop: keeping same X ({}) since only Y changes for toTop", absolute_current_position.0);
+                debug!(
+                    "🔢 toTop calculation: monitor.y({}) - height({}) - offset({}) = {}",
+                    monitor.y, current_size.1, offset_pixels, target_y
+                );
+                debug!(
+                    "🔢 toTop: keeping same X ({}) since only Y changes for toTop",
+                    absolute_current_position.0
+                );
                 Ok((absolute_current_position.0, target_y))
             }
             "toBottom" | "fromBottom" => {
@@ -532,6 +551,140 @@ impl WindowAnimator {
             "toRight" | "fromRight" => {
                 let target_x = monitor.x + monitor.width as i32 + offset_pixels;
                 Ok((target_x, absolute_current_position.1))
+            }
+            "toTopLeft" | "fromTopLeft" => {
+                let target_x = monitor.x - current_size.0 - offset_pixels;
+                let target_y = monitor.y - current_size.1 - offset_pixels;
+                Ok((target_x, target_y))
+            }
+            "toTopRight" | "fromTopRight" => {
+                let target_x = monitor.x + monitor.width as i32 + offset_pixels;
+                let target_y = monitor.y - current_size.1 - offset_pixels;
+                Ok((target_x, target_y))
+            }
+            "toBottomLeft" | "fromBottomLeft" => {
+                let target_x = monitor.x - current_size.0 - offset_pixels;
+                let target_y = monitor.y + monitor.height as i32 + offset_pixels;
+                Ok((target_x, target_y))
+            }
+            "toBottomRight" | "fromBottomRight" => {
+                let target_x = monitor.x + monitor.width as i32 + offset_pixels;
+                let target_y = monitor.y + monitor.height as i32 + offset_pixels;
+                Ok((target_x, target_y))
+            }
+            "fade" => Ok(absolute_current_position), // No position change for fade
+            "scale" => Ok(absolute_current_position), // No position change for scale
+            _ => Ok(absolute_current_position),      // Default to current position
+        }
+    }
+
+    /// Calculate ending position for hide animation with explicit monitor
+    /// NOTE: current_position is already absolute (includes monitor.x/y offset)
+    async fn calculate_end_position_with_monitor(
+        &self,
+        absolute_current_position: (i32, i32),
+        current_size: (i32, i32),
+        config: &AnimationConfig,
+        monitor: &MonitorInfo, // ✅ MONITEUR EXPLICITE
+    ) -> Result<(i32, i32)> {
+        let screen_size = (monitor.width, monitor.height);
+        let offset_pixels = self.parse_offset(&config.offset, screen_size)?;
+
+        debug!(
+            "🖥️  Using explicit monitor: {} at x={}, y={}, width={}, height={}",
+            monitor.name, monitor.x, monitor.y, monitor.width, monitor.height
+        );
+        debug!(
+            "🎯 Position calculation: absolute_current=({}, {}), size=({}, {}), offset={}",
+            absolute_current_position.0,
+            absolute_current_position.1,
+            current_size.0,
+            current_size.1,
+            offset_pixels
+        );
+
+        // Since absolute_current_position already includes monitor offset,
+        // calculate target positions relative to monitor bounds
+        match config.animation_type.as_str() {
+            "toTop" | "fromTop" => {
+                let target_y = monitor.y - current_size.1 - offset_pixels;
+                debug!(
+                    "🔢 toTop calculation: monitor.y({}) - height({}) - offset({}) = {}",
+                    monitor.y, current_size.1, offset_pixels, target_y
+                );
+                debug!(
+                    "🔢 toTop: keeping same X ({}) since only Y changes for toTop",
+                    absolute_current_position.0
+                );
+                Ok((absolute_current_position.0, target_y))
+            }
+            "toBottom" | "fromBottom" => {
+                let target_y = monitor.y + monitor.height as i32 + offset_pixels;
+                debug!(
+                    "🔢 toBottom calculation: monitor.y({}) + height({}) + offset({}) = {}",
+                    monitor.y, monitor.height, offset_pixels, target_y
+                );
+                Ok((absolute_current_position.0, target_y))
+            }
+            "toLeft" | "fromLeft" => {
+                let target_x = monitor.x - current_size.0 - offset_pixels;
+                debug!(
+                    "🔢 toLeft calculation: monitor.x({}) - width({}) - offset({}) = {}",
+                    monitor.x, current_size.0, offset_pixels, target_x
+                );
+                Ok((target_x, absolute_current_position.1))
+            }
+             "toRight" | "fromRight" => {
+                let target_x = monitor.x + monitor.width as i32 + offset_pixels;
+                debug!(
+                    "🔢 toRight calculation: monitor.x({}) + width({}) + offset({}) = {}",
+                    monitor.x, monitor.width, offset_pixels, target_x
+                );
+                debug!(
+                    "🔢 toRight: keeping same Y ({}) since only X changes for toRight",
+                    absolute_current_position.1
+                );
+                Ok((target_x, absolute_current_position.1))
+            }
+            "toTopLeft" | "fromTopLeft" => {
+                let target_x = monitor.x - current_size.0 - offset_pixels;
+                let target_y = monitor.y - current_size.1 - offset_pixels;
+                debug!(
+                    "🔢 toTopLeft calculation: x=monitor.x({}) - width({}) - offset({}) = {}, y=monitor.y({}) - height({}) - offset({}) = {}",
+                    monitor.x, current_size.0, offset_pixels, target_x,
+                    monitor.y, current_size.1, offset_pixels, target_y
+                );
+                Ok((target_x, target_y))
+            }
+            "toTopRight" | "fromTopRight" => {
+                let target_x = monitor.x + monitor.width as i32 + offset_pixels;
+                let target_y = monitor.y - current_size.1 - offset_pixels;
+                debug!(
+                    "🔢 toTopRight calculation: x=monitor.x({}) + width({}) + offset({}) = {}, y=monitor.y({}) - height({}) - offset({}) = {}",
+                    monitor.x, monitor.width, offset_pixels, target_x,
+                    monitor.y, current_size.1, offset_pixels, target_y
+                );
+                Ok((target_x, target_y))
+            }
+            "toBottomLeft" | "fromBottomLeft" => {
+                let target_x = monitor.x - current_size.0 - offset_pixels;
+                let target_y = monitor.y + monitor.height as i32 + offset_pixels;
+                debug!(
+                    "🔢 toBottomLeft calculation: x=monitor.x({}) - width({}) - offset({}) = {}, y=monitor.y({}) + height({}) + offset({}) = {}",
+                    monitor.x, current_size.0, offset_pixels, target_x,
+                    monitor.y, monitor.height, offset_pixels, target_y
+                );
+                Ok((target_x, target_y))
+            }
+            "toBottomRight" | "fromBottomRight" => {
+                let target_x = monitor.x + monitor.width as i32 + offset_pixels;
+                let target_y = monitor.y + monitor.height as i32 + offset_pixels;
+                debug!(
+                    "🔢 toBottomRight calculation: x=monitor.x({}) + width({}) + offset({}) = {}, y=monitor.y({}) + height({}) + offset({}) = {}",
+                    monitor.x, monitor.width, offset_pixels, target_x,
+                    monitor.y, monitor.height, offset_pixels, target_y
+                );
+                Ok((target_x, target_y))
             }
             "fade" => Ok(absolute_current_position), // No position change for fade
             "scale" => Ok(absolute_current_position), // No position change for scale
@@ -562,6 +715,7 @@ impl WindowAnimator {
         animation_id: String,
         animation_type: String,
         refresh_rate: f32,
+        source_monitor: MonitorInfo, // ✅ NOUVEAU PARAMÈTRE
     ) -> Result<()> {
         let client_guard = self.hyprland_client.lock().await;
         let client = match client_guard.as_ref() {
@@ -606,6 +760,7 @@ impl WindowAnimator {
                     &window_address,
                     &properties,
                     &animation_type,
+                    &source_monitor, // ✅ PASSER LE MONITEUR SOURCE
                 )
                 .await
                 {
@@ -646,6 +801,7 @@ impl WindowAnimator {
         window_address: &str,
         properties: &HashMap<String, PropertyValue>,
         animation_type: &str,
+        source_monitor: &MonitorInfo, // ✅ NOUVEAU PARAMÈTRE
     ) -> Result<()> {
         // Extract absolute position
         let absolute_x = properties.get("x").map(|p| p.as_pixels()).unwrap_or(0);
@@ -661,32 +817,33 @@ impl WindowAnimator {
             .map(|p| p.as_pixels())
             .unwrap_or(600);
 
-        // Get monitor info to convert absolute coordinates to relative
-        let monitors = client.get_monitors().await?;
-        let monitor = monitors
-            .iter()
-            .find(|m| {
-                absolute_x >= m.x && absolute_x < m.x + m.width as i32 &&
-                absolute_y >= m.y && absolute_y < m.y + m.height as i32
-            })
-            .or_else(|| monitors.first()) // Fallback to first monitor
-            .ok_or_else(|| anyhow::anyhow!("No monitor found"))?;
+        // ✅ Plus de détection automatique - utiliser directement le moniteur passé
+        let monitor = source_monitor;
+        debug!(
+            "🎯 Using provided source monitor: {} at ({}, {}) size {}x{}",
+            monitor.name, monitor.x, monitor.y, monitor.width, monitor.height
+        );
 
         // Convert absolute coordinates to monitor-relative coordinates
         let relative_x = absolute_x - monitor.x;
         let relative_y = absolute_y - monitor.y;
 
         debug!(
-            "🪟 COORDINATE CONVERSION: absolute=({},{}) -> relative=({},{}) on monitor {}x{} at ({},{})",
+            "🪟 COORDINATE CONVERSION: absolute=({},{}) -> relative=({},{}) on monitor {} '{}' {}x{} at ({},{})",
             absolute_x, absolute_y, relative_x, relative_y,
-            monitor.width, monitor.height, monitor.x, monitor.y
+            monitor.id, monitor.name, monitor.width, monitor.height, monitor.x, monitor.y
         );
 
-        debug!("🔄 About to call move_window_pixel({}, {}, {})", window_address, relative_x, relative_y);
-        
+        debug!(
+            "🔄 About to call move_window_pixel({}, {}, {})",
+            window_address, relative_x, relative_y
+        );
+
         // Move window using relative coordinates (what Hyprland expects)
-        client.move_window_pixel(window_address, relative_x, relative_y).await?;
-        
+        client
+            .move_window_pixel(window_address, relative_x, relative_y)
+            .await?;
+
         debug!("✅ move_window_pixel completed");
 
         // Resize window for scale animations
@@ -710,6 +867,7 @@ impl WindowAnimator {
         window_address: &str,
         properties: &HashMap<String, PropertyValue>,
         animation_type: &str,
+        source_monitor: &MonitorInfo, // ✅ NOUVEAU PARAMÈTRE
     ) -> Result<()> {
         let client_guard = self.hyprland_client.lock().await;
         let client = match client_guard.as_ref() {
@@ -717,8 +875,14 @@ impl WindowAnimator {
             None => return Ok(()),
         };
 
-        Self::apply_properties_to_window_static(client, window_address, properties, animation_type)
-            .await
+        Self::apply_properties_to_window_static(
+            client,
+            window_address,
+            properties,
+            animation_type,
+            source_monitor,
+        )
+        .await
     }
 
     /// Set window properties directly
